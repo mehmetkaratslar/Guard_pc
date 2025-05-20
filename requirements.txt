@@ -1,0 +1,19 @@
+# guard_pc_app/requirements.txt
+opencv-python>=4.5.0
+torch>=1.9.0
+torchvision>=0.10.0
+numpy>=1.20.0
+pillow>=8.2.0
+firebase-admin>=5.0.0
+pyrebase4>=4.5.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
+python-multipart>=0.0.5
+requests>=2.26.0
+pydantic>=1.8.2
+python-dotenv>=0.19.0
+telepot>=12.7
+python-socketio>=5.4.0
+python-engineio>=4.3.0
+scikit-learn>=1.0.0
+matplotlib>=3.5.0
