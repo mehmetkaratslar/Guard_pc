@@ -218,6 +218,8 @@ PublishScripts/
 *.nuget.props
 *.nuget.targets
 
+pc/bfg-1.15.0.jar
+bfg-1.15.0.jar
 # Microsoft Azure Build Output
 csx/
 *.build.csdef

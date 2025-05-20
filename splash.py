@@ -27,7 +27,8 @@ class SplashScreen:
         self._show_splash()
         
         # Belirli bir süre sonra ana pencereyi göster
-        threading.Thread(target=self._show_main_after_delay, daemon=True).start()
+        self.root.after(int(self.duration * 1000), self._close_splash)
+
     
     def _show_splash(self):
         """Ultra modern ve etkileyici splash ekranını gösterir."""
@@ -40,8 +41,8 @@ class SplashScreen:
         screen_height = self.splash_window.winfo_screenheight()
         
         # Splash ekranı boyutu (ekranın %70'i)
-        width = int(screen_width * 0.7)
-        height = int(screen_height * 0.7)
+        width = int(screen_width * 0.8)
+        height = int(screen_height * 0.8)
         
         # Merkezi pozisyon
         x = (screen_width - width) // 2
@@ -541,15 +542,6 @@ class SplashScreen:
             # Pencere kapanmış olabilir
             pass
     
-    def _show_main_after_delay(self):
-        """Belirli bir süre sonra ana pencereyi gösterir."""
-        time.sleep(self.duration)
-        
-        # İlerleme çubuğunun tamamlanmasını bekle
-        time.sleep(1)
-        
-        # Splash ekranını kapat
-        self.root.after(0, self._close_splash)
     
     def _close_splash(self):
         """Yumuşak geçiş ile splash ekranını kapatır."""
