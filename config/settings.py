@@ -8,7 +8,7 @@ APP_VERSION = "1.0.0"
 # Kamera ayarları
 CAMERA_INDEX = 0  # Varsayılan kamera indeksi
 FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
+FRAME_HEIGHT = 640
 FRAME_RATE = 30
 
 # YOLOv11 Ayarları

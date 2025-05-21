@@ -295,8 +295,8 @@ class GuardApp:
     def _detection_loop(self):
         """Düşme algılama döngüsü. Ayrı bir thread'de çalışır."""
         last_detection_time = 0
-        min_detection_interval = 5
-        target_fps = 30  # Hedef FPS (saniyede 30 kare)
+        min_detection_interval = 10  # Changed from 5 to 10 seconds
+        target_fps = 60  # Hedef FPS (saniyede 30 kare)
         frame_duration = 1.0 / target_fps  # Her kare için süre (saniye)
 
         while self.system_running:

@@ -32,8 +32,8 @@ CORS(app)  # CORS desteği ekle (mobil uygulamadan erişim için)
 # Sunucu yapılandırma ayarları
 SERVER_HOST = '0.0.0.0'  # Tüm arayüzlerden erişime izin ver
 SERVER_PORT = 5000
-MJPEG_QUALITY = 70      # JPEG kalitesi (0-100)
-MAX_FPS = 30            # Maksimum FPS (saniyedeki kare sayısı)
+MJPEG_QUALITY = 80      # JPEG kalitesi (0-100)
+MAX_FPS = 60           # Maksimum FPS (saniyedeki kare sayısı)
 STREAM_WIDTH = 640      # Akış genişliği
 STREAM_HEIGHT = 480     # Akış yüksekliği
 
@@ -106,7 +106,7 @@ class VideoCamera:
                 # FPS hesapla
                 self.frame_count += 1
                 elapsed_time = time.time() - self.start_time
-                if elapsed_time >= 1.0:  # Her saniyede bir güncelle
+                if elapsed_time >= 4.0:  # Her saniyede bir güncelle
                     self.fps = self.frame_count / elapsed_time
                     self.frame_count = 0
                     self.start_time = time.time()
