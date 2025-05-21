@@ -11,14 +11,16 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FRAME_RATE = 30
 
-# Düşme algılama modeli ayarları
+# YOLOv11 Ayarları
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), 
     "resources", 
     "models", 
-    "fall_model.pt"
+    "fall_model.pt"  # YOLOv11 model dosyası
 )
-CONFIDENCE_THRESHOLD = 0.7  # Düşme olarak algılamak için gereken minimum güven seviyesi
+CONFIDENCE_THRESHOLD = 0.6  # YOLOv11 için güven eşiği
+FRAME_WIDTH = 640  # YOLOv11 için ideal giriş genişliği
+FRAME_HEIGHT = 640  # YOLOv11 için ideal giriş yüksekliği
 
 # API sunucusu ayarları
 API_HOST = "127.0.0.1"
@@ -26,8 +28,8 @@ API_PORT = 8002
 
 # Bildirim ayarları
 EMAIL_SUBJECT = "Guard Uyarı: Düşme Algılandı!"
-EMAIL_FROM = "guard-notification@example.com"
-SMS_MESSAGE = "Guard Uyarı: Düşme Algılandı! Lütfen kontrol edin."
+EMAIL_FROM = "mehmetkarataslar@gmail.com"
+SMS_MESSAGE = "Guard Uyarı: Düşme Algılandı! Lütfen kontrol ediniz acil."
 TELEGRAM_MESSAGE = "⚠️ *GUARD UYARI* ⚠️\nDüşme algılandı! Lütfen kontrol edin."
 
 # Uygulama temaları

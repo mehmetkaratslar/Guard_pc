@@ -17,3 +17,5 @@ python-socketio>=5.4.0
 python-engineio>=4.3.0
 scikit-learn>=1.0.0
 matplotlib>=3.5.0
+# YOLOv11 için gerekli paketler
+ultralytics>=8.0.0  # YOLOv11 için ultralytics paketi
