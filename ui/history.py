@@ -1,28 +1,18 @@
-# Dosya: guard_pc_app/ui/history.py
+# Dosya: ui/history.py
 # Açıklama: Geçmiş düşme olaylarını listeleyen ve detaylarını gösteren modern, şık bir UI bileşeni.
-# Özellikler:
-# - Premium tasarım: Gradyan arka planlar, yumuşak gölgeler, animasyonlar
-# - Material Design benzeri UI elemanları
-# - Zenginleştirilmiş olay listesi: Renkli durum ikonları, tarih/saat ve olasılık bilgileri
-# - Gelişmiş detay paneli: Büyültülebilir görüntü, interaktif bilgi kartları
-# - Asenkron veri işleme: Arka planda yükleme, cache mekanizması
-# - Hata yönetimi: Detaylı loglama ve kullanıcı dostu hata mesajları
-# - Dark mode desteği: Otomatik sistem teması algılama
+# Optimize edilmiş versiyon - Daha hafif ve app.py ile uyumlu
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
 import datetime
-from PIL import Image, ImageTk, ImageEnhance, ImageFilter
+from PIL import Image, ImageTk, ImageEnhance
 import requests
 from io import BytesIO
 import threading
 import time
-from functools import partial
-import math
 import sys
 import os
-
 
 class HistoryFrame(ttk.Frame):
     """Modern ve premium görünümlü geçmiş olaylar ekranı."""
@@ -44,9 +34,10 @@ class HistoryFrame(ttk.Frame):
         self.events = []
         self.filtered_events = []
         self.image_cache = {}  # Görüntü önbelleği
+        self.current_image = None
         
-        # Dark mode algılama (sistem temasına göre)
-        self.dark_mode = self._detect_dark_mode()
+        # Dark mode algılama - app.py'den tema durumunu kontrol et
+        self.dark_mode = self._get_theme_from_parent(parent)
         
         # Tema renklerini ayarla
         self._setup_colors()
@@ -57,11 +48,11 @@ class HistoryFrame(ttk.Frame):
         # UI bileşenleri
         self._create_ui()
         
-        # Animasyon değişkenleri
-        self.current_image = None
-        self.fade_alpha = 0.0
-        self.detail_panel_expanded = False
+        # Zoom ve görüntü ayarları
         self.zoom_level = 1.0
+        self.image_offset_x = 0
+        self.image_offset_y = 0
+        self.dragging = False
         
         # Olayları yükle
         self._load_events()
@@ -69,32 +60,28 @@ class HistoryFrame(ttk.Frame):
         # Pencere yeniden boyutlandırma işleyicisi
         self.bind("<Configure>", self._on_configure)
 
-    def _detect_dark_mode(self):
-        """Sistem temasını algılar."""
+    def _get_theme_from_parent(self, parent):
+        """Parent widget'tan tema durumunu alır."""
         try:
-            # Windows'ta tema algılama
+            # Ana uygulamadan tema bilgisini almaya çalış
+            app = self.winfo_toplevel()
+            if hasattr(app, 'current_theme'):
+                return app.current_theme == "dark"
+        except:
+            pass
+        
+        # Varsayılan olarak system temasını tespit et
+        try:
             if sys.platform == "win32":
                 import winreg
                 registry = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
                 key = winreg.OpenKey(registry, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
                 value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
                 return value == 0
-            # macOS tema algılama
-            elif sys.platform == "darwin":
-                import subprocess
-                cmd = "defaults read -g AppleInterfaceStyle"
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-                return p.stdout.read().decode().strip() == "Dark"
-            # Linux tema algılama (GNOME)
-            elif sys.platform == "linux":
-                import subprocess
-                cmd = "gsettings get org.gnome.desktop.interface gtk-theme"
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-                output = p.stdout.read().decode().strip()
-                return "dark" in output.lower()
         except:
             pass
-        return False
+            
+        return False  # Varsayılan açık tema
 
     def _setup_colors(self):
         """Tema renklerini ayarlar."""
@@ -178,49 +165,30 @@ class HistoryFrame(ttk.Frame):
                          foreground=self.accent_color, 
                          font=("Segoe UI", 12))
         
-        # Standart butonlar
+        # Butonlar
         style.configure("TButton", 
                          background=self.button_bg,
                          foreground=self.button_fg,
                          font=("Segoe UI", 10), 
-                         relief="flat", 
-                         borderwidth=0)
-        style.map("TButton",
-                 background=[("active", self.accent_light), ("pressed", self.accent_light)],
-                 foreground=[("active", self.button_fg), ("pressed", self.button_fg)])
+                         relief="flat")
         
         # Geniş butonlar
         style.configure("Wide.TButton", 
                          background=self.accent_color,
                          foreground="white",
-                         font=("Segoe UI", 10, "bold"), 
-                         relief="flat", 
-                         borderwidth=0)
-        style.map("Wide.TButton",
-                 background=[("active", self.accent_light), ("pressed", self.accent_light)],
-                 foreground=[("active", "white"), ("pressed", "white")])
+                         font=("Segoe UI", 10, "bold"))
         
-        # Durdurma butonu
+        # Silme butonu
         style.configure("Stop.TButton", 
                          background=self.danger_color,
                          foreground="white",
-                         font=("Segoe UI", 10, "bold"), 
-                         relief="flat", 
-                         borderwidth=0)
-        style.map("Stop.TButton",
-                 background=[("active", "#c0392b"), ("pressed", "#c0392b")],
-                 foreground=[("active", "white"), ("pressed", "white")])
+                         font=("Segoe UI", 10, "bold"))
         
-        # İkon butonları
+        # İkon butonları 
         style.configure("Icon.TButton", 
                          background=self.card_bg,
                          foreground=self.text_color,
-                         font=("Segoe UI", 14), 
-                         relief="flat", 
-                         borderwidth=0,
-                         padding=2)
-        style.map("Icon.TButton",
-                 background=[("active", self.highlight_color), ("pressed", self.highlight_color)])
+                         font=("Segoe UI", 14))
         
         # Treeview (Olay listesi)
         style.configure("Treeview", 
@@ -233,32 +201,17 @@ class HistoryFrame(ttk.Frame):
                          foreground=self.text_color,
                          font=("Segoe UI", 10, "bold"),
                          relief="flat")
-        style.map("Treeview.Heading",
-                 background=[("active", self.highlight_color)])
         style.map("Treeview",
                  background=[("selected", self.accent_color)],
                  foreground=[("selected", "white")])
         
-        # Giriş alanları
-        style.configure("TEntry", 
-                         fieldbackground=self.card_bg,
-                         foreground=self.text_color,
-                         bordercolor=self.accent_color,
-                         lightcolor=self.accent_color,
-                         darkcolor=self.accent_color,
-                         borderwidth=1,
-                         font=("Segoe UI", 10))
-        
         # Kaydırma çubuğu
         style.configure("Vertical.TScrollbar", 
                          background=self.card_bg,
-                         arrowcolor=self.text_color,
                          troughcolor=self.bg_color)
-        style.map("Vertical.TScrollbar",
-                 background=[("active", self.accent_color), ("pressed", self.accent_light)])
 
     def _create_ui(self):
-        """Modern ve premium UI bileşenlerini oluşturur."""
+        """Modern UI bileşenlerini oluşturur."""
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=0)  # Başlık çubuğu
         self.rowconfigure(1, weight=0)  # Filtreleme alanı
@@ -268,11 +221,11 @@ class HistoryFrame(ttk.Frame):
         header_frame = ttk.Frame(self, style="Header.TFrame")
         header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         
-        # İç içe başlık çerçevesi (padding için)
+        # İç içe başlık çerçevesi
         inner_header = ttk.Frame(header_frame, style="Header.TFrame", padding=15)
         inner_header.pack(fill=tk.X, expand=True)
         
-        # Geri butonu (modern ikon stili)
+        # Geri butonu
         back_btn = ttk.Button(
             inner_header,
             text="← Geri",
@@ -291,7 +244,7 @@ class HistoryFrame(ttk.Frame):
         )
         title_label.pack(side=tk.LEFT, padx=20)
         
-        # Yenile butonu (modern ikon style)
+        # Yenile butonu
         refresh_btn = ttk.Button(
             inner_header,
             text="⟳ Yenile",
@@ -302,22 +255,11 @@ class HistoryFrame(ttk.Frame):
         )
         refresh_btn.pack(side=tk.RIGHT, padx=5)
         
-        # Tema değiştirme butonu
-        theme_btn = ttk.Button(
-            inner_header,
-            text="🌓" if self.dark_mode else "☀️",
-            style="Icon.TButton",
-            command=self._toggle_theme,
-            width=3,
-            cursor="hand2"
-        )
-        theme_btn.pack(side=tk.RIGHT, padx=10)
-        
-        # Filtreleme alanı (kart görünümü)
+        # Filtreleme alanı
         filter_frame = ttk.Frame(self, style="Card.TFrame")
         filter_frame.grid(row=1, column=0, sticky="ew", padx=15, pady=15)
         
-        # İç filtreleme çerçevesi (padding için)
+        # İç filtreleme çerçevesi
         inner_filter = ttk.Frame(filter_frame, style="Card.TFrame", padding=15)
         inner_filter.pack(fill=tk.X, expand=True)
         
@@ -335,7 +277,6 @@ class HistoryFrame(ttk.Frame):
         date_entry = ttk.Entry(
             date_frame,
             textvariable=self.date_filter_var,
-            style="TEntry",
             width=12
         )
         date_entry.pack(side=tk.LEFT)
@@ -358,12 +299,11 @@ class HistoryFrame(ttk.Frame):
         conf_entry = ttk.Entry(
             conf_frame,
             textvariable=self.conf_filter_var,
-            style="TEntry",
             width=6
         )
         conf_entry.pack(side=tk.LEFT)
         
-        # Filtreleme butonu
+        # Butonlar
         filter_btn = ttk.Button(
             inner_filter,
             text="Filtrele",
@@ -374,7 +314,6 @@ class HistoryFrame(ttk.Frame):
         )
         filter_btn.pack(side=tk.LEFT, padx=10)
         
-        # Temizle butonu
         clear_btn = ttk.Button(
             inner_filter,
             text="Temizle",
@@ -385,7 +324,7 @@ class HistoryFrame(ttk.Frame):
         )
         clear_btn.pack(side=tk.LEFT)
         
-        # İçerik çerçevesi (ana kart)
+        # İçerik çerçevesi
         content_frame = ttk.Frame(self, style="Card.TFrame")
         content_frame.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 15))
         content_frame.columnconfigure(0, weight=3)
@@ -415,7 +354,7 @@ class HistoryFrame(ttk.Frame):
             style="Info.TLabel"
         ).pack(side=tk.RIGHT)
         
-        # Liste çerçevesi (kaydırma çubuğu için)
+        # Liste çerçevesi
         list_container = ttk.Frame(list_frame, style="Card.TFrame")
         list_container.grid(row=1, column=0, sticky="nsew")
         list_container.columnconfigure(0, weight=1)
@@ -537,7 +476,7 @@ class HistoryFrame(ttk.Frame):
         image_card.rowconfigure(0, weight=0)  # Başlık
         image_card.rowconfigure(1, weight=1)  # Görüntü
         
-        # Görüntü başlığı ve butonlar
+        # Görüntü başlığı
         img_header = ttk.Frame(image_card, style="Card.TFrame")
         img_header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         
@@ -578,7 +517,7 @@ class HistoryFrame(ttk.Frame):
             cursor="hand2"
         ).pack(side=tk.LEFT, padx=2)
         
-        # Görüntü çerçevesi (gölge efekti için border ekleyerek)
+        # Görüntü çerçevesi
         img_container = ttk.Frame(image_card, style="Card.TFrame", padding=2)
         img_container.grid(row=1, column=0, sticky="nsew")
         if not self.dark_mode:
@@ -603,20 +542,10 @@ class HistoryFrame(ttk.Frame):
         self.image_label.bind("<B1-Motion>", self._mouse_drag)
         self.image_label.bind("<ButtonRelease-1>", self._mouse_up)
         self.image_label.bind("<Double-Button-1>", lambda e: self._toggle_fullscreen())
-        
-        # Sürükleme için değişkenler
-        self.drag_start_x = 0
-        self.drag_start_y = 0
-        self.image_offset_x = 0
-        self.image_offset_y = 0
-        self.dragging = False
 
     def _create_info_card(self, parent, title):
         """Bilgi kartı oluşturur."""
         card = ttk.Frame(parent, style="Card.TFrame", padding=10)
-        card.columnconfigure(0, weight=1)
-        card.rowconfigure(0, weight=0)
-        card.rowconfigure(1, weight=1)
         
         # Kart gölgesi için kenar çizgisi
         if self.dark_mode:
@@ -642,81 +571,6 @@ class HistoryFrame(ttk.Frame):
         if event.widget.get() == "":
             event.widget.insert(0, placeholder)
 
-    def _toggle_theme(self):
-        """Temayı değiştirir."""
-        self.dark_mode = not self.dark_mode
-        self._setup_colors()
-        self._setup_styles()
-        
-        # Mevcut içeriği güncelle
-        self._update_theme_for_all_widgets()
-        
-        # Seçili olayı tekrar göster
-        selected = self.event_list.selection()
-        if selected:
-            self._on_event_select(None)
-
-    def _update_theme_for_all_widgets(self):
-        """Tüm widget'ları yeni temaya göre günceller."""
-        self.configure(style="MainFrame.TFrame")
-        
-        # Tüm çocuk widget'ları güncelle
-        for widget in self.winfo_children():
-            self._update_widget_theme(widget)
-    
-    def _update_widget_theme(self, widget):
-        """Belirtilen widget'ın temasını günceller."""
-        try:
-            # Widget tipine göre stil güncelleme
-            widget_class = widget.winfo_class()
-            
-            if widget_class == "TFrame":
-                if "Header" in str(widget["style"]):
-                    widget.configure(style="Header.TFrame")
-                else:
-                    widget.configure(style="Card.TFrame")
-            
-            elif widget_class == "TLabel":
-                if "Title" in str(widget["style"]):
-                    widget.configure(style="Title.TLabel")
-                elif "Section" in str(widget["style"]):
-                    widget.configure(style="Section.TLabel")
-                elif "DetailHeader" in str(widget["style"]):
-                    widget.configure(style="DetailHeader.TLabel")
-                elif "DetailValue" in str(widget["style"]):
-                    widget.configure(style="DetailValue.TLabel")
-                elif "Info" in str(widget["style"]):
-                    widget.configure(style="Info.TLabel")
-                else:
-                    widget.configure(style="TLabel")
-            
-            elif widget_class == "TButton":
-                if "Wide" in str(widget["style"]):
-                    widget.configure(style="Wide.TButton")
-                elif "Stop" in str(widget["style"]):
-                    widget.configure(style="Stop.TButton")
-                elif "Icon" in str(widget["style"]):
-                    widget.configure(style="Icon.TButton")
-                else:
-                    widget.configure(style="TButton")
-            
-            elif widget_class == "TEntry":
-                widget.configure(style="TEntry")
-            
-            elif widget_class == "Treeview":
-                widget.configure(style="Treeview")
-            
-            elif widget_class == "Vertical.TScrollbar":
-                widget.configure(style="Vertical.TScrollbar")
-            
-            # Çocuk widget'ları da güncelle
-            for child in widget.winfo_children():
-                self._update_widget_theme(child)
-                
-        except Exception as e:
-            logging.debug(f"Widget tema güncellemesi sırasında hata: {str(e)}")
-            pass
-    
     def _on_configure(self, event):
         """Pencere boyutu değiştiğinde düzeni güncelle."""
         # Sadece olay gerçek pencere yeniden boyutlandırma olduğunda yanıt ver
@@ -738,14 +592,14 @@ class HistoryFrame(ttk.Frame):
     def _load_events(self):
         """Olayları veritabanından asenkron olarak yükler."""
         try:
-            # Düzenli gösterge için yükleniyor durumunu güncelle
+            # Yükleniyor durumunu göster
             self._start_loading_interface()
             
             # Arka planda olayları yükle
             threading.Thread(target=self._load_events_thread, daemon=True).start()
         except Exception as e:
-            logging.error(f"Olaylar yüklenirken hata: {str(e)}", exc_info=True)
-            self._show_error("Veri Yükleme Hatası", f"Olaylar yüklenemedi: {str(e)}")
+            logging.error(f"Olaylar yüklenirken hata: {str(e)}")
+            messagebox.showerror("Veri Yükleme Hatası", f"Olaylar yüklenemedi: {str(e)}")
     
     def _start_loading_interface(self):
         """Yükleniyor arayüzünü gösterir."""
@@ -797,9 +651,6 @@ class HistoryFrame(ttk.Frame):
     def _load_events_thread(self):
         """Olayları veritabanından yükleyen thread fonksiyonu."""
         try:
-            # Yükleme simülasyonu (gerçek uygulamada kaldırılabilir)
-            time.sleep(0.5)
-            
             # Veritabanından olayları al
             events = self.db_manager.get_fall_events(self.user["localId"], limit=50)
             self.events = events
@@ -808,8 +659,12 @@ class HistoryFrame(ttk.Frame):
             # UI güncellemesi
             self.after(0, lambda: self._update_event_list(events))
         except Exception as e:
-            logging.error(f"Olaylar yüklenirken thread hatası: {str(e)}", exc_info=True)
-            self.after(0, lambda: self._show_error("Veri Yükleme Hatası", f"Olaylar yüklenemedi: {str(e)}"))
+            logging.error(f"Olaylar yüklenirken thread hatası: {str(e)}")
+            self.after(0, lambda: messagebox.showerror("Veri Yükleme Hatası", f"Olaylar yüklenemedi: {str(e)}"))
+    
+
+
+
     
     def _apply_filters(self):
         """Olayları tarih ve olasılık filtrelerine göre günceller."""

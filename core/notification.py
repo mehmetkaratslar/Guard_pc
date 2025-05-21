@@ -177,53 +177,145 @@ class NotificationManager:
     
 
     
+
+
+
+    # Bu yeni versiyonda, kullanıcı ayarlarını daha iyi kontrol ediyor ve başarı durumunu döndürüyor
     def send_notifications(self, event_data, screenshot=None):
         """Kullanıcı tercihlerine göre bildirimleri gönderir.
         
         Args:
             event_data (dict): Olay bilgileri
             screenshot (numpy.ndarray, optional): Olay anındaki ekran görüntüsü
+            
+        Returns:
+            bool: En az bir bildirim başarıyla gönderildiyse True
         """
-        try:
-            # Bildirim gönderimi için log ekle
-            logging.info(f"Düşme olayı için bildirimler gönderiliyor: {event_data.get('id', '')}")
+        # Log olay bilgilerini
+        logging.info(f"Bildirim gönderiliyor: {event_data.get('id', 'ID yok')}")
+        logging.info(f"Mevcut kullanıcı ayarları: {self.user_data}")
+
+        # Kullanıcı verisi kontrolü
+        if not self.user_data:
+            logging.error("Kullanıcı verileri eksik - bildirim gönderilemedi!")
+            return False
+
+        # Etkin bildirim kanallarını belirle
+        active_channels = []
+        
+        # E-posta bildirimi kontrolü - geniş kapsamlı kontrol yapalım
+        email = None
+        if "email" in self.user_data:
+            email = self.user_data.get("email")
+        elif "settings" in self.user_data and "email" in self.user_data["settings"]:
+            email = self.user_data["settings"].get("email")
             
-            # Etkin bildirim kanallarını belirle
-            active_channels = []
+        email_notification = False
+        if "email_notification" in self.user_data:
+            email_notification = self.user_data.get("email_notification", True)
+        elif "settings" in self.user_data and "email_notification" in self.user_data["settings"]:
+            email_notification = self.user_data["settings"].get("email_notification", True)
+        
+        if email_notification and (email or os.getenv("SMTP_USER")):
+            active_channels.append("email")
+            logging.info(f"E-posta bildirimi aktif: {email or os.getenv('SMTP_USER')}")
+        
+        # SMS bildirimi kontrolü
+        sms_notification = False
+        phone_number = None
+        if "sms_notification" in self.user_data:
+            sms_notification = self.user_data.get("sms_notification", False)
+        elif "settings" in self.user_data and "sms_notification" in self.user_data["settings"]:
+            sms_notification = self.user_data["settings"].get("sms_notification", False)
             
-            if self.user_data.get("email_notification", True) and (self.user_data.get("email") or os.getenv("SMTP_USER")):
-                active_channels.append("email")
+        if "phone_number" in self.user_data:
+            phone_number = self.user_data.get("phone_number")
+        elif "settings" in self.user_data and "phone_number" in self.user_data["settings"]:
+            phone_number = self.user_data["settings"].get("phone_number")
+        
+        if sms_notification and phone_number:
+            active_channels.append("sms")
+            logging.info(f"SMS bildirimi aktif: {phone_number}")
+        
+        # Telegram bildirimi kontrolü
+        telegram_notification = False
+        telegram_chat_id = None
+        if "telegram_notification" in self.user_data:
+            telegram_notification = self.user_data.get("telegram_notification", False)
+        elif "settings" in self.user_data and "telegram_notification" in self.user_data["settings"]:
+            telegram_notification = self.user_data["settings"].get("telegram_notification", False)
             
-            if self.user_data.get("sms_notification", False) and self.user_data.get("phone_number"):
-                active_channels.append("sms")
-            
-            if self.user_data.get("telegram_notification", False) and self.user_data.get("telegram_chat_id"):
-                active_channels.append("telegram")
-            
-            # Hiç aktif kanal yoksa varsayılan olarak e-posta gönder
-            if not active_channels and os.getenv("SMTP_USER"):
-                active_channels.append("email")
-                logging.info("Aktif bildirim kanalı yok. Varsayılan olarak e-posta kullanılıyor.")
-            
-            # Her aktif kanal için bildirim kuyruğuna ekle
-            for channel in active_channels:
+        if "telegram_chat_id" in self.user_data:
+            telegram_chat_id = self.user_data.get("telegram_chat_id")
+        elif "settings" in self.user_data and "telegram_chat_id" in self.user_data["settings"]:
+            telegram_chat_id = self.user_data["settings"].get("telegram_chat_id")
+        
+        if telegram_notification and telegram_chat_id:
+            active_channels.append("telegram")
+            logging.info(f"Telegram bildirimi aktif: {telegram_chat_id}")
+        
+        # Hiç aktif kanal yoksa varsayılan olarak e-posta gönder
+        if not active_channels and os.getenv("SMTP_USER"):
+            active_channels.append("email")
+            logging.info(f"Aktif bildirim kanalı yok. Varsayılan olarak e-posta kullanılıyor: {os.getenv('SMTP_USER')}")
+        
+        # Bildirim kanalı var mı kontrol et
+        if not active_channels:
+            logging.warning("Aktif bildirim kanalı yok! Bildirim gönderilemedi.")
+            return False
+        
+        success = False
+        
+        # Her aktif kanal için bildirim gönder
+        for channel in active_channels:
+            try:
                 notification = {
                     "type": channel,
                     "event_data": event_data,
                     "screenshot": screenshot,
                     "timestamp": time.time()
                 }
-                self.notification_queue.put(notification)
-                logging.info(f"{channel.capitalize()} bildirimi kuyruğa eklendi.")
-            
-            # Bildirimlerin durumunu kaydet (istatistik için)
-            self._record_notification_status(event_data.get('id', ''), active_channels)
-            
-            return len(active_channels) > 0
+                
+                # Doğrudan bildirim metodlarını çağır
+                if channel == "email":
+                    if email:
+                        email_result = self._send_email_notification(notification)
+                        success = success or email_result
+                    else:
+                        # Varsayılan e-posta adresi kullan
+                        notification["to_email"] = os.getenv("SMTP_USER")
+                        email_result = self._send_email_notification(notification)
+                        success = success or email_result
+                
+                elif channel == "sms" and phone_number:
+                    sms_result = self._send_sms_notification(notification)
+                    success = success or sms_result
+                
+                elif channel == "telegram" and telegram_chat_id:
+                    telegram_result = self._send_telegram_notification(notification)
+                    success = success or telegram_result
+                
+                # Kuyruk için yedekle
+                try:
+                    self.notification_queue.put(notification)
+                    logging.info(f"{channel.capitalize()} bildirimi kuyruğa eklendi.")
+                except Exception as e:
+                    logging.error(f"{channel} bildirimi kuyruğa eklenirken hata: {str(e)}")
+                
+            except Exception as e:
+                logging.error(f"{channel} bildirimi gönderilirken hata: {str(e)}")
         
-        except Exception as e:
-            logging.error(f"Bildirim gönderilirken hata: {str(e)}")
-            return False
+        # Test bildirimi
+        is_test = event_data.get("test", False)
+        if not active_channels and is_test and self.channel_status["telegram"]["available"]:
+            try:
+                test_result = self._send_telegram_direct(event_data, screenshot)
+                success = success or test_result
+            except Exception as e:
+                logging.error(f"Test telegram mesajı gönderilirken hata: {str(e)}")
+        
+        return success
+
 
     
     def _send_email_notification(self, notification):
@@ -231,20 +323,29 @@ class NotificationManager:
         
         Args:
             notification (dict): Bildirim verisi
+            
+        Returns:
+            bool: Başarılı ise True, değilse False
         """
         event_data = notification.get("event_data", {})
         screenshot = notification.get("screenshot")
         
         # E-posta alıcısını belirle
-        to_email = self.user_data.get("email")
+        to_email = notification.get("to_email")
         if not to_email:
-            to_email = os.getenv("SMTP_USER")
+            to_email = self.user_data.get("email")
+            if not to_email and "settings" in self.user_data:
+                to_email = self.user_data["settings"].get("email")
             
+            if not to_email:
+                to_email = os.getenv("SMTP_USER")
+                
         if not to_email:
             logging.error("E-posta bildirimi gönderilemedi: Alıcı e-posta adresi bulunamadı.")
-            return
+            return False
             
         # E-posta gönder
+        logging.info(f"E-posta bildirimi gönderiliyor: {to_email}")
         result = self.send_email(to_email, event_data, screenshot)
         
         if result:
@@ -259,7 +360,10 @@ class NotificationManager:
                     "screenshot": screenshot,
                     "fallback": True
                 })
-    
+                
+        return result
+
+
     def _send_sms_notification(self, notification):
         """SMS bildirimi kuyruğunu işler.
         

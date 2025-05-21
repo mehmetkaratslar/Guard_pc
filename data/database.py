@@ -1,4 +1,4 @@
-# guard_pc_app/data/database.py (Güncellenmiş)
+# guard_pc_app/data/database.py (Güncellenmiş ve Düzeltilmiş)
 
 import logging
 from google.cloud import firestore
@@ -125,84 +125,120 @@ class FirestoreManager:
         
         Args:
             user_id (str): Kullanıcı ID'si
-            event_data (dict): Olay verileri (confidence, image_url, vb.)
+            event_data (dict): Kaydedilecek olay verileri
             
         Returns:
-            str: Kaydedilen olay ID'si, hata durumunda None
+            bool: Başarılı ise True, değilse False
         """
-        # Yeni bir event ID oluştur
-        event_id = str(uuid.uuid4())
-        
-        # Olay verilerine ekstra bilgiler ekle
-        event_data["id"] = event_id
-        event_data["created_at"] = time.time()
-        
-        # Numpy tiplerini Python tiplerine dönüştür
-        if "confidence" in event_data and hasattr(event_data["confidence"], "item"):
-            event_data["confidence"] = float(event_data["confidence"])
+        # ID'nin olduğundan emin olun
+        if "id" not in event_data:
+            event_data["id"] = str(uuid.uuid4())
             
+        # Kullanıcı ID'sinin olduğundan emin olun
+        if "user_id" not in event_data:
+            event_data["user_id"] = user_id
+            
+        # Zaman damgasının olduğundan emin olun
+        if "timestamp" not in event_data:
+            event_data["timestamp"] = time.time()
+        
+        # Oluşturulma zamanını ekle (eski kodla uyumluluk için)
+        if "created_at" not in event_data:
+            event_data["created_at"] = time.time()
+            
+        logging.info(f"Düşme olayı kaydediliyor: {event_data.get('id')} - Kullanıcı: {user_id}")
+        
         if not self.is_available:
             # Bellekte sakla
             if user_id not in self._memory_storage["users"]:
-                self._memory_storage["users"][user_id] = {}
+                self._memory_storage["users"][user_id] = {"id": user_id}
             
-            # Fall events listesini oluştur
+            if "events" not in self._memory_storage["users"][user_id]:
+                self._memory_storage["users"][user_id]["events"] = []
+            
+            # Olayı listeye ekle
+            self._memory_storage["users"][user_id]["events"].append(event_data)
+            
+            # Ayrıca eski kodla uyumluluk için fall_events'e de ekle
             if "fall_events" not in self._memory_storage["users"][user_id]:
                 self._memory_storage["users"][user_id]["fall_events"] = []
-            
-            # Olayı kaydet
+                
             self._memory_storage["users"][user_id]["fall_events"].append(event_data)
             
             # Dosyaya kaydet
             self._save_local_data()
-            logging.info(f"Düşme olayı yerel depoya kaydedildi: {event_id} - Kullanıcı: {user_id}")
-            return event_id
-            
+            logging.info(f"Düşme olayı yerel depoya kaydedildi: {event_data.get('id')}")
+            return True
+        
         try:
-            # Olayı kaydet
-            event_ref = self.db.collection("users").document(user_id).collection("fall_events").document(event_id)
+            # Normal Firestore işlemi - her iki koleksiyona da kaydet (uyumluluk için)
+            # 1. events koleksiyonuna kaydet (yeni kod için)
+            events_ref = self.db.collection("users").document(user_id).collection("events")
+            events_ref.document(event_data["id"]).set(event_data)
             
-            event_ref.set(event_data)
-            logging.info(f"Düşme olayı kaydedildi: {event_id} - Kullanıcı: {user_id}")
+            # 2. fall_events koleksiyonuna da kaydet (eski kod için)
+            fall_events_ref = self.db.collection("users").document(user_id).collection("fall_events")
+            fall_events_ref.document(event_data["id"]).set(event_data)
             
-            return event_id
+            logging.info(f"Düşme olayı veritabanına kaydedildi: {event_data.get('id')}")
+            return True
             
         except Exception as e:
-            logging.error(f"Düşme olayı kaydedilirken hata oluştu: {str(e)}")
-            return None
-    
-    def get_fall_events(self, user_id, limit=10):
-        """Kullanıcının düşme olaylarını getirir.
+            logging.error(f"Düşme olayı kaydedilirken hata: {str(e)}", exc_info=True)
+            return False
+
+    def get_fall_events(self, user_id, limit=50):
+        """Kullanıcının düşme olaylarını getirir."""
+        logging.info(f"Düşme olayları getiriliyor - Kullanıcı: {user_id}, Limit: {limit}")
         
-        Args:
-            user_id (str): Kullanıcı ID'si
-            limit (int, optional): En fazla kaç olay getirileceği
-            
-        Returns:
-            list: Düşme olayları listesi
-        """
         if not self.is_available:
             # Bellekten getir
             if user_id not in self._memory_storage["users"]:
+                logging.warning(f"Kullanıcı bellekte bulunamadı: {user_id}")
                 return []
             
-            events = self._memory_storage["users"][user_id].get("fall_events", [])
+            # Önce events koleksiyonundan getirmeyi dene
+            events = self._memory_storage["users"][user_id].get("events", [])
             
-            # Oluşturulma zamanına göre sırala (en yeni en üstte)
-            sorted_events = sorted(events, key=lambda e: e.get("created_at", 0), reverse=True)
+            # Eğer boşsa fall_events koleksiyonunu dene (eski kod için)
+            if not events:
+                events = self._memory_storage["users"][user_id].get("fall_events", [])
+            
+            # Oluşturulma/zaman damgasına göre sırala (en yeni en üstte)
+            sorted_events = sorted(
+                events, 
+                key=lambda e: e.get("timestamp", e.get("created_at", 0)), 
+                reverse=True
+            )
             
             # Limitle
+            logging.info(f"Yerel depodan {len(sorted_events[:limit])} düşme olayı getirildi")
             return sorted_events[:limit]
             
         try:
-            events_ref = self.db.collection("users").document(user_id).collection("fall_events")
-            query = events_ref.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
+            # Önce events koleksiyonundan getirmeyi dene (yeni kod için)
+            events_ref = self.db.collection("users").document(user_id).collection("events")
+            query = events_ref.order_by("timestamp", direction=firestore.Query.DESCENDING).limit(limit)
             
             events = []
             for doc in query.stream():
                 event_data = doc.to_dict()
+                if "id" not in event_data:
+                    event_data["id"] = doc.id
                 events.append(event_data)
             
+            # Eğer olaylar boşsa fall_events koleksiyonunu dene (eski kod için)
+            if not events:
+                fall_events_ref = self.db.collection("users").document(user_id).collection("fall_events")
+                query = fall_events_ref.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
+                
+                for doc in query.stream():
+                    event_data = doc.to_dict()
+                    if "id" not in event_data:
+                        event_data["id"] = doc.id
+                    events.append(event_data)
+            
+            logging.info(f"Veritabanından {len(events)} düşme olayı getirildi")
             return events
             
         except Exception as e:
@@ -210,15 +246,7 @@ class FirestoreManager:
             return []
     
     def create_new_user(self, user_id, user_data):
-        """Yeni kullanıcı oluşturur.
-        
-        Args:
-            user_id (str): Kullanıcı ID'si
-            user_data (dict): Kullanıcı verileri
-            
-        Returns:
-            bool: İşlem başarılı ise True, değilse False
-        """
+        """Yeni kullanıcı oluşturur."""
         # Temel kullanıcı verileri
         base_data = {
             "id": user_id,
@@ -257,14 +285,7 @@ class FirestoreManager:
             return False
     
     def update_last_login(self, user_id):
-        """Kullanıcının son giriş zamanını günceller.
-        
-        Args:
-            user_id (str): Kullanıcı ID'si
-            
-        Returns:
-            bool: İşlem başarılı ise True, değilse False
-        """
+        """Kullanıcının son giriş zamanını günceller."""
         if not self.is_available:
             # Bellekte güncelle
             if user_id not in self._memory_storage["users"]:
@@ -287,15 +308,7 @@ class FirestoreManager:
             return False
     
     def update_user_data(self, user_id, user_data):
-        """Kullanıcı bilgilerini günceller.
-        
-        Args:
-            user_id (str): Kullanıcı ID'si
-            user_data (dict): Güncellenecek kullanıcı verileri
-            
-        Returns:
-            bool: İşlem başarılı ise True, değilse False
-        """
+        """Kullanıcı bilgilerini günceller."""
         if not self.is_available:
             # Bellekte güncelle
             if user_id not in self._memory_storage["users"]:
@@ -324,36 +337,34 @@ class FirestoreManager:
             return False
     
     def delete_fall_event(self, user_id, event_id):
-        """Düşme olayını siler.
-        
-        Args:
-            user_id (str): Kullanıcı ID'si
-            event_id (str): Silinecek olayın ID'si
-            
-        Returns:
-            bool: İşlem başarılı ise True, değilse False
-        """
+        """Düşme olayını siler."""
         if not self.is_available:
             # Bellekten sil
             if user_id not in self._memory_storage["users"]:
                 return False
             
-            if "fall_events" not in self._memory_storage["users"][user_id]:
-                return False
-            
-            # Olayı bul ve sil
-            events = self._memory_storage["users"][user_id]["fall_events"]
-            self._memory_storage["users"][user_id]["fall_events"] = [e for e in events if e.get("id") != event_id]
+            # Hem events hem de fall_events koleksiyonlarından sil
+            for collection_name in ["events", "fall_events"]:
+                if collection_name in self._memory_storage["users"][user_id]:
+                    events = self._memory_storage["users"][user_id][collection_name]
+                    self._memory_storage["users"][user_id][collection_name] = [
+                        e for e in events if e.get("id") != event_id
+                    ]
             
             # Dosyaya kaydet
             self._save_local_data()
-            logging.info(f"Düşme olayı yerel depodan silindi: {event_id} - Kullanıcı: {user_id}")
+            logging.info(f"Düşme olayı yerel depodan silindi: {event_id}")
             return True
             
         try:
-            event_ref = self.db.collection("users").document(user_id).collection("fall_events").document(event_id)
-            event_ref.delete()
-            logging.info(f"Düşme olayı silindi: {event_id} - Kullanıcı: {user_id}")
+            # Her iki koleksiyondan da sil
+            events_ref = self.db.collection("users").document(user_id).collection("events").document(event_id)
+            events_ref.delete()
+            
+            fall_events_ref = self.db.collection("users").document(user_id).collection("fall_events").document(event_id)
+            fall_events_ref.delete()
+            
+            logging.info(f"Düşme olayı veritabanından silindi: {event_id}")
             return True
             
         except Exception as e:

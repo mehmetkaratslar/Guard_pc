@@ -366,8 +366,10 @@ class GuardApp:
 
 
 
+
+    # Bu fonksiyon düşme algılandığında çağrılır ve olayı kaydetmeli ve bildirimleri göndermelidir
     def _handle_fall_detection(self, screenshot, confidence):
-        """Düşme algılandığında çağrılır ve tüm bildirim ve kayıt işlemlerini gerçekleştirir."""
+        """Düşme algılandığında çağrılır."""
         try:
             import uuid
             logging.info(f"Düşme algılandı! Olasılık: {confidence:.2f}")
@@ -375,39 +377,64 @@ class GuardApp:
             # Benzersiz olay ID'si oluştur
             event_id = str(uuid.uuid4())
             
-            # Ekran görüntüsünü kaydet ve URL'ini al
+            # Ekran görüntüsünü yükle ve URL'sini al
             image_url = self.storage_manager.upload_screenshot(
                 self.current_user["localId"],
                 screenshot,
                 event_id
             )
-
+            
             # Olay verilerini oluştur
             event_data = {
-                "id": event_id,
+                "id": event_id,  # Bu önemli! ID'yi açıkça belirtiyoruz
+                "user_id": self.current_user["localId"],
                 "timestamp": time.time(),
                 "confidence": confidence,
-                "image_url": image_url,
-                "reviewed": False,
-                "notes": ""
+                "image_url": image_url
             }
+            
+            # Olay verilerini Firestore'a kaydet - başarıyı kontrol et
+            save_result = self.db_manager.save_fall_event(self.current_user["localId"], event_data)
+            if not save_result:
+                logging.error("Düşme olayı veritabanına kaydedilemedi!")
+            else:
+                logging.info(f"Düşme olayı veritabanına kaydedildi: {event_id}")
 
-            # Olayı veritabanına kaydet
-            self.db_manager.save_fall_event(self.current_user["localId"], event_data)
-            logging.info(f"Düşme olayı kaydedildi: {event_id}")
-
-            # Bildirimleri gönder
+            # Bildirim gönder
             if self.notification_manager:
+                # NotificationManager'ı güncel kullanıcı verileriyle güncelle
+                user_data = self.db_manager.get_user_data(self.current_user["localId"])
+                if user_data:
+                    # Mevcut notification_manager'ı güncelle
+                    self.notification_manager.update_user_data(user_data)
+                
+                # Bildirimleri gönder
+                notification_result = self.notification_manager.send_notifications(event_data, screenshot)
+                if not notification_result:
+                    logging.error("Bildirimler gönderilemedi!")
+                else:
+                    logging.info("Bildirimler başarıyla gönderildi")
+            else:
+                logging.error("Bildirim yöneticisi bulunamadı! NotificationManager oluşturuluyor...")
+                # NotificationManager'ı oluştur
+                from core.notification import NotificationManager
+                user_data = self.db_manager.get_user_data(self.current_user["localId"])
+                self.notification_manager = NotificationManager(user_data)
                 self.notification_manager.send_notifications(event_data, screenshot)
-                logging.info("Bildirimler gönderildi")
 
-            # Ekranda düşme algılama uyarısı göster
-            if hasattr(self, "dashboard_frame"):
-                self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
-                logging.info("Ekranda düşme uyarısı gösterildi")
+            # Dashboard'ı güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                try:
+                    # Açıkça UI güncellemesini çağır
+                    self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
+                    logging.info("Dashboard başarıyla güncellendi, düşme uyarısı gösteriliyor")
+                except Exception as e:
+                    logging.error(f"Dashboard güncellenirken hata: {str(e)}")
+            else:
+                logging.error("Dashboard bulunamadı!")
 
         except Exception as e:
-            logging.error(f"Düşme olayı işlenirken hata oluştu: {str(e)}")
+            logging.error(f"Düşme olayı işlenirken hata oluştu: {str(e)}", exc_info=True)
 
 
 
