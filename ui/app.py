@@ -25,6 +25,8 @@ from core.camera import Camera
 from core.fall_detection import FallDetector
 from core.notification import NotificationManager
 from api.server import run_api_server_in_thread
+import data.database
+FirestoreManager = data.database.FirestoreManager
 
 class GuardApp:
     """Ana uygulama sınıfı."""
@@ -293,66 +295,125 @@ class GuardApp:
         logging.info("Düşme algılama sistemi durduruldu.")
 
     def _detection_loop(self):
-        """Düşme algılama döngüsü. Ayrı bir thread'de çalışır."""
-        last_detection_time = 0
-        min_detection_interval = 5
-        target_fps = 30  # Hedef FPS (saniyede 30 kare)
-        frame_duration = 1.0 / target_fps  # Her kare için süre (saniye)
+        """Geliştirilmiş düşme algılama döngüsü."""
+        try:
+            # Hata sayacı
+            error_count = 0
+            max_errors = 10
+            
+            # Performans ölçekleri
+            last_detection_time = 0
+            min_detection_interval = 10  # Değiştirildi: 5'ten 10'a çok sık bildirim gönderimini önlemek için
+            target_fps = 30
+            frame_duration = 1.0 / target_fps
+            
+            while self.system_running:
+                start_time = time.time()
+                try:
+                    # Kameranın durumunu kontrol et
+                    if not self.camera or not self.camera.is_running:
+                        time.sleep(0.5)
+                        continue
+                    
+                    # Kareyi al
+                    frame = self.camera.get_frame()
+                    
+                    # Kare geçersizse atla
+                    if frame is None or frame.size == 0:
+                        time.sleep(0.1)
+                        continue
+                    
+                    # Düşme algılama modelinin durumunu kontrol et
+                    if not self.fall_detector or not self.fall_detector.is_model_loaded:
+                        logging.warning("Düşme algılama modeli yüklü değil, durduruldu.")
+                        self.stop_detection()
+                        break
+                    
+                    # Düşme algıla - model içinde zaten 5 saniyelik kontrol var
+                    is_fall, confidence = self.fall_detector.detect_fall(frame)
+                    
+                    # Düşme algılandıysa ve yeterli süre geçtiyse bildirim gönder
+                    if is_fall and (time.time() - last_detection_time) > min_detection_interval:
+                        last_detection_time = time.time()
+                        screenshot = self.camera.capture_screenshot()
+                        self.root.after(0, self._handle_fall_detection, screenshot, confidence)
+                    
+                    # FPS kontrolü için uyku süresi
+                    elapsed_time = time.time() - start_time
+                    sleep_time = max(0, frame_duration - elapsed_time)
+                    time.sleep(sleep_time)
+                    
+                    # Hata sayacını sıfırla
+                    error_count = 0
+                    
+                except Exception as e:
+                    error_count += 1
+                    logging.error(f"Düşme algılama döngüsünde hata ({error_count}/{max_errors}): {str(e)}")
+                    
+                    # Çok fazla hata varsa döngüyü sonlandır
+                    if error_count >= max_errors:
+                        logging.error(f"Maksimum hata sayısına ulaşıldı. Düşme algılama durduruluyor.")
+                        self.root.after(0, self.stop_detection)
+                        break
+                    
+                    time.sleep(1.0)  # Hata durumunda biraz bekle
+            
+        except Exception as e:
+            logging.error(f"Algılama döngüsü tamamen başarısız: {str(e)}")
+            self.root.after(0, self.stop_detection)
 
-        while self.system_running:
-            start_time = time.time()
-            try:
-                frame = self.camera.get_frame()
 
-                if frame is None or frame.size == 0:
-                    time.sleep(0.1)
-                    continue
 
-                is_fall, confidence = self.fall_detector.detect_fall(frame)
 
-                if is_fall and (time.time() - last_detection_time) > min_detection_interval:
-                    last_detection_time = time.time()
-                    screenshot = frame.copy()
-                    self.root.after(0, self._handle_fall_detection, screenshot, confidence)
-
-                # FPS kontrolü için uyku süresi
-                elapsed_time = time.time() - start_time
-                sleep_time = max(0, frame_duration - elapsed_time)
-                time.sleep(sleep_time)
-
-            except Exception as e:
-                logging.error(f"Düşme algılama sırasında hata: {str(e)}")
-                time.sleep(0.1)
 
     def _handle_fall_detection(self, screenshot, confidence):
-        """Düşme algılandığında çağrılır."""
+        """Düşme algılandığında çağrılır ve tüm bildirim ve kayıt işlemlerini gerçekleştirir."""
         try:
             import uuid
             logging.info(f"Düşme algılandı! Olasılık: {confidence:.2f}")
 
+            # Benzersiz olay ID'si oluştur
             event_id = str(uuid.uuid4())
+            
+            # Ekran görüntüsünü kaydet ve URL'ini al
             image_url = self.storage_manager.upload_screenshot(
                 self.current_user["localId"],
                 screenshot,
                 event_id
             )
 
+            # Olay verilerini oluştur
             event_data = {
+                "id": event_id,
                 "timestamp": time.time(),
                 "confidence": confidence,
-                "image_url": image_url
+                "image_url": image_url,
+                "reviewed": False,
+                "notes": ""
             }
 
+            # Olayı veritabanına kaydet
             self.db_manager.save_fall_event(self.current_user["localId"], event_data)
+            logging.info(f"Düşme olayı kaydedildi: {event_id}")
 
+            # Bildirimleri gönder
             if self.notification_manager:
                 self.notification_manager.send_notifications(event_data, screenshot)
+                logging.info("Bildirimler gönderildi")
 
+            # Ekranda düşme algılama uyarısı göster
             if hasattr(self, "dashboard_frame"):
                 self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
+                logging.info("Ekranda düşme uyarısı gösterildi")
 
         except Exception as e:
             logging.error(f"Düşme olayı işlenirken hata oluştu: {str(e)}")
+
+
+
+
+
+
 
     def logout(self):
         """Kullanıcı çıkışı yapar."""

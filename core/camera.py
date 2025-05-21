@@ -162,7 +162,7 @@ class Camera:
             logging.info("Kamera durduruldu.")
     
     def get_frame(self):
-        """En son yakalanan kareyi döndürür."""
+        """En son yakalanan kareyi döndürür ve 640x640 boyutuna ayarlar."""
         with self.frame_lock:
             if self.frame is None:
                 # Görüntü yoksa boş siyah ekran
@@ -172,17 +172,20 @@ class Camera:
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 if not self.is_running:
                     cv2.putText(black_frame, "Kamera Kapalı", (50, FRAME_HEIGHT//2), 
-                               font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            font, 1, (255, 255, 255), 2, cv2.LINE_AA)
                 else:
                     cv2.putText(black_frame, "Kamera Bağlanıyor...", (50, FRAME_HEIGHT//2), 
-                               font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            font, 1, (255, 255, 255), 2, cv2.LINE_AA)
                 
                 return black_frame
-            return self.frame.copy()
+            
+            # Son kareyi al ve 640x640 boyutuna yeniden boyutlandır
+            frame_copy = self.frame.copy()
+            return cv2.resize(frame_copy, (FRAME_WIDTH, FRAME_HEIGHT))
     
     def capture_screenshot(self):
-        """Anlık ekran görüntüsü alır."""
-        frame = self.get_frame()
+        """Anlık ekran görüntüsü alır ve doğru boyuta ayarlar."""
+        frame = self.get_frame()  # Bu metot zaten 640x640 boyutunda döndürür
         
         # Ekran görüntüsüne zaman damgası ekle
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")

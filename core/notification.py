@@ -175,6 +175,8 @@ class NotificationManager:
                 logging.error(f"Bildirim kuyruğu işlenirken hata: {str(e)}")
                 time.sleep(1.0)  # Hata durumunda kısa bir bekleyiş
     
+
+    
     def send_notifications(self, event_data, screenshot=None):
         """Kullanıcı tercihlerine göre bildirimleri gönderir.
         
@@ -182,38 +184,47 @@ class NotificationManager:
             event_data (dict): Olay bilgileri
             screenshot (numpy.ndarray, optional): Olay anındaki ekran görüntüsü
         """
-        # Etkin bildirim kanallarını belirle
-        active_channels = []
+        try:
+            # Bildirim gönderimi için log ekle
+            logging.info(f"Düşme olayı için bildirimler gönderiliyor: {event_data.get('id', '')}")
+            
+            # Etkin bildirim kanallarını belirle
+            active_channels = []
+            
+            if self.user_data.get("email_notification", True) and (self.user_data.get("email") or os.getenv("SMTP_USER")):
+                active_channels.append("email")
+            
+            if self.user_data.get("sms_notification", False) and self.user_data.get("phone_number"):
+                active_channels.append("sms")
+            
+            if self.user_data.get("telegram_notification", False) and self.user_data.get("telegram_chat_id"):
+                active_channels.append("telegram")
+            
+            # Hiç aktif kanal yoksa varsayılan olarak e-posta gönder
+            if not active_channels and os.getenv("SMTP_USER"):
+                active_channels.append("email")
+                logging.info("Aktif bildirim kanalı yok. Varsayılan olarak e-posta kullanılıyor.")
+            
+            # Her aktif kanal için bildirim kuyruğuna ekle
+            for channel in active_channels:
+                notification = {
+                    "type": channel,
+                    "event_data": event_data,
+                    "screenshot": screenshot,
+                    "timestamp": time.time()
+                }
+                self.notification_queue.put(notification)
+                logging.info(f"{channel.capitalize()} bildirimi kuyruğa eklendi.")
+            
+            # Bildirimlerin durumunu kaydet (istatistik için)
+            self._record_notification_status(event_data.get('id', ''), active_channels)
+            
+            return len(active_channels) > 0
         
-        if self.user_data.get("email_notification", True) and (self.user_data.get("email") or os.getenv("SMTP_USER")):
-            active_channels.append("email")
-        
-        if self.user_data.get("sms_notification", False) and self.user_data.get("phone_number"):
-            active_channels.append("sms")
-        
-        if self.user_data.get("telegram_notification", False) and self.user_data.get("telegram_chat_id"):
-            active_channels.append("telegram")
-        
-        # Hiç aktif kanal yoksa varsayılan olarak e-posta gönder
-        if not active_channels and os.getenv("SMTP_USER"):
-            active_channels.append("email")
-            logging.info("Aktif bildirim kanalı yok. Varsayılan olarak e-posta kullanılıyor.")
-        
-        # Her aktif kanal için bildirim kuyruğuna ekle
-        for channel in active_channels:
-            notification = {
-                "type": channel,
-                "event_data": event_data,
-                "screenshot": screenshot,
-                "timestamp": time.time()
-            }
-            self.notification_queue.put(notification)
-            logging.info(f"{channel.capitalize()} bildirimi kuyruğa eklendi.")
-        
-        # Test amaçlı: Başka bir tercih aktif değilse ve bir test ise doğrudan Telegram'a gönder
-        is_test = event_data.get("test", False)
-        if not active_channels and is_test and self.channel_status["telegram"]["available"]:
-            self._send_telegram_direct(event_data, screenshot)
+        except Exception as e:
+            logging.error(f"Bildirim gönderilirken hata: {str(e)}")
+            return False
+
     
     def _send_email_notification(self, notification):
         """E-posta bildirimi kuyruğunu işler.
@@ -648,3 +659,65 @@ class NotificationManager:
                 "telegram": self.user_data.get("telegram_notification", False)
             }
         }
+    
+    def _record_notification_status(self, event_id, channels):
+        """Bildirim durumunu veritabanına kaydeder (istatistik için).
+        
+        Args:
+            event_id (str): Olay ID'si
+            channels (list): Kullanılan bildirim kanalları
+        """
+        try:
+            if not event_id:
+                return
+            
+            # Bildirim kanallarını dizge olarak birleştir
+            channels_str = ", ".join(channels)
+            
+            # Bildirimin gönderildiği zamanı al
+            timestamp = time.time()
+            
+            # Bildirim verilerini oluştur
+            notification_data = {
+                "event_id": event_id,
+                "channels": channels,
+                "channels_str": channels_str,  # Firestore sorgularında kolaylık için
+                "timestamp": timestamp,
+                "status": "sent"  # Durumu 'sent' olarak işaretliyoruz
+            }
+            
+            # Kullanıcı verilerine erişmek için
+            user_id = None
+            if self.user_data and "localId" in self.user_data:
+                user_id = self.user_data["localId"]
+            elif self.user_data and "user_id" in self.user_data:
+                user_id = self.user_data["user_id"]
+            
+            # Kullanıcı ID'si yoksa kayıt yapma
+            if not user_id:
+                return
+            
+            # Veritabanı referansı
+            from firebase_admin import firestore
+            db = firestore.client()
+            
+            # Bildirim kaydını ekle
+            notification_ref = db.collection(f"users/{user_id}/notifications").document()
+            notification_ref.set(notification_data)
+            
+            # Ayrıca olay kaydına da bildirim bilgisini ekle
+            import datetime
+            date_string = datetime.datetime.fromtimestamp(timestamp).strftime("%Y%m")
+            event_ref = db.collection(f"users/{user_id}/events/{date_string}/falls").document(event_id)
+            
+            # Notification_sent alanını güncelle
+            event_ref.update({
+                "notification_sent": True,
+                "notification_channels": channels,
+                "notification_time": timestamp
+            })
+            
+            logging.info(f"Bildirim durumu kaydedildi: {event_id}, kanallar: {channels_str}")
+            
+        except Exception as e:
+            logging.error(f"Bildirim durumu kaydedilirken hata: {str(e)}")

@@ -316,7 +316,7 @@ class GuardApplicationIntegrator:
                     
                     # Performans ölçekleri
                     last_detection_time = 0
-                    min_detection_interval = 5
+                    min_detection_interval = 10  # Değiştirildi: 5'ten 10'a
                     target_fps = 30
                     frame_duration = 1.0 / target_fps
                     

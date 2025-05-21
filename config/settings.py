@@ -7,8 +7,8 @@ APP_VERSION = "1.0.0"
 
 # Kamera ayarları
 CAMERA_INDEX = 0  # Varsayılan kamera indeksi
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
+FRAME_WIDTH = 640  # değiştirildi: 640x640 frame boyutu
+FRAME_HEIGHT = 640  # değiştirildi: 640x640 frame boyutu
 FRAME_RATE = 30
 
 # YOLOv11 Ayarları
@@ -19,8 +19,6 @@ MODEL_PATH = os.path.join(
     "fall_model.pt"  # YOLOv11 model dosyası
 )
 CONFIDENCE_THRESHOLD = 0.6  # YOLOv11 için güven eşiği
-FRAME_WIDTH = 640  # YOLOv11 için ideal giriş genişliği
-FRAME_HEIGHT = 640  # YOLOv11 için ideal giriş yüksekliği
 
 # API sunucusu ayarları
 API_HOST = "127.0.0.1"

@@ -491,6 +491,14 @@ class DashboardFrame(tk.Frame):
             image=self.icons["stop" if running else "start"] if "stop" in self.icons else None
         )
 
+
+
+
+
+
+
+
+
     def update_fall_detection(self, screenshot, confidence, event_data):
         """
         Düşme olayını şık bir şekilde günceller ve kullanıcıyı bilgilendirir.
@@ -505,6 +513,7 @@ class DashboardFrame(tk.Frame):
                 self.last_detection = screenshot.copy()
                 self.last_detection_time = event_data.get("timestamp", time.time())
                 self.last_detection_confidence = confidence
+                self.last_event_id = event_data.get("id", "")
             
             # Zaman güncelle
             dt = datetime.datetime.fromtimestamp(self.last_detection_time)
@@ -523,21 +532,32 @@ class DashboardFrame(tk.Frame):
             self.event_image_label.pack(fill=tk.BOTH, expand=True)
             
             # Düşme uyarısı göster
-            self._show_fall_alert(confidence)
-        
+            self._show_fall_alert(confidence, event_data)
+            
         except Exception as e:
             logging.error(f"Düşme olayı güncellenirken hata: {str(e)}")
 
-    def _show_fall_alert(self, confidence):
+
+
+
+
+
+
+
+
+
+    def _show_fall_alert(self, confidence, event_data=None):
         """
         Şık ve modern bir düşme uyarısı pop-up penceresi gösterir.
 
         Args:
             confidence (float): Düşme olasılığı (0-1 arası)
+            event_data (dict, optional): Olay verileri
         """
+        # Düşme bildirimi penceresi
         alert = tk.Toplevel(self)
         alert.title("Düşme Algılandı!")
-        alert.geometry("450x360+500+200")
+        alert.geometry("450x400+500+200")
         alert.configure(bg="#ffffff")
         alert.transient(self)
         alert.grab_set()
@@ -569,6 +589,20 @@ class DashboardFrame(tk.Frame):
             bg="#ffffff"
         ).pack(pady=12)
         
+        # Tarih bilgisi ekle
+        if event_data and "timestamp" in event_data:
+            dt = datetime.datetime.fromtimestamp(event_data.get("timestamp"))
+            date_str = dt.strftime("%d.%m.%Y %H:%M:%S")
+            
+            tk.Label(
+                content,
+                text=f"Tarih/Saat: {date_str}",
+                font=("Segoe UI", 12),
+                fg="#555555",
+                bg="#ffffff"
+            ).pack(pady=(0, 8))
+        
+        # Olasılık bilgisi
         tk.Label(
             content,
             text=f"Düşme Olasılığı: %{confidence * 100:.2f}",
@@ -577,6 +611,7 @@ class DashboardFrame(tk.Frame):
             bg="#ffffff"
         ).pack()
         
+        # Risk seviyesi
         risk = "Yüksek" if confidence > 0.8 else "Orta" if confidence > 0.6 else "Düşük"
         risk_color = "#ff5252" if confidence > 0.8 else "#ffab40" if confidence > 0.6 else "#00c853"
         tk.Label(
@@ -587,14 +622,40 @@ class DashboardFrame(tk.Frame):
             bg="#ffffff"
         ).pack(pady=8)
         
+        # Bildirim bilgisi
         tk.Label(
             content,
-            text="Bildirimler ilgili kişilere gönderildi.",
+            text="Bildirimler gönderiliyor...",
             font=("Segoe UI", 11),
             fg="#555555",
             bg="#ffffff"
-        ).pack(pady=12)
+        ).pack(pady=(12, 0))
         
+        # İlerleme çubuğu
+        style = ttk.Style()
+        style.configure("Alert.Horizontal.TProgressbar", 
+                    thickness=6,
+                    troughcolor="#eeeeee",
+                    background="#4CAF50")
+        
+        progress = ttk.Progressbar(content, 
+                                style="Alert.Horizontal.TProgressbar", 
+                                mode="indeterminate", 
+                                length=300)
+        progress.pack(pady=(5, 12))
+        progress.start(10)
+        
+        # Olay ID
+        if event_data and "id" in event_data:
+            tk.Label(
+                content,
+                text=f"Olay ID: {event_data['id'][:8]}...",
+                font=("Segoe UI", 10),
+                fg="#999999",
+                bg="#ffffff"
+            ).pack(pady=(0, 15))
+        
+        # Tamam butonu
         tk.Button(
             content,
             text="Tamam",
@@ -610,12 +671,30 @@ class DashboardFrame(tk.Frame):
             cursor="hand2"
         ).pack(pady=12)
         
+        # 5 saniye sonra ilerleme çubuğunu durdur ve yazıyı güncelle
+        def update_progress():
+            progress.stop()
+            # Bildirimlerin gönderildiğini bildir
+            for widget in content.winfo_children():
+                if isinstance(widget, tk.Label) and widget.cget("text") == "Bildirimler gönderiliyor...":
+                    widget.config(text="Bildirimler ilgili kişilere gönderildi.")
+                    widget.config(fg="#4CAF50")
+                    break
+        
+        # 5 saniye sonra güncelleme
+        alert.after(5000, update_progress)
+        
         # Sesli uyarı (Windows için)
         try:
             import winsound
             winsound.PlaySound("SystemExclamation", winsound.SND_ASYNC)
         except:
             logging.warning("Sesli uyarı çalınamadı.")
+
+
+
+
+
 
     def on_destroy(self):
         """

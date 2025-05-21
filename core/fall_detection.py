@@ -1,4 +1,4 @@
-# File: guard_pc_app/core/fall_detection.py
+# File: pc/core/fall_detection.py
 # Açıklama: YOLOv11 tabanlı düşme algılama için modül
 
 import torch
@@ -7,7 +7,7 @@ import cv2
 import logging
 import os
 import time
-from config.settings import MODEL_PATH, CONFIDENCE_THRESHOLD
+from config.settings import MODEL_PATH, CONFIDENCE_THRESHOLD, FRAME_WIDTH, FRAME_HEIGHT
 
 class FallDetector:
     """YOLOv11 tabanlı düşme algılama sınıfı."""
@@ -48,6 +48,8 @@ class FallDetector:
         self.max_inference_time = 0
         self.min_inference_time = float('inf')
         self.last_log_time = time.time()
+        self.last_process_time = 0
+        self.process_interval = 5.0  # Her 5 saniyede bir işleme (değiştirildi)
         
         # FallDetector sınıfı singleton
         FallDetector._instance = self
@@ -124,6 +126,14 @@ class FallDetector:
             logging.warning("YOLOv11 modeli yüklü değil, düşme algılama devre dışı.")
             return False, 0.0
         
+        # 5 saniyelik kontrol - işleme zamanı gelmemişse önceki sonucu döndür
+        current_time = time.time()
+        if current_time - self.last_process_time < self.process_interval:
+            return False, 0.0  # İşleme zamanı gelmedi, düşme yok olarak döndür
+            
+        # İşleme zamanını güncelle
+        self.last_process_time = current_time
+        
         # İstatistikler için düzenli loglama
         now = time.time()
         if now - self.last_log_time > 3600:  # Saatte bir loglama
@@ -140,11 +150,14 @@ class FallDetector:
             self.last_log_time = now
         
         try:
+            # Frame boyutunu modelin beklediği boyuta yeniden boyutlandır (640x640)
+            resized_frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+            
             # Başlangıç zamanı
             start_time = time.time()
             
             # YOLOv11 için kareyi işle
-            results = self.model.predict(frame, conf=CONFIDENCE_THRESHOLD)
+            results = self.model.predict(resized_frame, conf=CONFIDENCE_THRESHOLD)
             
             # YOLOv11 düşme algılama sonuçlarını çözümle
             fall_detected = False
@@ -201,11 +214,14 @@ class FallDetector:
             return None
             
         try:
+            # Frame'i modele uygun boyuta getir
+            resized_frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+            
             # YOLOv11 tespitlerini al
-            results = self.model.predict(frame, conf=0.3)  # Düşük güven eşiği ile göster
+            results = self.model.predict(resized_frame, conf=0.3)  # Düşük güven eşiği ile göster
             
             # Kare kopyasını oluştur
-            heatmap = frame.copy()
+            heatmap = resized_frame.copy()
             
             # Tespitleri çiz
             if results and len(results) > 0:
@@ -232,6 +248,10 @@ class FallDetector:
                     label = f"{class_name}: {conf:.2f}"
                     cv2.putText(heatmap, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
+            # Orijinal frame boyutuna geri getir
+            if frame.shape[:2] != (FRAME_HEIGHT, FRAME_WIDTH):
+                heatmap = cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+                
             return heatmap
             
         except Exception as e:
