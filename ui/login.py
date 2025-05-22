@@ -28,6 +28,9 @@ class LoginFrame(tk.Frame):
         self.anim_ids = []
         self.bubble_particles = []
         
+        # Google giriş durumu takibi
+        self.google_login_in_progress = False
+        
         # Renk paleti - sıcak ve güven veren renkler
         self.colors = {
             'primary': "#4285F4",      # Google mavi
@@ -109,8 +112,6 @@ class LoginFrame(tk.Frame):
                             wraplength=400)
         sub_slogan.pack(anchor=tk.W, pady=(15, 0))
         
-
-        
         # Canvas üzerinde brand_frame için pencere oluştur
         self.brand_window = self.bubble_canvas.create_window(50, 50, 
                                                            anchor=tk.NW, 
@@ -168,8 +169,6 @@ class LoginFrame(tk.Frame):
                                fg=self.colors['primary'],
                                bg=self.colors['light_bg'])
             logo_name.pack(side=tk.LEFT, padx=(15, 0))
-    
-
     
     def _create_login_form(self):
         """Giriş formunu oluşturur"""
@@ -326,6 +325,7 @@ class LoginFrame(tk.Frame):
                              bg=self.colors['card_bg'],
                              cursor="hand2")
         forgot_link.pack(side=tk.RIGHT)
+        forgot_link.bind("<Button-1>", self._forgot_password_click)
         
         # Giriş butonları
         buttons_frame = tk.Frame(form_frame, bg=self.colors['card_bg'])
@@ -457,6 +457,39 @@ class LoginFrame(tk.Frame):
             frame.config(highlightbackground=self.colors['primary'])
         else:
             frame.config(highlightbackground=self.colors['border'])
+    
+    def _forgot_password_click(self, event=None):
+        """Şifremi unuttum bağlantısına tıklandığında"""
+        email = self.email_var.get().strip()
+        if not email:
+            self._show_status("Şifre sıfırlama için önce e-posta adresinizi girin", "warning")
+            self.email_entry.focus()
+            return
+            
+        if not self._validate_email(email):
+            self._show_status("Geçerli bir e-posta adresi girin", "error")
+            self.email_entry.focus()
+            return
+        
+        # Şifre sıfırlama işlemini başlat
+        result = messagebox.askyesno(
+            "Şifre Sıfırlama", 
+            f"Şifre sıfırlama bağlantısı {email} adresine gönderilsin mi?"
+        )
+        
+        if result:
+            self._show_progress(True, "Şifre sıfırlama bağlantısı gönderiliyor...")
+            threading.Thread(target=self._send_password_reset, args=(email,), daemon=True).start()
+    
+    def _send_password_reset(self, email):
+        """Şifre sıfırlama e-postası gönderir"""
+        try:
+            self.auth.send_password_reset_email(email)
+            self.after(0, lambda: self._show_status("Şifre sıfırlama bağlantısı e-posta adresinize gönderildi", "success"))
+            self.after(0, lambda: self._show_progress(False))
+        except Exception as e:
+            self.after(0, lambda: self._show_status(f"Şifre sıfırlama e-postası gönderilemedi: {str(e)}", "error"))
+            self.after(0, lambda: self._show_progress(False))
     
     def _create_floating_bubbles(self):
         """Kayan baloncukları oluşturur"""
@@ -646,43 +679,62 @@ class LoginFrame(tk.Frame):
     
     def _google_login(self):
         """Google ile giriş"""
+        if self.google_login_in_progress:
+            self._show_status("Google giriş işlemi zaten devam ediyor", "info")
+            return
+            
+        self.google_login_in_progress = True
         self._show_progress(True, "Google ile bağlanılıyor...")
         
-        threading.Thread(target=self._google_login_process, 
-                         daemon=True).start()
+        # Google butonu devre dışı bırak
+        self.google_button.config(state="disabled")
+        
+        threading.Thread(target=self._google_login_process, daemon=True).start()
     
     def _google_login_process(self):
         """Google giriş işlemini gerçekleştirir"""
         try:
-            # Google ile giriş
+            # Google OAuth sürecini başlat
+            logging.info("Google OAuth süreci başlatılıyor...")
             auth_url, auth_code = self.auth.sign_in_with_google()
             
-            # Kullanıcı yanıtını bekle
-            self.after(0, lambda: self._await_google_auth(auth_code))
+            if not auth_code:
+                raise Exception("Yetkilendirme kodu alınamadı")
+                
+            logging.info("Yetkilendirme kodu alındı, Firebase'e giriş yapılıyor...")
             
-        except Exception as e:
-            error_msg = f"Google bağlantısı kurulamadı: {str(e)}"
-            self.after(0, lambda: self._show_status(error_msg, "error"))
-            self.after(0, lambda: self._show_progress(False))
-    
-    def _await_google_auth(self, auth_code):
-        """Google kimlik doğrulama yanıtını bekler"""
-        if not auth_code:
-            self._show_status("Google giriş işlemi iptal edildi", "info")
-            self._show_progress(False)
-            return
-        
-        try:
-            # Google kimlik doğrulama tamamla
+            # Firebase'e Google ile giriş yap
             user = self.auth.complete_google_sign_in(None, auth_code)
             
-            # Başarılı giriş
-            self._handle_login_success(user)
+            # Giriş başarılı
+            self.after(0, lambda: self._handle_login_success(user))
             
         except Exception as e:
-            error_msg = f"Google kimlik doğrulama tamamlanamadı: {str(e)}"
-            self._show_status(error_msg, "error")
-            self._show_progress(False)
+            error_msg = str(e)
+            logging.error(f"Google giriş hatası: {error_msg}")
+            
+            # Kullanıcı dostu hata mesajları
+            if "iptal edildi" in error_msg.lower() or "cancel" in error_msg.lower():
+                error_msg = "Google giriş işlemi iptal edildi"
+            elif "zaman aşımı" in error_msg.lower() or "timeout" in error_msg.lower():
+                error_msg = "Google giriş zaman aşımına uğradı"
+            elif "bağlantı" in error_msg.lower():
+                error_msg = "İnternet bağlantısı hatası"
+            else:
+                error_msg = f"Google giriş hatası: {error_msg}"
+            
+            self.after(0, lambda: self._show_status(error_msg, "error"))
+            self.after(0, lambda: self._show_progress(False))
+            self.after(0, self._enable_google_button)
+        finally:
+            self.google_login_in_progress = False
+    
+    def _enable_google_button(self):
+        """Google butonunu tekrar etkinleştir"""
+        try:
+            self.google_button.config(state="normal")
+        except:
+            pass
     
     def _handle_login_success(self, user):
         """Giriş başarılı olduğunda"""
@@ -693,6 +745,9 @@ class LoginFrame(tk.Frame):
         
         # Başarı animasyonu
         self._show_success_animation()
+        
+        # Google butonunu tekrar etkinleştir
+        self._enable_google_button()
         
         # Callback çağır
         if self.on_login_success:
