@@ -1,4 +1,4 @@
-# guard_pc_app/data/storage.py (Güncellenmiş)
+# guard_pc_app/data/storage.py (Güncellenmiş ve Düzeltilmiş)
 import logging
 import firebase_admin
 from firebase_admin import storage
@@ -8,6 +8,7 @@ import os
 import uuid
 import tempfile
 import time
+import io
 
 class StorageManager:
     """Firebase Storage işlemlerini yöneten sınıf."""
@@ -45,44 +46,108 @@ class StorageManager:
             if event_id is None:
                 event_id = str(uuid.uuid4())
                 
-            # Görüntüyü geçici dosyaya kaydet
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                temp_path = temp_file.name
-                cv2.imwrite(temp_path, image)
+            logging.info(f"Ekran görüntüsü yükleniyor - User: {user_id}, Event: {event_id}")
             
             if not self.is_available:
                 # Yerel depolamaya kaydet
-                user_dir = os.path.join(self.local_storage_dir, user_id)
-                os.makedirs(user_dir, exist_ok=True)
+                return self._upload_local(user_id, image, event_id)
+            
+            # Firebase Storage'a yükle
+            return self._upload_firebase(user_id, image, event_id)
                 
-                local_path = os.path.join(user_dir, f"{event_id}.jpg")
-                os.replace(temp_path, local_path)
-                
+        except Exception as e:
+            logging.error(f"Ekran görüntüsü yüklenirken hata oluştu: {str(e)}", exc_info=True)
+            return None
+    
+    def _upload_local(self, user_id, image, event_id):
+        """Yerel depolamaya kaydet."""
+        try:
+            user_dir = os.path.join(self.local_storage_dir, user_id)
+            os.makedirs(user_dir, exist_ok=True)
+            
+            local_path = os.path.join(user_dir, f"{event_id}.jpg")
+            
+            # OpenCV görüntüsünü JPEG olarak kaydet
+            success = cv2.imwrite(local_path, image, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            
+            if success:
                 logging.info(f"Ekran görüntüsü yerel depolamaya kaydedildi: {local_path}")
                 return f"file://{os.path.abspath(local_path)}"
+            else:
+                logging.error("Görüntü yerel depolamaya kaydedilemedi")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Yerel depolama hatası: {str(e)}")
+            return None
+    
+    def _upload_firebase(self, user_id, image, event_id):
+        """Firebase Storage'a yükle."""
+        try:
+            # Görüntüyü JPEG formatında byte dizisine dönüştür
+            encode_param = [cv2.IMWRITE_JPEG_QUALITY, 90]
+            success, img_encoded = cv2.imencode('.jpg', image, encode_param)
             
-            # Görüntüyü Storage'a yükle
+            if not success:
+                logging.error("Görüntü encode edilemedi")
+                return None
+            
+            img_bytes = img_encoded.tobytes()
+            
+            # Firebase Storage yolu
             destination_path = f"fall_events/{user_id}/{event_id}.jpg"
             blob = self.bucket.blob(destination_path)
             
-            blob.upload_from_filename(temp_path)
+            # Metadata ekle
+            blob.metadata = {
+                'user_id': user_id,
+                'event_id': event_id,
+                'upload_time': str(int(time.time())),
+                'content_type': 'image/jpeg'
+            }
             
-            # Geçici dosyayı sil
-            os.unlink(temp_path)
-            
-            # Dosya URL'sini oluştur
-            # Dosya 1 gün boyunca geçerli olacak şekilde URL oluştur
-            url = blob.generate_signed_url(
-                version="v4",
-                expiration=60 * 60 * 24,  # 1 gün
-                method="GET"
+            # Byte dizisinden yükle
+            blob.upload_from_string(
+                img_bytes,
+                content_type='image/jpeg'
             )
             
-            logging.info(f"Ekran görüntüsü yüklendi: {destination_path}")
-            return url
+            # Access token oluştur (görüntünün tarayıcıda görüntülenebilmesi için)
+            try:
+                import uuid as uuid_lib
+                access_token = str(uuid_lib.uuid4())
+                blob.metadata = blob.metadata or {}
+                blob.metadata['firebaseStorageDownloadTokens'] = access_token
+                blob.patch()
+                
+                # Public URL oluştur
+                project_id = firebase_admin._apps['[DEFAULT]']._project_id
+                bucket_name = self.bucket.name
+                public_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{destination_path.replace('/', '%2F')}?alt=media&token={access_token}"
+                
+                logging.info(f"Ekran görüntüsü Firebase Storage'a yüklendi: {destination_path}")
+                return public_url
+                
+            except Exception as token_error:
+                logging.warning(f"Access token oluşturulamadı: {str(token_error)}")
+                
+                # Fallback: signed URL oluştur
+                try:
+                    from datetime import timedelta
+                    url = blob.generate_signed_url(
+                        version="v4",
+                        expiration=timedelta(days=365),  # 1 yıl geçerli
+                        method="GET"
+                    )
+                    logging.info(f"Signed URL oluşturuldu: {destination_path}")
+                    return url
+                except Exception as signed_error:
+                    logging.error(f"Signed URL oluşturulamadı: {str(signed_error)}")
+                    # En son çare olarak public URL
+                    return f"https://storage.googleapis.com/{self.bucket.name}/{destination_path}"
             
         except Exception as e:
-            logging.error(f"Ekran görüntüsü yüklenirken hata oluştu: {str(e)}")
+            logging.error(f"Firebase Storage yükleme hatası: {str(e)}", exc_info=True)
             return None
     
     def delete_screenshot(self, user_id, event_id):
@@ -146,12 +211,22 @@ class StorageManager:
             blob = self.bucket.blob(blob_path)
             
             if blob.exists():
-                url = blob.generate_signed_url(
-                    version="v4",
-                    expiration=60 * 60 * 24,  # 1 gün
-                    method="GET"
-                )
-                return url
+                # Metadata'dan token'ı al
+                blob.reload()
+                if blob.metadata and 'firebaseStorageDownloadTokens' in blob.metadata:
+                    token = blob.metadata['firebaseStorageDownloadTokens']
+                    project_id = firebase_admin._apps['[DEFAULT]']._project_id
+                    bucket_name = self.bucket.name
+                    return f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_path.replace('/', '%2F')}?alt=media&token={token}"
+                else:
+                    # Signed URL oluştur
+                    from datetime import timedelta
+                    url = blob.generate_signed_url(
+                        version="v4",
+                        expiration=timedelta(days=365),
+                        method="GET"
+                    )
+                    return url
             else:
                 logging.warning(f"Görüntü bulunamadı: {blob_path}")
                 return None
@@ -181,17 +256,17 @@ class StorageManager:
                     logging.warning(f"İndirilecek görüntü bulunamadı: {local_path}")
                     return None
             
-            # Geçici dosya oluştur
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                temp_path = temp_file.name
-            
             blob_path = f"fall_events/{user_id}/{event_id}.jpg"
             blob = self.bucket.blob(blob_path)
             
             if blob.exists():
-                blob.download_to_filename(temp_path)
-                img = cv2.imread(temp_path)
-                os.unlink(temp_path)  # Geçici dosyayı sil
+                # Görüntüyü byte dizisi olarak indir
+                img_bytes = blob.download_as_bytes()
+                
+                # Byte dizisini numpy array'e dönüştür
+                nparr = np.frombuffer(img_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
                 return img
             else:
                 logging.warning(f"İndirilecek görüntü bulunamadı: {blob_path}")
