@@ -146,7 +146,7 @@ _TeamCity*
 
 # DotCover is a Code Coverage Tool
 *.dotCover
-
+serviceAccountKey.json
 # AxoCover is a Code Coverage Tool
 .axoCover/*
 !.axoCover/settings.json
