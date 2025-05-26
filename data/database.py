@@ -1,4 +1,23 @@
-# guard_pc_app/data/database.py (Güncellenmiş ve Düzeltilmiş)
+# =======================================================================================
+# 📄 Dosya Adı   : database.py
+# 📁 Konum       : guard_pc_app/data/database.py
+# 📌 Açıklama    : Firestore tabanlı kullanıcı ve düşme olayı yönetimi.
+#                 - Kullanıcı kayıt/güncelleme/ayar işlemleri.
+#                 - Düşme olaylarını kaydetme, listeleme, silme.
+#                 - Firestore çalışmazsa tüm veriler yerel JSON dosyasına kaydedilir.
+#                 - Olay kaydı hem yeni hem eski koleksiyon yapısına otomatik uyum sağlar.
+#
+# 🔗 Bağlantılı Dosyalar:
+#   - config/settings.py        : Firestore bağlantı ve uygulama ayarları.
+#   - firebase_admin            : Firestore python client, kimlik dosyası gerektirir.
+#   - guard_pc_app/core/notification.py : Olay sonrası bildirim tetikler.
+#
+# 🗒️ Notlar:
+#   - Tüm metotlar hem Firestore hem yerel JSON ile sorunsuz çalışır (offline destekli).
+#   - save_fall_event() ile olaylar hem /users/{user_id}/events hem /users/{user_id}/fall_events içinde tutulur.
+#   - Kullanıcıya özel ayarlar ve olaylar rahatça yönetilir.
+# =======================================================================================
+
 
 import logging
 from google.cloud import firestore

@@ -1,19 +1,27 @@
 # =======================================================================================
-# Dosya Adı: stream_server.py
-# Konum: pc/core/stream_server.py
-# Açıklama: Düşme algılama sisteminden MJPEG video akışı sağlayan Flask sunucusu.
-#           Kamera akışını alır, kareleri 640x640 boyutunda işler, her 5 saniyede bir
-#           düşme algılama modeliyle kontrol eder. Düşme tespit edilirse:
-#             - Ekranda uyarı gösterir.
-#             - Olay geçmişine kayıt fonksiyonu çağırılır.
-#             - Bildirim gönderme fonksiyonu çağırılır.
+# 📄 Dosya Adı   : stream_server.py
+# 📁 Konum       : pc/core/stream_server.py
+# 📌 Açıklama    : Düşme algılama sisteminde MJPEG video akışı sağlayan Flask sunucusudur.
+#                 Kamera akışını 640x640 boyutunda işler, her 5 saniyede bir
+#                 AI ile düşme tespiti yapar. Düşme tespit edilirse:
+#                   - Ekranda uyarı gösterilir.
+#                   - Olay Firestore'a kaydedilir.
+#                   - Bildirim (e-posta, push, telegram) gönderilir.
 #
-# Bağlantılı Dosyalar:
-# - utils/logger.py         : Loglama ayarları
-# - firebase/notification.py: Bildirim gönderimi (e-posta, sms, telegram)
-# - firebase/recorder.py    : Olay kaydı (Firestore)
-# - ml/fall_detector.py     : Düşme algılama modeli
+# 🔗 Bağlantılı Dosyalar:
+#   - utils/logger.py           : Loglama ayarları
+#   - firebase/notification.py  : Bildirim gönderimi (e-posta, sms, telegram, push)
+#   - firebase/recorder.py      : Olay kaydı (Firestore)
+#   - ml/fall_detector.py       : Düşme algılama modeli
+#   - config/settings.py        : Ayar ve sabitler
+#
+# 🗒️ Notlar:
+#   - /video_feed      : Canlı MJPEG kamera akışı (mobil/web arayüzü izler)
+#   - /fall_status     : Son düşme algılama durumu (JSON)
+#   - /reset_fall      : Düşme durumunu sıfırlar (POST)
+#   - /server_status   : Sunucu ve kamera durumunu döndürür (JSON)
 # =======================================================================================
+
 
 import cv2
 import threading
