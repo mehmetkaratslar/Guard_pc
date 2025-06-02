@@ -65,6 +65,9 @@ class DashboardFrame(tk.Frame):
         self.update_id = None
         self.animation_id = None
         self.pulse_value = 0
+        # Widget lifecycle kontrolü ekle
+        self.is_destroyed = False
+        self.bind("<Destroy>", self._on_widget_destroy)
 
         # Renk teması
         self.colors = {
@@ -435,35 +438,103 @@ class DashboardFrame(tk.Frame):
         else:
             btn.config(bg=self.colors['success'] if self.control_var.get() == "Sistemi Başlat" else self.colors['danger'])
 
+    def _on_widget_destroy(self, event):
+        """Widget yok edildiğinde çağrılır"""
+        if event.widget == self:
+            logging.info("Dashboard widget yok ediliyor...")
+            self.is_destroyed = True
+            self._cleanup_resources()
+
+    def _cleanup_resources(self):
+        """Kaynakları temizler"""
+        try:
+            # Animasyon timer'larını durdur
+            if hasattr(self, 'update_id') and self.update_id:
+                self.after_cancel(self.update_id)
+                self.update_id = None
+                
+            if hasattr(self, 'animation_id') and self.animation_id:
+                self.after_cancel(self.animation_id)
+                self.animation_id = None
+
+            # Anim ID listesini temizle
+            if hasattr(self, 'anim_ids'):
+                for anim_id in self.anim_ids:
+                    try:
+                        self.after_cancel(anim_id)
+                    except:
+                        pass
+                self.anim_ids.clear()
+
+            logging.info("Dashboard kaynakları temizlendi")
+            
+        except Exception as e:
+            logging.error(f"Dashboard kaynak temizleme hatası: {e}")
+
+    def _safe_widget_operation(self, operation, *args, **kwargs):
+        """Widget operasyonlarını güvenli şekilde yapar"""
+        try:
+            if self.is_destroyed or not self.winfo_exists():
+                return False
+            return operation(*args, **kwargs)
+        except tk.TclError as e:
+            if "invalid command name" in str(e):
+                logging.warning("Widget artık mevcut değil, operasyon iptal edildi")
+                self.is_destroyed = True
+                return False
+            raise
+
     # ============================= Kamera ve Animasyon =============================
 
     def _start_camera_updates(self):
-        """Kamera ve FPS güncelleyici başlatılır."""
+        """Güvenli kamera güncelleyici başlatır"""
         if self.update_id is not None:
             self.after_cancel(self.update_id)
         self._update_camera_frame()
 
     def _update_camera_frame(self):
-        """Kamera karesi ve FPS’i modern şekilde günceller."""
-        try:
-            if self.camera and self.system_running:
-                frame = self.camera.get_frame()
-                if frame is not None and frame.size > 0:
-                    with self.frame_lock:
-                        self.last_frame = frame.copy()
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(frame_rgb)
-                    pil_img = ImageEnhance.Brightness(pil_img).enhance(1.09)
-                    pil_img = pil_img.filter(ImageFilter.SMOOTH_MORE)
-                    pil_img = pil_img.resize((820, 600), Image.LANCZOS)
-                    tk_img = ImageTk.PhotoImage(pil_img)
-                    self.camera_label.configure(image=tk_img)
-                    self.camera_label.image = tk_img
-                    if hasattr(self.camera, "fps"):
-                        self.fps_var.set(f"{int(self.camera.fps)} FPS")
-        except Exception as e:
-            logging.error(f"Modern kamera güncellemesinde hata: {str(e)}")
-        self.update_id = self.after(40, self._update_camera_frame)  # 25 FPS
+        """Güvenli kamera karesi güncelleme"""
+        def safe_update():
+            try:
+                if self.is_destroyed or not self.winfo_exists():
+                    return
+                    
+                if self.camera and self.system_running:
+                    frame = self.camera.get_frame()
+                    if frame is not None and frame.size > 0:
+                        with self.frame_lock:
+                            self.last_frame = frame.copy()
+                        
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        pil_img = Image.fromarray(frame_rgb)
+                        pil_img = ImageEnhance.Brightness(pil_img).enhance(1.09)
+                        pil_img = pil_img.filter(ImageFilter.SMOOTH_MORE)
+                        pil_img = pil_img.resize((820, 600), Image.LANCZOS)
+                        tk_img = ImageTk.PhotoImage(pil_img)
+                        
+                        # Güvenli widget güncellemesi
+                        if not self.is_destroyed and self.winfo_exists():
+                            self.camera_label.configure(image=tk_img)
+                            self.camera_label.image = tk_img
+                            
+                            if hasattr(self.camera, "fps"):
+                                self.fps_var.set(f"{int(self.camera.fps)} FPS")
+                                
+            except tk.TclError as e:
+                if "invalid command name" in str(e):
+                    self.is_destroyed = True
+                    return
+                else:
+                    logging.error(f"Kamera güncelleme hatası: {e}")
+            except Exception as e:
+                logging.error(f"Kamera güncelleme hatası: {e}")
+        
+        # Güvenli operasyon
+        self._safe_widget_operation(safe_update)
+        
+        # Sonraki güncellemeyi planla
+        if not self.is_destroyed:
+            self.update_id = self.after(40, self._update_camera_frame)
 
     def _start_animations(self):
         """Animasyonları başlatır."""
@@ -471,80 +542,135 @@ class DashboardFrame(tk.Frame):
         self._pulse_status_indicator()
 
     def _animate_live_indicator(self):
-        """CANLI indikatör için nabız animasyonu."""
-        try:
-            if self.system_running:
-                color = self.colors['danger'] if time.time() % 1.2 < 0.6 else self.colors['primary']
-                self.live_canvas.itemconfig(self.live_indicator, fill=color)
-            else:
-                self.live_canvas.itemconfig(self.live_indicator, fill=self.colors['border'])
-        except:
-            pass
-        self.after(350, self._animate_live_indicator)
+        """Güvenli canlı indikatör animasyonu"""
+        def safe_animate():
+            try:
+                if self.is_destroyed or not self.winfo_exists():
+                    return
+                    
+                if self.system_running:
+                    color = self.colors['danger'] if time.time() % 1.2 < 0.6 else self.colors['primary']
+                    self.live_canvas.itemconfig(self.live_indicator, fill=color)
+                else:
+                    self.live_canvas.itemconfig(self.live_indicator, fill=self.colors['border'])
+                    
+            except tk.TclError as e:
+                if "invalid command name" in str(e):
+                    self.is_destroyed = True
+                    return
+            except Exception as e:
+                logging.error(f"Live indicator animasyon hatası: {e}")
+
+        self._safe_widget_operation(safe_animate)
+        
+        if not self.is_destroyed:
+            self.after(350, self._animate_live_indicator)
 
     def _pulse_status_indicator(self):
-        """Nöromorfik durum göstergesi nabız animasyonu."""
-        if self.system_running:
-            self.pulse_value = (self.pulse_value + 1) % 20
-            color_val = int(255 - 30 * abs(math.sin(self.pulse_value / 6.28)))
-            self.status_canvas.itemconfig(self.status_indicator, fill=f'#{color_val:02x}c8{83:02x}')
-        else:
-            self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
-        self.after(120, self._pulse_status_indicator)
+        """Güvenli durum göstergesi nabız animasyonu"""
+        def safe_pulse():
+            try:
+                if self.is_destroyed or not self.winfo_exists():
+                    return
+                    
+                if self.system_running:
+                    self.pulse_value = (self.pulse_value + 1) % 20
+                    color_val = int(255 - 30 * abs(math.sin(self.pulse_value / 6.28)))
+                    self.status_canvas.itemconfig(self.status_indicator, fill=f'#{color_val:02x}c8{83:02x}')
+                else:
+                    self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
+                    
+            except tk.TclError as e:
+                if "invalid command name" in str(e):
+                    self.is_destroyed = True
+                    return
+            except Exception as e:
+                    logging.error(f"Pulse animasyon hatası: {e}")
+
+        self._safe_widget_operation(safe_pulse)
+        
+        if not self.is_destroyed:
+            self.after(120, self._pulse_status_indicator)
 
     # ============================= Olay ve Popup Yönetimi =============================
 
     def update_system_status(self, running):
-        """Sistem başlat/durdur durumunu UI’da günceller."""
-        self.system_running = running
-        if running:
-            self.status_var.set("Sistem Aktif")
-            self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['success'])
-            self.control_var.set("Sistemi Durdur")
-            self.control_button.config(bg=self.colors['danger'], image=self.icons.get("stop"))
-        else:
-            self.status_var.set("Sistem Durduruldu")
-            self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
-            self.control_var.set("Sistemi Başlat")
-            self.control_button.config(bg=self.colors['success'], image=self.icons.get("start"))
+        """Güvenli sistem durumu güncelleme"""
+        def safe_status_update():
+            self.system_running = running
+            if running:
+                self.status_var.set("Sistem Aktif")
+                self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['success'])
+                self.control_var.set("Sistemi Durdur")
+                self.control_button.config(bg=self.colors['danger'], image=self.icons.get("stop"))
+            else:
+                self.status_var.set("Sistem Durduruldu")
+                self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
+                self.control_var.set("Sistemi Başlat")
+                self.control_button.config(bg=self.colors['success'], image=self.icons.get("start"))
+
+        self._safe_widget_operation(safe_status_update)
 
     def update_fall_detection(self, screenshot, confidence, event_data):
-        """Düşme olayını ultra modern şekilde gösterir."""
-        try:
-            with self.frame_lock:
-                self.last_detection = screenshot.copy()
-                self.last_detection_time = event_data.get("timestamp", time.time())
-                self.last_detection_confidence = confidence
+        """Güvenli düşme algılama güncelleme"""
+        def safe_fall_update():
+            try:
+                if self.is_destroyed or not self.winfo_exists():
+                    return
+                    
+                with self.frame_lock:
+                    self.last_detection = screenshot.copy()
+                    self.last_detection_time = event_data.get("timestamp", time.time())
+                    self.last_detection_confidence = confidence
 
-            dt = datetime.datetime.fromtimestamp(self.last_detection_time)
-            self.event_time_var.set(dt.strftime("%d.%m.%Y %H:%M:%S"))
-            self.event_conf_var.set(f"%{confidence * 100:.2f}")
+                dt = datetime.datetime.fromtimestamp(self.last_detection_time)
+                self.event_time_var.set(dt.strftime("%d.%m.%Y %H:%M:%S"))
+                self.event_conf_var.set(f"%{confidence * 100:.2f}")
 
-            if confidence > 0.8:
-                risk = "Yüksek"
-                color = self.colors['danger']
-            elif confidence > 0.6:
-                risk = "Orta"
-                color = self.colors['warning']
-            else:
-                risk = "Düşük"
-                color = self.colors['success']
-            self.risk_var.set(risk)
-            self.conf_value.config(fg=color)
-            self.risk_value.config(fg=color)
+                if confidence > 0.8:
+                    risk = "Yüksek"
+                    color = self.colors['danger']
+                elif confidence > 0.6:
+                    risk = "Orta"
+                    color = self.colors['warning']
+                else:
+                    risk = "Düşük"
+                    color = self.colors['success']
+                    
+                self.risk_var.set(risk)
+                self.conf_value.config(fg=color)
+                self.risk_value.config(fg=color)
 
-            self.no_image_label.pack_forget()
-            detection_rgb = cv2.cvtColor(self.last_detection, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(detection_rgb).resize((250, 180), Image.LANCZOS)
-            tk_img = ImageTk.PhotoImage(pil_img)
-            self.event_image_label.configure(image=tk_img)
-            self.event_image_label.image = tk_img
-            self.event_image_label.pack(fill=tk.BOTH, expand=True)
-            self.export_btn.config(state="normal")
-            self.details_btn.config(state="normal")
-            self._show_fall_alert(confidence)
-        except Exception as e:
-            logging.error(f"Ultra modern düşme olayı güncellenirken hata: {str(e)}")
+                # Görüntü güncelleme
+                if hasattr(self, 'no_image_label') and self.no_image_label.winfo_exists():
+                    self.no_image_label.pack_forget()
+                    
+                detection_rgb = cv2.cvtColor(self.last_detection, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(detection_rgb).resize((250, 180), Image.LANCZOS)
+                tk_img = ImageTk.PhotoImage(pil_img)
+                
+                if hasattr(self, 'event_image_label') and self.event_image_label.winfo_exists():
+                    self.event_image_label.configure(image=tk_img)
+                    self.event_image_label.image = tk_img
+                    self.event_image_label.pack(fill=tk.BOTH, expand=True)
+                
+                if hasattr(self, 'export_btn'):
+                    self.export_btn.config(state="normal")
+                if hasattr(self, 'details_btn'):
+                    self.details_btn.config(state="normal")
+                    
+                # Uyarı popup'ını göster
+                self._show_fall_alert(confidence)
+                
+            except tk.TclError as e:
+                if "invalid command name" in str(e):
+                    self.is_destroyed = True
+                else:
+                    logging.error(f"Fall detection güncelleme hatası: {e}")
+            except Exception as e:
+                logging.error(f"Fall detection güncelleme hatası: {e}")
+
+        self._safe_widget_operation(safe_fall_update)
 
     def _show_fall_alert(self, confidence):
         """Düşme algılandığında modern pop-up gösterir."""
@@ -599,17 +725,21 @@ class DashboardFrame(tk.Frame):
         messagebox.showinfo("Olay Detayı", "Olay geçmişi ve analizleri burada görünecek (beta).")
 
     def on_destroy(self):
-        """Frame yok edilirken timer ve animasyonları durdurur."""
+        """Frame yok edilirken çağrılır"""
         try:
-            if self.update_id is not None:
-                self.after_cancel(self.update_id)
-                self.update_id = None
-            if self.animation_id is not None:
-                self.after_cancel(self.animation_id)
-                self.animation_id = None
+            self.is_destroyed = True
+            self._cleanup_resources()
         except Exception as e:
-            logging.error(f"Dashboard destroy sırasında hata: {str(e)}")
+            logging.error(f"Dashboard destroy hatası: {e}")
 
+    def destroy(self):
+        """Widget'ı güvenli şekilde yok eder"""
+        try:
+            self.on_destroy()
+            super().destroy()
+        except Exception as e:
+            logging.error(f"Dashboard destroy hatası: {e}")
+    
     def _toggle_system(self):
         """Sistemi başlat/durdur butonu için çağrılır."""
         try:

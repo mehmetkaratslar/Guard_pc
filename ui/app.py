@@ -1,5 +1,5 @@
 # File: ui/app.py
-# Açıklama: Ana uygulama arayüzünü yönetir
+# Açıklama: Ana uygulama arayüzü - YOLOv11 entegrasyonu ile güncellenmiş
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -9,6 +9,7 @@ import time
 import os
 import sys
 from typing import Optional
+import uuid
 
 from ui.login import LoginFrame
 from ui.register import RegisterFrame
@@ -25,11 +26,9 @@ from core.camera import Camera
 from core.fall_detection import FallDetector
 from core.notification import NotificationManager
 from api.server import run_api_server_in_thread
-import data.database
-FirestoreManager = data.database.FirestoreManager
 
 class GuardApp:
-    """Ana uygulama sınıfı."""
+    """Ana uygulama sınıfı - YOLOv11 düşme algılama entegrasyonu."""
 
     def __init__(self, root: tk.Tk):
         """
@@ -37,7 +36,7 @@ class GuardApp:
             root (tk.Tk): Tkinter kök penceresi
         """
         self.root = root
-        self.root.title("Guard - Düşme Algılama Sistemi")
+        self.root.title("Guard - YOLOv11 Düşme Algılama Sistemi")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 700)
         self.root.configure(bg="#f5f5f5")
@@ -50,6 +49,9 @@ class GuardApp:
 
         # Firebase servisleri
         self._setup_firebase()
+
+        # YOLOv11 düşme algılama sistemi
+        self._setup_fall_detection()
 
         # API sunucusu
         self.api_thread = run_api_server_in_thread()
@@ -101,11 +103,9 @@ class GuardApp:
     def _setup_firebase(self):
         """Firebase servislerini ayarlar."""
         try:
-            self.auth = FirebaseAuth(FIREBASE_CONFIG)  # self.auth burada tanımlanıyor
+            self.auth = FirebaseAuth(FIREBASE_CONFIG)
             self.db_manager = FirestoreManager()
             self.storage_manager = StorageManager()
-            self.camera = Camera()
-            self.fall_detector = FallDetector()
             self.notification_manager = None
             self.current_user = None
             self.system_running = False
@@ -118,6 +118,42 @@ class GuardApp:
                 "Firebase servislerine bağlanılamadı.\nLütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
             )
             self.root.after(2000, self._show_error_screen)
+
+    def _setup_fall_detection(self):
+        """YOLOv11 düşme algılama sistemini ayarlar."""
+        try:
+            # Kamera sistemini başlat
+            self.camera = Camera.get_instance()
+            
+            # YOLOv11 düşme algılama modelini başlat
+            self.fall_detector = FallDetector.get_instance()
+            
+            # Model bilgilerini logla
+            model_info = self.fall_detector.get_model_info()
+            logging.info(f"YOLOv11 Düşme Algılama Sistemi:")
+            logging.info(f"  - Model Yüklü: {model_info['model_loaded']}")
+            logging.info(f"  - Cihaz: {model_info['device']}")
+            logging.info(f"  - Güven Eşiği: {model_info['confidence_threshold']}")
+            logging.info(f"  - Frame Boyutu: {model_info['frame_size']}")
+            
+            if not model_info['model_loaded']:
+                logging.warning("YOLOv11 modeli yüklenemedi! Düşme algılama devre dışı olacak.")
+                messagebox.showwarning(
+                    "Model Uyarısı",
+                    "YOLOv11 düşme algılama modeli yüklenemedi.\n"
+                    f"Model dosyası: {model_info['model_path']}\n"
+                    "Sistem çalışacak ancak düşme algılama devre dışı olacak."
+                )
+            
+        except Exception as e:
+            logging.error(f"Düşme algılama sistemi başlatılırken hata: {str(e)}")
+            messagebox.showerror(
+                "Model Hatası",
+                f"Düşme algılama sistemi başlatılamadı:\n{str(e)}\n"
+                "Uygulama çalışacak ancak düşme algılama devre dışı olacak."
+            )
+            # Hata durumunda None olarak ayarla
+            self.fall_detector = None
 
     def _show_error_screen(self):
         """Hata ekranını gösterir."""
@@ -169,9 +205,9 @@ class GuardApp:
         self._clear_content()
         self.login_frame = LoginFrame(
             self.content_frame,
-            self.auth,  # self.auth burada kullanılıyor
+            self.auth,
             self._on_login_success,
-            on_register_click=self.show_register  # Kayıt ekranını açmak için callback
+            on_register_click=self.show_register
         )
         self.login_frame.pack(fill=tk.BOTH, expand=True)
         logging.info("Giriş ekranı gösterildi")
@@ -189,8 +225,10 @@ class GuardApp:
         logging.info("Kayıt ekranı gösterildi")
 
     def show_dashboard(self):
-        """Ana gösterge panelini gösterir."""
+        """Ana gösterge panelini gösterir - sistem durumunu korur"""
         self._clear_content()
+        
+        # Dashboard frame'i oluştur
         self.dashboard_frame = DashboardFrame(
             self.content_frame,
             self.current_user,
@@ -202,10 +240,24 @@ class GuardApp:
             self.logout
         )
         self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Sistem durumunu dashboard'a aktar
+        if hasattr(self, 'system_running') and self.system_running:
+            self.dashboard_frame.update_system_status(True)
+            logging.info("Dashboard yeniden oluşturuldu - sistem durumu aktarıldı")
+        
         logging.info("Dashboard ekranı gösterildi")
 
     def show_settings(self):
-        """Ayarlar ekranını gösterir."""
+        """Ayarlar ekranını gösterir - dashboard referansını temizler"""
+        # Dashboard referansını güvenli şekilde temizle
+        if hasattr(self, 'dashboard_frame'):
+            try:
+                self.dashboard_frame.on_destroy()
+            except:
+                pass
+            self.dashboard_frame = None
+            
         self._clear_content()
         self.settings_frame = SettingsFrame(
             self.content_frame,
@@ -217,7 +269,15 @@ class GuardApp:
         logging.info("Ayarlar ekranı gösterildi")
 
     def show_history(self):
-        """Geçmiş olaylar ekranını gösterir."""
+        """Geçmiş olaylar ekranını gösterir - dashboard referansını temizler"""
+        # Dashboard referansını güvenli şekilde temizle
+        if hasattr(self, 'dashboard_frame'):
+            try:
+                self.dashboard_frame.on_destroy()
+            except:
+                pass
+            self.dashboard_frame = None
+            
         self._clear_content()
         self.history_frame = HistoryFrame(
             self.content_frame,
@@ -229,9 +289,18 @@ class GuardApp:
         logging.info("Geçmiş ekranı gösterildi")
 
     def _clear_content(self):
-        """İçerik çerçevesindeki tüm bileşenleri temizler."""
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
+        """İçerik çerçevesindeki tüm bileşenleri güvenli şekilde temizler"""
+        try:
+            for widget in self.content_frame.winfo_children():
+                try:
+                    # Dashboard widget'ını güvenli şekilde yok et
+                    if hasattr(widget, 'on_destroy'):
+                        widget.on_destroy()
+                    widget.destroy()
+                except Exception as e:
+                    logging.warning(f"Widget temizleme hatası: {e}")
+        except Exception as e:
+            logging.error(f"Content temizleme hatası: {e}")
 
     def _on_login_success(self, user):
         """Giriş başarılı olduğunda çağrılır."""
@@ -256,56 +325,88 @@ class GuardApp:
         self.show_dashboard()
 
     def start_detection(self):
-        """Düşme algılama sistemini başlatır."""
-        if self.system_running:
+        """YOLOv11 düşme algılama sistemini başlatır - gelişmiş durum kontrolü"""
+        if hasattr(self, 'system_running') and self.system_running:
             logging.warning("Sistem zaten çalışıyor.")
+            # Dashboard varsa durumu güncelle
+            if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(True)
             return
 
+        # Kamerayı başlat
         if not self.camera.start():
             messagebox.showerror("Kamera Hatası", "Kamera başlatılamadı. Lütfen kamera bağlantınızı kontrol edin.")
             return
 
-        self.system_running = True
-        self.detection_thread = threading.Thread(target=self._detection_loop)
-        self.detection_thread.daemon = True
-        self.detection_thread.start()
+        # Düşme algılama modelini kontrol et
+        if not self.fall_detector or not self.fall_detector.is_model_loaded:
+            messagebox.showwarning(
+                "Model Uyarısı", 
+                "YOLOv11 düşme algılama modeli yüklü değil.\n"
+                "Sistem kamera görüntüsünü gösterecek ancak düşme algılama çalışmayacak."
+            )
 
-        if hasattr(self, "dashboard_frame"):
+        # Sistem durumunu güncelle
+        self.system_running = True
+        
+        # Detection thread'ini başlat
+        if hasattr(self, 'detection_thread') and self.detection_thread and self.detection_thread.is_alive():
+            logging.warning("Detection thread zaten çalışıyor")
+        else:
+            self.detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
+            self.detection_thread.start()
+
+        # Dashboard varsa durumu güncelle
+        if hasattr(self, "dashboard_frame") and self.dashboard_frame:
             self.dashboard_frame.update_system_status(True)
 
-        logging.info("Düşme algılama sistemi başlatıldı.")
+        logging.info("YOLOv11 düşme algılama sistemi başlatıldı.")
 
     def stop_detection(self):
-        """Düşme algılama sistemini durdurur."""
-        if not self.system_running:
+        """Düşme algılama sistemini durdurur - gelişmiş durum kontrolü"""
+        if not hasattr(self, 'system_running') or not self.system_running:
             logging.warning("Sistem zaten durmuş durumda.")
+            # Dashboard varsa durumu güncelle
+            if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(False)
             return
 
+        # Sistem durumunu güncelle
         self.system_running = False
 
-        if self.detection_thread:
-            self.detection_thread.join(timeout=1.0)
+        # Detection thread'ini durdur
+        if hasattr(self, 'detection_thread') and self.detection_thread:
+            if self.detection_thread.is_alive():
+                self.detection_thread.join(timeout=2.0)
             self.detection_thread = None
 
+        # Kamerayı durdur
         self.camera.stop()
 
-        if hasattr(self, "dashboard_frame"):
+        # Dashboard varsa durumu güncelle
+        if hasattr(self, "dashboard_frame") and self.dashboard_frame:
             self.dashboard_frame.update_system_status(False)
 
-        logging.info("Düşme algılama sistemi durduruldu.")
+        logging.info("YOLOv11 düşme algılama sistemi durduruldu.")
 
     def _detection_loop(self):
-        """Geliştirilmiş düşme algılama döngüsü."""
+        """YOLOv11 tabanlı gelişmiş düşme algılama döngüsü."""
         try:
-            # Hata sayacı
+            # Hata sayacı ve performans ölçümleri
             error_count = 0
             max_errors = 10
             
             # Performans ölçekleri
             last_detection_time = 0
-            min_detection_interval = 10  # Değiştirildi: 5'ten 10'a çok sık bildirim gönderimini önlemek için
+            min_detection_interval = 15  # 15 saniye minimum bildirim arası
             target_fps = 30
             frame_duration = 1.0 / target_fps
+            
+            # YOLOv11 model performans takibi
+            model_performance_log_interval = 60  # 1 dakikada bir performans logla
+            last_model_log_time = 0
+            
+            logging.info("YOLOv11 düşme algılama döngüsü başlatıldı")
             
             while self.system_running:
                 start_time = time.time()
@@ -323,19 +424,32 @@ class GuardApp:
                         time.sleep(0.1)
                         continue
                     
-                    # Düşme algılama modelinin durumunu kontrol et
-                    if not self.fall_detector or not self.fall_detector.is_model_loaded:
-                        logging.warning("Düşme algılama modeli yüklü değil, durduruldu.")
-                        self.stop_detection()
-                        break
+                    # YOLOv11 model performansını logla
+                    current_time = time.time()
+                    if current_time - last_model_log_time > model_performance_log_interval:
+                        if self.fall_detector and self.fall_detector.is_model_loaded:
+                            model_info = self.fall_detector.get_model_info()
+                            logging.info(f"YOLOv11 Model Performans: {model_info.get('avg_inference_time', 'N/A')}")
+                        last_model_log_time = current_time
                     
-                    # Düşme algıla - model içinde zaten 5 saniyelik kontrol var
-                    is_fall, confidence = self.fall_detector.detect_fall(frame)
+                    # Düşme algılama - sadece model yüklüyse
+                    is_fall = False
+                    confidence = 0.0
+                    
+                    if self.fall_detector and self.fall_detector.is_model_loaded:
+                        is_fall, confidence = self.fall_detector.detect_fall(frame)
                     
                     # Düşme algılandıysa ve yeterli süre geçtiyse bildirim gönder
                     if is_fall and (time.time() - last_detection_time) > min_detection_interval:
                         last_detection_time = time.time()
-                        screenshot = self.camera.capture_screenshot()
+                        
+                        # Tespit edilen frame için visualization oluştur
+                        if self.fall_detector:
+                            screenshot = self.fall_detector.get_detection_visualization(frame)
+                        else:
+                            screenshot = self.camera.capture_screenshot()
+                        
+                        # Ana thread'de düşme işlemi gerçekleştir
                         self.root.after(0, self._handle_fall_detection, screenshot, confidence)
                     
                     # FPS kontrolü için uyku süresi
@@ -362,17 +476,10 @@ class GuardApp:
             logging.error(f"Algılama döngüsü tamamen başarısız: {str(e)}")
             self.root.after(0, self.stop_detection)
 
-
-
-
-
-
-    # Bu fonksiyon düşme algılandığında çağrılır ve olayı kaydetmeli ve bildirimleri göndermelidir
     def _handle_fall_detection(self, screenshot, confidence):
-        """Düşme algılandığında çağrılır."""
+        """YOLOv11 ile düşme algılandığında çağrılır - güvenli dashboard güncellemesi"""
         try:
-            import uuid
-            logging.info(f"Düşme algılandı! Olasılık: {confidence:.2f}")
+            logging.info(f"YOLOv11 Düşme Algılandı! Olasılık: {confidence:.4f}")
 
             # Benzersiz olay ID'si oluştur
             event_id = str(uuid.uuid4())
@@ -386,61 +493,52 @@ class GuardApp:
             
             # Olay verilerini oluştur
             event_data = {
-                "id": event_id,  # Bu önemli! ID'yi açıkça belirtiyoruz
+                "id": event_id,
                 "user_id": self.current_user["localId"],
                 "timestamp": time.time(),
-                "confidence": confidence,
-                "image_url": image_url
+                "confidence": float(confidence),
+                "image_url": image_url,
+                "detection_method": "YOLOv11",
+                "model_info": self.fall_detector.get_model_info() if self.fall_detector else {}
             }
             
-            # Olay verilerini Firestore'a kaydet - başarıyı kontrol et
+            # Olay verilerini Firestore'a kaydet
             save_result = self.db_manager.save_fall_event(self.current_user["localId"], event_data)
             if not save_result:
                 logging.error("Düşme olayı veritabanına kaydedilemedi!")
             else:
-                logging.info(f"Düşme olayı veritabanına kaydedildi: {event_id}")
+                logging.info(f"YOLOv11 düşme olayı veritabanına kaydedildi: {event_id}")
 
             # Bildirim gönder
             if self.notification_manager:
-                # NotificationManager'ı güncel kullanıcı verileriyle güncelle
                 user_data = self.db_manager.get_user_data(self.current_user["localId"])
                 if user_data:
-                    # Mevcut notification_manager'ı güncelle
                     self.notification_manager.update_user_data(user_data)
                 
-                # Bildirimleri gönder
                 notification_result = self.notification_manager.send_notifications(event_data, screenshot)
                 if not notification_result:
                     logging.error("Bildirimler gönderilemedi!")
                 else:
-                    logging.info("Bildirimler başarıyla gönderildi")
+                    logging.info("YOLOv11 düşme bildirimleri başarıyla gönderildi")
             else:
-                logging.error("Bildirim yöneticisi bulunamadı! NotificationManager oluşturuluyor...")
-                # NotificationManager'ı oluştur
-                from core.notification import NotificationManager
-                user_data = self.db_manager.get_user_data(self.current_user["localId"])
-                self.notification_manager = NotificationManager(user_data)
-                self.notification_manager.send_notifications(event_data, screenshot)
+                logging.error("Bildirim yöneticisi bulunamadı!")
 
-            # Dashboard'ı güncelle
+            # Dashboard'ı güvenli şekilde güncelle
             if hasattr(self, "dashboard_frame") and self.dashboard_frame:
                 try:
-                    # Açıkça UI güncellemesini çağır
-                    self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
-                    logging.info("Dashboard başarıyla güncellendi, düşme uyarısı gösteriliyor")
+                    # Widget'ın hala mevcut olup olmadığını kontrol et
+                    if not self.dashboard_frame.is_destroyed and self.dashboard_frame.winfo_exists():
+                        self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
+                        logging.info("Dashboard başarıyla güncellendi, YOLOv11 düşme uyarısı gösteriliyor")
+                    else:
+                        logging.warning("Dashboard widget mevcut değil, güncelleme atlandı")
                 except Exception as e:
                     logging.error(f"Dashboard güncellenirken hata: {str(e)}")
             else:
-                logging.error("Dashboard bulunamadı!")
+                logging.warning("Dashboard referansı bulunamadı!")
 
         except Exception as e:
-            logging.error(f"Düşme olayı işlenirken hata oluştu: {str(e)}", exc_info=True)
-
-
-
-
-
-
+            logging.error(f"YOLOv11 düşme olayı işlenirken hata oluştu: {str(e)}", exc_info=True)
 
     def logout(self):
         """Kullanıcı çıkışı yapar."""
@@ -471,7 +569,6 @@ class GuardApp:
 
     def _update_ui_theme(self):
         """Tüm UI bileşenlerini mevcut temaya göre günceller."""
-        # Mevcut frame'in yalnızca stilini güncelle
         self.main_frame.configure(bg="#f5f5f5" if self.current_theme == "light" else "#212121")
         self.content_frame.configure(bg="#f5f5f5" if self.current_theme == "light" else "#212121")
 
@@ -491,6 +588,14 @@ class GuardApp:
         try:
             if self.system_running:
                 self.stop_detection()
+
+            # Kamera ve model kaynaklarını temizle
+            if hasattr(self, 'camera') and self.camera:
+                self.camera.stop()
+            
+            if hasattr(self, 'fall_detector') and self.fall_detector:
+                # Model kaynakları temizleme (gerekirse)
+                pass
 
             logging.info("Uygulama kapatılıyor...")
             self.root.destroy()

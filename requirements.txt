@@ -1,20 +1,47 @@
-opencv-python>=4.5.0
-torch>=1.9.0
-torchvision>=0.10.0
-numpy>=1.20.0
-pillow>=8.2.0
-firebase-admin>=5.0.0
-pyrebase4>=4.5.0
-fastapi>=0.68.0
-uvicorn>=0.15.0
-python-multipart>=0.0.5
-requests>=2.26.0
-pydantic>=1.8.2
-python-dotenv>=0.19.0
-telepot>=12.7
-python-socketio>=5.4.0
-python-engineio>=4.3.0
-scikit-learn>=1.0.0
-matplotlib>=3.5.0
-ultralytics>=8.0.0   # YOLOv11 için ultralytics paketi
-supervision         # Sonuçları kutulu göstermek için, modern kutu çizimi 
+# === Görüntü İşleme ve Bilgisayarlı Görü ===
+opencv-python>=4.8.0           # Kamera ve görüntü işleme
+pillow>=10.0.0                 # Görüntü manipülasyonu
+
+# === YOLOv11 ve Derin Öğrenme ===
+ultralytics>=8.0.0             # YOLOv11 ana kütüphanesi
+torch>=2.0.0                   # PyTorch derin öğrenme framework
+torchvision>=0.15.0            # PyTorch görüntü işleme
+numpy>=1.24.0                  # Numerik hesaplamalar
+
+# === Firebase ve Veritabanı ===
+firebase-admin>=6.2.0           # Firebase Admin SDK
+pyrebase4>=4.5.0                # Firebase Web SDK
+google-cloud-firestore>=2.11.0  # Firestore client
+google-cloud-storage>=2.10.0    # Firebase Storage
+
+# === Web Server ve API ===
+fastapi>=0.100.0                # Modern API framework
+uvicorn>=0.23.0                 # ASGI server
+flask>=2.3.0                    # Web framework (stream server için)
+flask-cors>=4.0.0               # CORS desteği
+python-multipart>=0.0.6         # Multipart form data
+
+# === HTTP ve Ağ ===
+requests>=2.31.0                # HTTP istekleri
+python-socketio>=5.8.0          # WebSocket desteği
+python-engineio>=4.7.0          # Engine.IO protokolü
+
+# === Bildirim Sistemleri ===
+telepot>=12.7                   # Telegram bot API
+twilio>=8.5.0                   # SMS bildirimleri (opsiyonel)
+
+# === Veri İşleme ===
+pandas>=2.0.0                   # Veri analizi
+scikit-learn>=1.3.0             # Makine öğrenmesi
+matplotlib>=3.7.0               # Grafik ve görselleştirme
+
+# === Yapılandırma ve Ortam ===
+python-dotenv>=1.0.0            # .env dosya desteği
+pydantic>=2.0.0                 # Veri validasyonu
+
+# === Yardımcı Kütüphaneler ===
+supervision>=0.15.0             # YOLOv11 sonuç görselleştirme
+psutil>=5.9.0                   # Sistem performans izleme
+
+# === Geliştirme ve Test (Opsiyonel) ===
+# pytest>=7.4.0

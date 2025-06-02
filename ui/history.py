@@ -59,6 +59,10 @@ class HistoryFrame(ttk.Frame):
         
         # Pencere yeniden boyutlandırma işleyicisi
         self.bind("<Configure>", self._on_configure)
+        
+        # Widget lifecycle kontrolü
+        self.is_destroyed = False
+        self.bind("<Destroy>", self._on_widget_destroy)
 
     def _get_theme_from_parent(self, parent):
         """Parent widget'tan tema durumunu alır."""
@@ -662,10 +666,6 @@ class HistoryFrame(ttk.Frame):
             logging.error(f"Olaylar yüklenirken thread hatası: {str(e)}")
             self.after(0, lambda: messagebox.showerror("Veri Yükleme Hatası", f"Olaylar yüklenemedi: {str(e)}"))
     
-
-
-
-    
     def _apply_filters(self):
         """Olayları tarih ve olasılık filtrelerine göre günceller."""
         try:
@@ -899,7 +899,7 @@ class HistoryFrame(ttk.Frame):
             self.image_label.configure(text="Detaylar yüklenemedi", image="")
     
     def _load_image(self, url):
-        """Görüntüyü URL'den asenkron olarak yükler ve önbelleğe alır."""
+        """Güvenli görüntü yükleme"""
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
@@ -910,23 +910,33 @@ class HistoryFrame(ttk.Frame):
             # Önbelleğe kaydet
             self.image_cache[url] = pil_img
             
-            # Görüntüyü göster (fade-in animasyonu ile)
-            self.after(0, lambda: self._display_image_with_animation(pil_img))
+            # Görüntüyü güvenli şekilde göster
+            if not self.is_destroyed:
+                self.after(0, lambda: self._display_image_with_animation(pil_img))
             
         except Exception as e:
-            logging.error(f"Görüntü yüklenirken hata: {str(e)}", exc_info=True)
-            self.after(0, lambda: self.image_label.configure(
-                text=f"Görüntü yüklenemedi: {str(e)}", 
-                image=""
-            ))
+            logging.error(f"Görüntü yüklenirken hata: {str(e)}")
+            if not self.is_destroyed:
+                self.after(0, lambda: self._safe_widget_operation(
+                    self.image_label if hasattr(self, 'image_label') and self.image_label.winfo_exists() else None,
+                    self.image_label.configure if hasattr(self, 'image_label') and self.image_label.winfo_exists() else lambda **kwargs: None,
+                    text=f"Görüntü yüklenemedi: {str(e)}",
+                    image=""
+                ))
             self.current_image = None
     
     def _display_image_with_animation(self, pil_img):
-        """Görüntüyü fade-in animasyonu ile gösterir."""
+        """Güvenli görüntü animasyonu"""
+        if self.is_destroyed:
+            return
+            
         self.current_image = pil_img
         self.fade_alpha = 0.0
         
         def fade_step():
+            if self.is_destroyed:
+                return
+                
             self.fade_alpha += 0.1
             if self.fade_alpha >= 1.0:
                 self.fade_alpha = 1.0
@@ -936,23 +946,26 @@ class HistoryFrame(ttk.Frame):
             # Geçiş efekti için görüntüyü işle
             alpha_img = self._apply_fade(pil_img, self.fade_alpha)
             self._display_image(alpha_img)
-            self.after(30, fade_step)
+            
+            if not self.is_destroyed:
+                self.after(30, fade_step)
         
         fade_step()
     
-    def _apply_fade(self, img, alpha):
-        """Görüntüye alfa karıştırma uygular."""
-        try:
-            enhancer = ImageEnhance.Brightness(img)
-            return enhancer.enhance(alpha)
-        except:
-            return img
-    
     def _display_image(self, pil_img):
-        """Görüntüyü mevcut zoom seviyesine göre gösterir."""
+        """Güvenli görüntü gösterimi"""
         try:
+            if self.is_destroyed:
+                return
+                
             if not pil_img:
-                self.image_label.configure(text="Görüntü yok", image="")
+                if hasattr(self, 'image_label') and self.image_label.winfo_exists():
+                    self._safe_widget_operation(
+                        self.image_label,
+                        self.image_label.configure,
+                        text="Görüntü yok",
+                        image=""
+                    )
                 return
             
             # Orijinal boyutları sakla
@@ -972,20 +985,44 @@ class HistoryFrame(ttk.Frame):
             
             # Özel efektler uygula
             if self.dark_mode:
-                # Dark mode için hafif kontrast artışı
                 enhancer = ImageEnhance.Contrast(resized_img)
                 resized_img = enhancer.enhance(1.1)
             
             # Tkinter görüntüsüne dönüştür
             tk_img = ImageTk.PhotoImage(resized_img)
             
-            # Görüntüyü göster
-            self.image_label.configure(image=tk_img, text="")
-            self.image_label.image = tk_img
+            # Güvenli widget güncellemesi
+            if hasattr(self, 'image_label') and self.image_label.winfo_exists():
+                self._safe_widget_operation(
+                    self.image_label,
+                    self.image_label.configure,
+                    image=tk_img,
+                    text=""
+                )
+                if self.image_label.winfo_exists():
+                    self.image_label.image = tk_img
             
         except Exception as e:
-            logging.error(f"Görüntü gösterilirken hata: {str(e)}", exc_info=True)
-            self.image_label.configure(text=f"Görüntü gösterilemiyor: {str(e)}", image="")
+            logging.error(f"Görüntü gösterilirken hata: {str(e)}")
+            # Hata durumunda güvenli mesaj göster
+            if hasattr(self, 'image_label') and self.image_label.winfo_exists():
+                try:
+                    self._safe_widget_operation(
+                        self.image_label,
+                        self.image_label.configure,
+                        text=f"Görüntü gösterilemiyor: {str(e)}",
+                        image=""
+                    )
+                except:
+                    pass
+
+    def _apply_fade(self, img, alpha):
+        """Görüntüye alfa karıştırma uygular."""
+        try:
+            enhancer = ImageEnhance.Brightness(img)
+            return enhancer.enhance(alpha)
+        except:
+            return img
     
     def _zoom_in(self):
         """Görüntüyü yakınlaştırır."""
@@ -1107,7 +1144,7 @@ class HistoryFrame(ttk.Frame):
                 self.current_image.save(filename)
                 self._show_success("Başarılı", f"Görüntü başarıyla kaydedildi:\n{filename}")
         except Exception as e:
-            logging.error(f"Görüntü kaydedilirken hata: {str(e)}", exc_info=True)
+            logging.error(f"Görüntü kaydedilirken hata: {e}", exc_info=True)
             self._show_error("Kaydetme Hatası", f"Görüntü kaydedilemedi: {str(e)}")
     
     def _show_error(self, title, message):
@@ -1145,3 +1182,39 @@ class HistoryFrame(ttk.Frame):
             return f"#{r:02x}{g:02x}{b:02x}"
         except:
             return hex_color
+    
+    def _on_widget_destroy(self, event):
+        """Widget yok edildiğinde çağrılır"""
+        if event.widget == self:
+            self.is_destroyed = True
+    
+    def _safe_widget_operation(self, widget, operation, *args, **kwargs):
+        """Widget operasyonlarını güvenli şekilde yapar"""
+        try:
+            if self.is_destroyed:
+                return False
+            if not widget.winfo_exists():
+                return False
+            return operation(*args, **kwargs)
+        except tk.TclError as e:
+            if "invalid command name" in str(e):
+                logging.warning("Widget artık mevcut değil, operasyon iptal edildi")
+                return False
+            raise
+    
+    def destroy(self):
+        """Güvenli widget yok etme"""
+        try:
+            self.is_destroyed = True
+            
+            # Yükleniyor animasyonunu durdur
+            if hasattr(self, 'loading_animation_id') and self.loading_animation_id:
+                self.after_cancel(self.loading_animation_id)
+                
+            # Status timer'ı durdur
+            if hasattr(self, 'status_timer_id') and self.status_timer_id:
+                self.after_cancel(self.status_timer_id)
+            
+            super().destroy()
+        except Exception as e:
+            logging.error(f"History frame destroy hatası: {e}")
