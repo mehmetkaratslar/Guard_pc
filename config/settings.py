@@ -1,14 +1,31 @@
-# guard_pc_app/config/settings.py
+# =======================================================================================
+# 📄 Dosya Adı: settings.py
+# 📁 Konum: guard_pc_app/config/settings.py
+# 📌 Açıklama:
+# Uygulama genel ayarlarını tanımlar.
+# Çoklu kamera desteği için CAMERA_CONFIGS eklendi, CAMERA_INDEX kaldırıldı.
+# Mevcut yapı, değişken isimleri ve diğer ayarlar korundu.
+# 🔗 Bağlantılı Dosyalar:
+# - core/camera.py: Kamera ayarları
+# - ui/app.py: Tema ayarları
+# - core/stream_server.py: API ayarları
+# - core/notification.py: Bildirim ayarları
+# =======================================================================================
+
 import os
+import cv2
 
 # Uygulama ayarları
 APP_NAME = "Guard - Düşme Algılama Sistemi"
 APP_VERSION = "1.0.0"
 
 # Kamera ayarları
-CAMERA_INDEX = 0  # Varsayılan kamera indeksi
-FRAME_WIDTH = 640  # değiştirildi: 640x640 frame boyutu
-FRAME_HEIGHT = 640  # değiştirildi: 640x640 frame boyutu
+CAMERA_CONFIGS = [
+    {"index": 0, "backend": cv2.CAP_MSMF, "name": "Ana Kamera"},  # MSMF backend’li ana kamera
+    {"index": 1, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera"},  # DSHOW backend’li harici kamera
+]  # Çoklu kamera yapılandırması
+FRAME_WIDTH = 640  # 640x640 frame boyutu
+FRAME_HEIGHT = 640  # 640x640 frame boyutu
 FRAME_RATE = 30
 
 # YOLOv11 Ayarları

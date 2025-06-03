@@ -1,4 +1,4 @@
-# guard_pc_app/data/storage.py (Güncellenmiş ve Düzeltilmiş)
+#pc/data/storage.py
 import logging
 import firebase_admin
 from firebase_admin import storage
