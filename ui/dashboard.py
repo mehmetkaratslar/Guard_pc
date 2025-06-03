@@ -605,63 +605,69 @@ class DashboardFrame(tk.Frame):
         self._safe_widget_operation(safe_status_update)
 
     def update_fall_detection(self, screenshot, confidence, event_data):
-        """Güvenli düşme algılama güncelleme."""
-        def safe_fall_update():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-                
-                with self.frame_locks[event_data.get('camera_id', self.current_camera_id)]:
-                    self.last_detection = screenshot.copy()
-                    self.last_detection_time = event_data.get("timestamp", time.time())
-                    self.last_detection_confidence = confidence
+            """
+            Düşme algılama güncelleme.
 
-                dt = datetime.datetime.fromtimestamp(self.last_detection_time)
-                self.event_time_var.set(dt.strftime("%d.%m.%Y %H:%M:%S"))
-                self.event_conf_var.set(f"%{confidence * 100:.2f}")
+            Args:
+                screenshot (numpy.ndarray): Algılanan düşme görüntüsü
+                confidence (float): Güven skoru
+                event_data (dict): Olay verileri
+            """
+            def safe_fall_update():
+                try:
+                    if self.is_destroyed or not self.winfo_exists():
+                        return
+                    
+                    with self.frame_locks[event_data.get('camera_id', self.current_camera_id)]:
+                        self.last_detection = screenshot.copy()
+                        self.last_detection_time = event_data.get("timestamp", time.time())
+                        self.last_detection_confidence = confidence
 
-                if confidence > 0.8:
-                    risk = "Yüksek"
-                    color = self.colors['danger']
-                elif confidence > 0.6:
-                    risk = "Orta"
-                    color = self.colors['warning']
-                else:
-                    risk = "Düşük"
-                    color = self.colors['success']
-                
-                self.risk_var.set(risk)
-                self.conf_value.config(fg=color)
-                self.risk_value.config(fg=color)
+                    dt = datetime.datetime.fromtimestamp(self.last_detection_time)
+                    self.event_time_var.set(dt.strftime("%d.%m.%Y %H:%M:%S"))
+                    self.event_conf_var.set(f"%{confidence * 100:.2f}")
 
-                if hasattr(self, 'no_image_label') and self.no_image_label.winfo_exists():
-                    self.no_image_label.pack_forget()
-                
-                detection_rgb = cv2.cvtColor(self.last_detection, cv2.COLOR_BGR2RGB)
-                pil_img = Image.fromarray(detection_rgb).resize((250, 180), Image.LANCZOS)
-                tk_img = ImageTk.PhotoImage(pil_img)
-                
-                if hasattr(self, 'event_image_label') and self.event_image_label.winfo_exists():
+                    if confidence > 0.8:
+                        risk = "Yüksek"
+                        color = self.colors['danger']
+                    elif confidence > 0.6:
+                        risk = "Orta"
+                        color = self.colors['warning']
+                    else:
+                        risk = "Düşük"
+                        color = self.colors['success']
+                    
+                    self.risk_var.set(risk)
+                    self.conf_value.config(fg=color)
+                    self.risk_value.config(fg=color)
+
+                    if self.no_image_label.winfo_exists():
+                        self.no_image_label.pack_forget()
+                    
+                    detection_rgb = cv2.cvtColor(self.last_detection, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(detection_rgb).resize((250, 180), Image.LANCZOS)
+                    tk_img = ImageTk.PhotoImage(pil_img)
+                    
                     self.event_image_label.configure(image=tk_img)
                     self.event_image_label.image = tk_img
                     self.event_image_label.pack(fill=tk.BOTH, expand=True)
-                
-                if hasattr(self, 'export_btn'):
+                    
                     self.export_btn.config(state="normal")
-                if hasattr(self, 'details_btn'):
                     self.details_btn.config(state="normal")
-                
-                self._show_fall_alert(confidence)
-                
-            except tk.TclError as e:
-                if "invalid command name" in str(e):
-                    self.is_destroyed = True
-                else:
+                    
+                    self._show_fall_alert(confidence)
+                    
+                except tk.TclError as e:
+                    if "invalid command name" in str(e):
+                        self.is_destroyed = True
+                    else:
+                        logging.error(f"Fall detection güncelleme hatası: {e}")
+                except Exception as e:
                     logging.error(f"Fall detection güncelleme hatası: {e}")
-            except Exception as e:
-                logging.error(f"Fall detection güncelleme hatası: {e}")
 
-        self._safe_widget_operation(safe_fall_update)
+            self._safe_widget_operation(safe_fall_update)
+
+
 
     def _show_fall_alert(self, confidence):
         """Düşme algılandığında modern pop-up gösterir."""

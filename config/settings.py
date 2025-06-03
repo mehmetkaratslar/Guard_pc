@@ -35,7 +35,7 @@ MODEL_PATH = os.path.join(
     "models", 
     "fall_model.pt"  # YOLOv11 model dosyası
 )
-CONFIDENCE_THRESHOLD = 0.6  # YOLOv11 için güven eşiği
+CONFIDENCE_THRESHOLD = 0.50  # YOLOv11 için güven eşiği
 
 # API sunucusu ayarları
 API_HOST = "127.0.0.1"

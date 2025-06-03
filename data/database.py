@@ -3,8 +3,8 @@
 # 📁 Konum: guard_pc_app/data/database.py
 # 📌 Açıklama:
 # Firestore tabanlı kullanıcı ve düşme olayı yönetimi.
-# save_fall_event, /fall_events/{eventId} yoluna kaydeder.
-# Yerel depolamada /users/{user_id}/events ve /users/{user_id}/fall_events korunur.
+# save_fall_event, Firestore kaydetme hatası düzeltildi, event_data string uyumlu hale getirildi.
+# Yerel depolamada /users/{user_id}/events ve /users/{user_id}/fall_events korundu.
 # Mobil uygulama için erişim optimize edildi.
 # 🔗 Bağlantılı Dosyalar:
 # - config/settings.py: Firestore bağlantı ve uygulama ayarları
@@ -144,6 +144,18 @@ class FirestoreManager:
             user_id = event_data.get("user_id", "unknown")
             logging.info(f"Düşme olayı kaydediliyor: {event_id} - Kullanıcı: {user_id}")
             
+            # Firestore uyumlu veri oluştur
+            cleaned_data = {}
+            for key, value in event_data.items():
+                if key == "model_info":
+                    # model_info’yu string’e çevir
+                    cleaned_data[key] = str(value)
+                elif isinstance(value, (str, int, float, bool)) or value is None:
+                    cleaned_data[key] = value
+                else:
+                    # Diğer karmaşık nesneleri string’e çevir
+                    cleaned_data[key] = str(value)
+            
             if not self.is_available:
                 # Yerel depolamada /users/{user_id}/events ve /users/{user_id}/fall_events’e kaydet
                 if user_id not in self._memory_storage["users"]:
@@ -152,7 +164,7 @@ class FirestoreManager:
                 for collection_name in ["events", "fall_events"]:
                     if collection_name not in self._memory_storage["users"][user_id]:
                         self._memory_storage["users"][user_id][collection_name] = []
-                    self._memory_storage["users"][user_id][collection_name].append(event_data)
+                    self._memory_storage["users"][user_id][collection_name].append(cleaned_data)
                 
                 self._save_local_data()
                 logging.info(f"Düşme olayı yerel depoya kaydedildi: {event_id}")
@@ -160,7 +172,7 @@ class FirestoreManager:
             
             # Firestore’a /fall_events/{eventId} yoluna kaydet
             doc_ref = self.db.collection("fall_events").document(event_id)
-            doc_ref.set(event_data)
+            doc_ref.set(cleaned_data)
             logging.info(f"Düşme olayı Firestore’a kaydedildi: /fall_events/{event_id}")
             return True
             
@@ -193,7 +205,6 @@ class FirestoreManager:
             return sorted_events[:limit]
             
         try:
-            # Firestore’dan /fall_events/’ten çek, user_id ile filtrele
             query = self.db.collection("fall_events")\
                 .where("user_id", "==", user_id)\
                 .order_by("timestamp", direction=firestore.Query.DESCENDING)\
@@ -299,7 +310,6 @@ class FirestoreManager:
             return True
             
         try:
-            # Firestore’dan /fall_events/{eventId}’yi sil
             doc_ref = self.db.collection("fall_events").document(event_id)
             doc_ref.delete()
             logging.info(f"Düşme olayı Firestore’dan silindi: /fall_events/{event_id}")

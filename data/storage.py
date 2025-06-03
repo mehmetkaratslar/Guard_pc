@@ -82,73 +82,49 @@ class StorageManager:
             return None
     
     def _upload_firebase(self, user_id, image, event_id):
-        """Firebase Storage'a yükle."""
         try:
-            # Görüntüyü JPEG formatında byte dizisine dönüştür
+            # Görüntüyü encode et
             encode_param = [cv2.IMWRITE_JPEG_QUALITY, 90]
             success, img_encoded = cv2.imencode('.jpg', image, encode_param)
-            
             if not success:
                 logging.error("Görüntü encode edilemedi")
                 return None
-            
+
             img_bytes = img_encoded.tobytes()
-            
-            # Firebase Storage yolu
             destination_path = f"fall_events/{user_id}/{event_id}.jpg"
             blob = self.bucket.blob(destination_path)
-            
-            # Metadata ekle
-            blob.metadata = {
+
+            # Access token üret
+            import uuid as uuid_lib
+            access_token = str(uuid_lib.uuid4())
+
+            # Metadata'yı güncelle (var olan metadata üzerine ekle)
+            existing_metadata = blob.metadata or {}
+            existing_metadata.update({
                 'user_id': user_id,
                 'event_id': event_id,
                 'upload_time': str(int(time.time())),
-                'content_type': 'image/jpeg'
-            }
-            
+                'content_type': 'image/jpeg',
+                'firebaseStorageDownloadTokens': access_token,
+            })
+            blob.metadata = existing_metadata
+
             # Byte dizisinden yükle
-            blob.upload_from_string(
-                img_bytes,
-                content_type='image/jpeg'
-            )
-            
-            # Access token oluştur (görüntünün tarayıcıda görüntülenebilmesi için)
-            try:
-                import uuid as uuid_lib
-                access_token = str(uuid_lib.uuid4())
-                blob.metadata = blob.metadata or {}
-                blob.metadata['firebaseStorageDownloadTokens'] = access_token
-                blob.patch()
-                
-                # Public URL oluştur
-                project_id = firebase_admin._apps['[DEFAULT]']._project_id
-                bucket_name = self.bucket.name
-                public_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{destination_path.replace('/', '%2F')}?alt=media&token={access_token}"
-                
-                logging.info(f"Ekran görüntüsü Firebase Storage'a yüklendi: {destination_path}")
-                return public_url
-                
-            except Exception as token_error:
-                logging.warning(f"Access token oluşturulamadı: {str(token_error)}")
-                
-                # Fallback: signed URL oluştur
-                try:
-                    from datetime import timedelta
-                    url = blob.generate_signed_url(
-                        version="v4",
-                        expiration=timedelta(days=365),  # 1 yıl geçerli
-                        method="GET"
-                    )
-                    logging.info(f"Signed URL oluşturuldu: {destination_path}")
-                    return url
-                except Exception as signed_error:
-                    logging.error(f"Signed URL oluşturulamadı: {str(signed_error)}")
-                    # En son çare olarak public URL
-                    return f"https://storage.googleapis.com/{self.bucket.name}/{destination_path}"
-            
+            blob.upload_from_string(img_bytes, content_type='image/jpeg')
+            blob.patch()  # Metadata'yı kaydet
+
+            logging.info(f"Blob metadata: {blob.metadata}")
+
+            bucket_name = self.bucket.name
+            public_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{destination_path.replace('/', '%2F')}?alt=media&token={access_token}"
+
+            logging.info(f"Ekran görüntüsü Firebase Storage'a yüklendi: {destination_path}")
+            return public_url
+
         except Exception as e:
             logging.error(f"Firebase Storage yükleme hatası: {str(e)}", exc_info=True)
             return None
+
     
     def delete_screenshot(self, user_id, event_id):
         """Ekran görüntüsünü Firebase Storage'dan veya yerel depolamadan siler.

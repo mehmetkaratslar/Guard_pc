@@ -411,20 +411,26 @@ class GuardApp:
 
         logging.info("YOLOv11 düşme algılama sistemi durduruldu (çoklu kamera).")
 
+
+
+
     def _detection_loop(self, camera):
         """YOLOv11 tabanlı düşme algılama döngüsü - belirli bir kamera için."""
         try:
             error_count = 0
             max_errors = 10
             last_detection_time = 0
-            min_detection_interval = 15
+            min_detection_interval = 10  # 10 saniye minimum aralık
             target_fps = 30
             frame_duration = 1.0 / target_fps
-            model_performance_log_interval = 60
-            last_model_log_time = 0
             
             camera_id = f"camera_{camera.camera_index}"
             logging.info(f"Kamera {camera_id} için YOLOv11 düşme algılama döngüsü başlatıldı")
+            
+            # Model durumunu kontrol et
+            if not self.fall_detector or not self.fall_detector.is_model_loaded:
+                logging.error(f"YOLOv11 modeli yüklü değil! Kamera {camera_id} için algılama başlatılamıyor.")
+                return
             
             while self.system_running:
                 start_time = time.time()
@@ -439,42 +445,48 @@ class GuardApp:
                         time.sleep(0.1)
                         continue
                     
-                    current_time = time.time()
-                    if current_time - last_model_log_time > model_performance_log_interval:
-                        if self.fall_detector and self.fall_detector.is_model_loaded:
-                            model_info = self.fall_detector.get_model_info()
-                            logging.info(f"Kamera {camera_id} YOLOv11 Model Performans: {model_info.get('avg_inference_time', 'N/A')}")
-                        last_model_log_time = current_time
+                    # YOLOv11 ile düşme algılama
+                    is_fall, confidence = self.fall_detector.detect_fall(frame)
                     
-                    is_fall = False
-                    confidence = 0.0
-                    
-                    if self.fall_detector and self.fall_detector.is_model_loaded:
-                        is_fall, confidence = self.fall_detector.detect_fall(frame)
-                        logging.debug(f"Kamera {camera_id} için düşme algılama yapıldı: Düşme={is_fall}, Güven={confidence:.2f}")
-                    
-                    if is_fall and (time.time() - last_detection_time) > min_detection_interval:
+                    # Düşme algılandı ve yeterli süre geçti mi?
+                    if is_fall and confidence > 0 and (time.time() - last_detection_time) > min_detection_interval:
                         last_detection_time = time.time()
-                        screenshot = self.fall_detector.get_detection_visualization(frame) if self.fall_detector else camera.capture_screenshot()
+                        
+                        # Görselleştirilmiş screenshot al
+                        screenshot = self.fall_detector.get_detection_visualization(frame)
+                        
+                        # UI thread'de işle
                         self.root.after(0, self._handle_fall_detection, screenshot, confidence, camera_id)
+                        
+                        logging.info(f"🚨 Kamera {camera_id} DÜŞME ALGILANDI! Güven: {confidence:.4f}")
                     
+                    # FPS kontrolü
                     elapsed_time = time.time() - start_time
                     sleep_time = max(0, frame_duration - elapsed_time)
-                    time.sleep(sleep_time)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+                    
                     error_count = 0
                     
                 except Exception as e:
                     error_count += 1
                     logging.error(f"Kamera {camera_id} düşme algılama döngüsünde hata ({error_count}/{max_errors}): {str(e)}")
+                    
                     if error_count >= max_errors:
                         logging.error(f"Kamera {camera_id} maksimum hata sayısına ulaştırıldı. Algılama durduruluyor.")
                         self.root.after(0, self.stop_detection)
                         break
+                        
                     time.sleep(1.0)
             
         except Exception as e:
             logging.error(f"Kamera {camera_id} algılama döngüsü tamamen başarısız: {str(e)}")
             self.root.after(0, self.stop_detection)
+
+
+
+
+
 
     def _handle_fall_detection(self, screenshot, confidence, camera_id):
         """YOLOv11 ile düşme algılandığında çağrılır."""
