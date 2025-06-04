@@ -147,15 +147,11 @@ class GuardApp:
             self.cameras = []
             for config in CAMERA_CONFIGS:
                 camera = Camera(camera_index=config['index'], backend=config['backend'])
-                if camera._validate_camera():
+                if camera._validate_camera_with_fallback():
                     self.cameras.append(camera)
                     logging.info(f"Kamera eklendi: {config['name']} (indeks: {config['index']}, backend: {config['backend']})")
                 else:
                     logging.warning(f"Kamera {config['index']} başlatılamadı, listeye eklenmedi.")
-            
-            if not self.cameras:
-                logging.error("Hiçbir kamera bulunamadı!")
-                messagebox.showerror("Kamera Hatası", "Hiçbir kamera bulunamadı. Lütfen kamera bağlantınızı kontrol edin.")
             
             self.fall_detector = FallDetector.get_instance()
             model_info = self.fall_detector.get_model_info()
@@ -183,6 +179,10 @@ class GuardApp:
             )
             self.fall_detector = None
             self.cameras = []
+
+
+
+
 
     def _show_error_screen(self):
         """Hata ekranını gösterir."""
@@ -414,23 +414,37 @@ class GuardApp:
 
 
 
+# YOLOv11 Pose Estimation + DeepSORT tabanlı düşme algılama
+# =======================================================================================
+
     def _detection_loop(self, camera):
-        """YOLOv11 tabanlı düşme algılama döngüsü - belirli bir kamera için."""
+        """
+        YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş düşme algılama döngüsü.
+        
+        Args:
+            camera (Camera): İşlenecek kamera nesnesi
+        """
         try:
             error_count = 0
             max_errors = 10
             last_detection_time = 0
-            min_detection_interval = 10  # 10 saniye minimum aralık
+            min_detection_interval = 5  # 5 saniye minimum aralık (false positive kontrolü)
             target_fps = 30
             frame_duration = 1.0 / target_fps
             
             camera_id = f"camera_{camera.camera_index}"
-            logging.info(f"Kamera {camera_id} için YOLOv11 düşme algılama döngüsü başlatıldı")
+            logging.info(f"🎥 Kamera {camera_id} için YOLOv11 Pose + DeepSORT döngüsü başlatıldı")
             
             # Model durumunu kontrol et
             if not self.fall_detector or not self.fall_detector.is_model_loaded:
-                logging.error(f"YOLOv11 modeli yüklü değil! Kamera {camera_id} için algılama başlatılamıyor.")
+                logging.error(f"❌ YOLOv11 modeli yüklü değil! Kamera {camera_id} için algılama başlatılamıyor.")
                 return
+            
+            # İstatistik değişkenleri
+            frame_count = 0
+            detection_count = 0
+            fall_detection_count = 0
+            session_start = time.time()
             
             while self.system_running:
                 start_time = time.time()
@@ -441,24 +455,81 @@ class GuardApp:
                     
                     frame = camera.get_frame()
                     if frame is None or frame.size == 0:
-                        logging.warning(f"Kamera {camera_id} geçerli çerçeve alınamadı.")
+                        logging.warning(f"⚠️ Kamera {camera_id} geçerli çerçeve alınamadı.")
                         time.sleep(0.1)
                         continue
                     
-                    # YOLOv11 ile düşme algılama
-                    is_fall, confidence = self.fall_detector.detect_fall(frame)
+                    frame_count += 1
+                    
+                    # YOLOv11 Pose Estimation + DeepSORT
+                    annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
+                    
+                    # Detection sayısını güncelle
+                    if tracks:
+                        detection_count += len(tracks)
+                        logging.debug(f"📊 Kamera {camera_id}: {len(tracks)} kişi tespit edildi")
+                    
+                    # Düşme algılama - Gelişmiş analiz
+                    is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
                     
                     # Düşme algılandı ve yeterli süre geçti mi?
-                    if is_fall and confidence > 0 and (time.time() - last_detection_time) > min_detection_interval:
-                        last_detection_time = time.time()
+                    current_time = time.time()
+                    if is_fall and confidence > 0.6 and (current_time - last_detection_time) > min_detection_interval:
+                        last_detection_time = current_time
+                        fall_detection_count += 1
                         
-                        # Görselleştirilmiş screenshot al
-                        screenshot = self.fall_detector.get_detection_visualization(frame)
+                        # Pose analizi bilgilerini topla
+                        pose_analysis = {}
+                        if track_id in self.fall_detector.person_tracks:
+                            person_track = self.fall_detector.person_tracks[track_id]
+                            if person_track.has_valid_pose():
+                                valid_keypoints = np.sum(person_track.latest_keypoint_confs > 0.3)
+                                pose_analysis = {
+                                    'valid_points': int(valid_keypoints),
+                                    'total_points': 17,
+                                    'stability': person_track.get_pose_stability(),
+                                    'keypoint_confidence': float(np.mean(person_track.latest_keypoint_confs))
+                                }
+                        
+                        # Gelişmiş ekran görüntüsü al (pose points dahil)
+                        screenshot = annotated_frame.copy()
+                        
+                        # Zaman damgası ve analiz bilgileri ekle
+                        timestamp_text = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        analysis_text = f"YOLOv11 Pose | ID:{track_id} | Confidence:{confidence:.3f}"
+                        pose_text = f"Pose Points: {pose_analysis.get('valid_points', 0)}/17"
+                        
+                        # Metinleri screenshot'a ekle
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        cv2.putText(screenshot, timestamp_text, (10, 30), font, 0.8, (255, 255, 255), 2)
+                        cv2.putText(screenshot, analysis_text, (10, 60), font, 0.7, (0, 255, 255), 2)
+                        cv2.putText(screenshot, pose_text, (10, 90), font, 0.7, (255, 0, 255), 2)
+                        
+                        # FALL DETECTED uyarısı
+                        cv2.putText(screenshot, "*** FALL DETECTED ***", (frame.shape[1]//2-150, 50), 
+                                font, 1.2, (0, 0, 255), 3)
                         
                         # UI thread'de işle
-                        self.root.after(0, self._handle_fall_detection, screenshot, confidence, camera_id)
+                        self.root.after(0, self._handle_fall_detection, screenshot, confidence, camera_id, pose_analysis)
                         
-                        logging.info(f"🚨 Kamera {camera_id} DÜŞME ALGILANDI! Güven: {confidence:.4f}")
+                        logging.info(f"🚨 Kamera {camera_id} YOLOv11 DÜŞME ALGILANDI!")
+                        logging.info(f"   📍 Takip ID: {track_id}")
+                        logging.info(f"   📊 Güven Skoru: {confidence:.4f}")
+                        logging.info(f"   🤸 Pose Noktaları: {pose_analysis.get('valid_points', 0)}/17")
+                        logging.info(f"   🎯 Kararlılık: {pose_analysis.get('stability', 0):.3f}")
+                    
+                    # Her 100 frame'de bir istatistik logla
+                    if frame_count % 100 == 0:
+                        elapsed_time = current_time - session_start
+                        avg_fps = frame_count / elapsed_time if elapsed_time > 0 else 0
+                        detection_rate = detection_count / frame_count if frame_count > 0 else 0
+                        
+                        logging.info(f"📈 Kamera {camera_id} İstatistikleri:")
+                        logging.info(f"   🎬 İşlenen Frame: {frame_count}")
+                        logging.info(f"   👥 Toplam Tespit: {detection_count}")
+                        logging.info(f"   🚨 Düşme Uyarısı: {fall_detection_count}")
+                        logging.info(f"   📊 Ortalama FPS: {avg_fps:.1f}")
+                        logging.info(f"   🎯 Tespit Oranı: {detection_rate:.2f} kişi/frame")
                     
                     # FPS kontrolü
                     elapsed_time = time.time() - start_time
@@ -470,17 +541,27 @@ class GuardApp:
                     
                 except Exception as e:
                     error_count += 1
-                    logging.error(f"Kamera {camera_id} düşme algılama döngüsünde hata ({error_count}/{max_errors}): {str(e)}")
+                    logging.error(f"❌ Kamera {camera_id} düşme algılama döngüsünde hata ({error_count}/{max_errors}): {str(e)}")
                     
                     if error_count >= max_errors:
-                        logging.error(f"Kamera {camera_id} maksimum hata sayısına ulaştırıldı. Algılama durduruluyor.")
+                        logging.error(f"💥 Kamera {camera_id} maksimum hata sayısına ulaştı. Algılama durduruluyor.")
                         self.root.after(0, self.stop_detection)
                         break
                         
                     time.sleep(1.0)
             
+            # Döngü sonlandırılınca istatistikleri logla
+            total_time = time.time() - session_start
+            logging.info(f"🏁 Kamera {camera_id} algılama döngüsü tamamlandı:")
+            logging.info(f"   ⏱️ Toplam Süre: {total_time:.1f} saniye")
+            logging.info(f"   🎬 İşlenen Frame: {frame_count}")
+            logging.info(f"   👥 Toplam Tespit: {detection_count}")
+            logging.info(f"   🚨 Düşme Uyarısı: {fall_detection_count}")
+            if total_time > 0:
+                logging.info(f"   📊 Ortalama FPS: {frame_count/total_time:.1f}")
+            
         except Exception as e:
-            logging.error(f"Kamera {camera_id} algılama döngüsü tamamen başarısız: {str(e)}")
+            logging.error(f"💥 Kamera {camera_id} algılama döngüsü tamamen başarısız: {str(e)}")
             self.root.after(0, self.stop_detection)
 
 
@@ -488,7 +569,107 @@ class GuardApp:
 
 
 
-    def _handle_fall_detection(self, screenshot, confidence, camera_id):
+
+    def _handle_fall_detection(self, screenshot, confidence, camera_id, pose_analysis=None):
+        """
+        YOLOv11 Pose Estimation ile düşme algılandığında çağrılır.
+        
+        Args:
+            screenshot (np.ndarray): Pose points dahil ekran görüntüsü
+            confidence (float): Düşme güven skoru
+            camera_id (str): Kamera ID'si
+            pose_analysis (dict): Pose analizi bilgileri
+        """
+        try:
+            logging.info(f"🎯 Kamera {camera_id} YOLOv11 Pose Düşme Algılandı! Olasılık: {confidence:.4f}")
+            event_id = str(uuid.uuid4())
+            
+            # Storage'a görüntü yükle ve URL al
+            image_url = self.storage_manager.upload_screenshot(self.current_user["localId"], screenshot, event_id)
+            if not image_url:
+                logging.error(f"❌ Kamera {camera_id} görüntü yüklenemedi, olay kaydedilmeyecek.")
+                return
+            
+            # Model ve pose bilgilerini al
+            model_info = self.fall_detector.get_model_info() if self.fall_detector else {}
+            
+            # Gelişmiş olay verilerini oluştur
+            event_data = {
+                "id": event_id,
+                "user_id": self.current_user["localId"],
+                "timestamp": time.time(),
+                "confidence": float(confidence),
+                "image_url": image_url,
+                "detection_method": "YOLOv11_Pose_DeepSORT",
+                "camera_id": camera_id,
+                "model_info": {
+                    "model_name": model_info.get("model_name", "YOLOv11"),
+                    "model_version": model_info.get("model_version", "unknown"),
+                    "device": model_info.get("device", "unknown"),
+                    "confidence_threshold": model_info.get("confidence_threshold", 0.5),
+                    "keypoints_count": model_info.get("keypoints_count", 17)
+                },
+                "pose_analysis": pose_analysis or {},
+                "detection_metadata": {
+                    "frame_size": model_info.get("frame_size", 640),
+                    "processing_time": time.time(),
+                    "algorithm": "pose_estimation_fall_detection",
+                    "version": "2.0"
+                }
+            }
+            
+            # Pose analizi detaylarını logla
+            if pose_analysis:
+                logging.info(f"🤸 Pose Analizi Detayları:")
+                logging.info(f"   📍 Geçerli Nokta: {pose_analysis.get('valid_points', 0)}/17")
+                logging.info(f"   🎯 Kararlılık: {pose_analysis.get('stability', 0):.3f}")
+                logging.info(f"   📊 Keypoint Güveni: {pose_analysis.get('keypoint_confidence', 0):.3f}")
+            
+            # Firestore'a /fall_events/{eventId} yoluna kaydet
+            save_result = self.db_manager.save_fall_event(event_data)
+            if not save_result:
+                logging.error(f"❌ Kamera {camera_id} düşme olayı veritabanına kaydedilemedi!")
+            else:
+                logging.info(f"✅ Kamera {camera_id} YOLOv11 düşme olayı veritabanına kaydedildi: {event_id}")
+                logging.debug(f"🔗 Kayıt detayları: user_id={self.current_user['localId']}, image_url={image_url}")
+
+            # Gelişmiş bildirim gönder
+            if self.notification_manager:
+                user_data = self.db_manager.get_user_data(self.current_user["localId"])
+                if user_data:
+                    self.notification_manager.update_user_data(user_data)
+                
+                # Bildirim verilerine pose analizi ekle
+                notification_event_data = event_data.copy()
+                notification_event_data['pose_summary'] = self._create_pose_summary(pose_analysis)
+                
+                notification_result = self.notification_manager.send_notifications(notification_event_data, screenshot)
+                if not notification_result:
+                    logging.error(f"❌ Kamera {camera_id} bildirimleri gönderilemedi!")
+                else:
+                    logging.info(f"📧 Kamera {camera_id} YOLOv11 düşme bildirimleri başarıyla gönderildi")
+
+            # Dashboard'ı güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                try:
+                    if not self.dashboard_frame.is_destroyed and self.dashboard_frame.winfo_exists():
+                        # Gelişmiş event data ile dashboard güncelle
+                        enhanced_event_data = event_data.copy()
+                        enhanced_event_data['display_summary'] = self._create_display_summary(event_data, pose_analysis)
+                        
+                        self.dashboard_frame.update_fall_detection(screenshot, confidence, enhanced_event_data)
+                        logging.info(f"🖥️ Kamera {camera_id} dashboard başarıyla güncellendi")
+                    else:
+                        logging.warning("⚠️ Dashboard widget mevcut değil, güncelleme atlandı")
+                except Exception as e:
+                    logging.error(f"❌ Kamera {camera_id} dashboard güncellenirken hata: {str(e)}")
+            else:
+                logging.warning("⚠️ Dashboard referansı bulunamadı!")
+
+        except Exception as e:
+            logging.error(f"💥 Kamera {camera_id} YOLOv11 düşme olayı işlenirken hata: {str(e)}")
+
+
         """YOLOv11 ile düşme algılandığında çağrılır."""
         try:
             logging.info(f"Kamera {camera_id} YOLOv11 Düşme Algılandı! Olasılık: {confidence:.4f}")
@@ -546,6 +727,105 @@ class GuardApp:
 
         except Exception as e:
             logging.error(f"Kamera {camera_id} YOLOv11 düşme olayı işlenirken hata: {str(e)}")
+
+    def _create_pose_summary(self, pose_analysis):
+        """
+        Pose analizi için özet oluşturur.
+        
+        Args:
+            pose_analysis (dict): Pose analizi verileri
+            
+        Returns:
+            str: Pose özeti
+        """
+        if not pose_analysis:
+            return "Pose analizi mevcut değil"
+        
+        valid_points = pose_analysis.get('valid_points', 0)
+        total_points = pose_analysis.get('total_points', 17)
+        stability = pose_analysis.get('stability', 0)
+        confidence = pose_analysis.get('keypoint_confidence', 0)
+        
+        # Pose kalitesi değerlendirmesi
+        if valid_points >= 15:
+            quality = "Mükemmel"
+        elif valid_points >= 12:
+            quality = "İyi"
+        elif valid_points >= 8:
+            quality = "Orta"
+        else:
+            quality = "Düşük"
+        
+        # Kararlılık değerlendirmesi
+        if stability >= 0.8:
+            stability_desc = "Çok Kararlı"
+        elif stability >= 0.6:
+            stability_desc = "Kararlı"
+        elif stability >= 0.4:
+            stability_desc = "Orta"
+        else:
+            stability_desc = "Kararsız"
+        
+        return f"{quality} ({valid_points}/{total_points} nokta, {stability_desc}, %{confidence*100:.1f} güven)"
+    
+
+
+    def _create_display_summary(self, event_data, pose_analysis):
+        """
+        Dashboard görüntüleme için özet oluşturur.
+        
+        Args:
+            event_data (dict): Olay verileri
+            pose_analysis (dict): Pose analizi
+            
+        Returns:
+            dict: Görüntüleme özeti
+        """
+        summary = {
+            'detection_method': 'YOLOv11 Pose Estimation',
+            'tracking_method': 'DeepSORT',
+            'confidence_level': 'Yüksek' if event_data.get('confidence', 0) > 0.8 else 'Orta',
+            'pose_quality': self._get_pose_quality_level(pose_analysis),
+            'timestamp_formatted': datetime.datetime.fromtimestamp(
+                event_data.get('timestamp', time.time())
+            ).strftime('%H:%M:%S'),
+            'model_version': event_data.get('model_info', {}).get('model_name', 'Unknown')
+        }
+        
+        return summary
+
+
+    def _get_pose_quality_level(self, pose_analysis):
+        """
+        Pose kalite seviyesini belirler.
+        
+        Args:
+            pose_analysis (dict): Pose analizi
+            
+        Returns:
+            str: Kalite seviyesi
+        """
+        if not pose_analysis:
+            return "Bilinmiyor"
+        
+        valid_points = pose_analysis.get('valid_points', 0)
+        stability = pose_analysis.get('stability', 0)
+        
+        # Kombinasyon değerlendirmesi
+        if valid_points >= 15 and stability >= 0.7:
+            return "Mükemmel"
+        elif valid_points >= 12 and stability >= 0.5:
+            return "İyi"
+        elif valid_points >= 8 and stability >= 0.3:
+            return "Orta"
+        else:
+            return "Düşük"
+
+
+
+
+
+
 
     def logout(self):
         """Kullanıcı çıkışı yapar."""
