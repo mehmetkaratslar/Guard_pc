@@ -33,7 +33,7 @@ MODEL_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), 
     "resources", 
     "models", 
-    "fall_model.pt"  # YOLOv11 model dosyası
+    "yolo11l-pose.pt"  # YOLOv11 model dosyası
 )
 CONFIDENCE_THRESHOLD = 0.50  # YOLOv11 için güven eşiği
 

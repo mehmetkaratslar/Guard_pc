@@ -1,9 +1,11 @@
 # =======================================================================================
-# Dosya Adı: main.py
-# Konumu: guard_pc_app/main.py
-# Açıklama: Guard düşme algılama sisteminin ana giriş noktası ve başlatıcısı
-# 
-# Bağlantılı Dosyalar:
+# 📄 Dosya Adı: main.py
+# 📁 Konum: guard_pc_app/main.py
+# 📌 Açıklama:
+# Guard düşme algılama sisteminin ana giriş noktası ve başlatıcısı.
+# Loglama, Flask sunucusu, Tkinter penceresi, açılış ekranı ve ana uygulamayı koordine eder.
+#
+# 🔗 Bağlantılı Dosyalar:
 # - splash.py         : Uygulama açılış ekranını yönetir
 # - ui/app.py         : Ana uygulama arayüz sınıfını içerir
 # - ui/login.py       : Kullanıcı giriş ekranını yönetir
@@ -54,7 +56,11 @@ def main():
         )
         flask_thread.daemon = True
         flask_thread.start()
-        logging.info("[TAMAM] Flask sunucusu thread olarak başlatıldı: http://192.168.56.141:5000")
+        # Flask thread'inin başlatıldığını kontrol et
+        if flask_thread.is_alive():
+            logging.info("[TAMAM] Flask sunucusu thread olarak başlatıldı: http://192.168.56.141:5000")
+        else:
+            logging.error("[HATA] Flask sunucusu başlatılamadı!")
 
         # ===== ANA PENCERE OLUŞTURMA =====
         root = tk.Tk()
@@ -107,6 +113,7 @@ def main():
         logging.info("[BASLA] Ana uygulama başlatılıyor...")
         # GuardApp sınıfından ana uygulama nesnesini oluştur
         app = GuardApp(root)
+        logging.info("[TAMAM] GuardApp başlatıldı")
         
         # ===== TKINTER ANA DÖNGÜSÜ =====
         logging.info("[BASLA] Tkinter ana döngüsü başlatılıyor...")
@@ -159,15 +166,16 @@ if __name__ == "__main__":
     # ===== BAĞIMLILIK KONTROLÜ =====
     # Kritik bağımlılıkların yüklü olup olmadığını kontrol et
     required_modules = [
-        "PIL",      # Pillow - görüntü işleme
-        "cv2",      # OpenCV - görüntü işleme ve bilgisayarlı görü
-        "numpy",    # NumPy - sayısal hesaplamalar
-        "pyrebase", # Pyrebase - Firebase bağlantısı
-        "requests", # Requests - HTTP istekleri
+        "PIL",            # Pillow - görüntü işleme
+        "cv2",            # OpenCV - görüntü işleme ve bilgisayarlı görü
+        "numpy",          # NumPy - sayısal hesaplamalar
+        "pyrebase",       # Pyrebase - Firebase bağlantısı
+        "requests",       # Requests - HTTP istekleri
         "firebase_admin", # Firebase Admin SDK
-        "torch",    # PyTorch - derin öğrenme modeli
-        "flask",    # Flask - web sunucusu
-        "flask_cors"  # Flask-CORS - CORS desteği
+        "torch",          # PyTorch - derin öğrenme modeli
+        "flask",          # Flask - web sunucusu
+        "flask_cors",     # Flask-CORS - CORS desteği
+        "deep_sort_realtime"  # DeepSORT - insan takibi
     ]
     
     missing_modules = []

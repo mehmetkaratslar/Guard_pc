@@ -2,23 +2,25 @@
 # 📄 Dosya Adı: dashboard.py
 # 📁 Konum: guard_pc_app/ui/dashboard.py
 # 📌 Açıklama:
-# Ultra modern ve profesyonel düşme algılama sistemi arayüzü (UI) bileşeni.
-# Tasarım modernize edildi: Daha şık gradientler, nöromorfik efektler, akıcı animasyonlar.
-# Çoklu kamera desteği güncellendi: Camera sınıfı ile doğrudan entegrasyon.
+# Ultra modern ve profesyonel insan takibi ve düşme algılama sistemi arayüzü (UI) bileşeni.
+# Tasarım modernize edildi: Şık gradientler, nöromorfik efektler, akıcı animasyonlar.
+# Çoklu kamera desteği: Camera sınıfı ile entegrasyon.
+# YOLOv11 pose estimation (yolo11l-pose.pt) ile insan takibi (DeepSORT) ve düşme algılama.
+# Sol panele "Son Düşme Olayı" kartı eklendi (zaman, güven skoru, takip ID'si).
 #
 # Özellikler:
 # - Premium modern tasarım: Gelişmiş gradient arka planlar, nöromorfik kartlar, dinamik renk şemaları
 # - Modern animasyonlar: Geçiş, nabız, canlılık efektleri
 # - Gelişmiş kamera görüntüleme: Çoklu kamera önizleme, FPS, yapay zeka odaklı görseller
-# - Ayrıntılı olay izleme: Detay, risk, trend ve görsel raporlama
-# - Bildirim merkezi: Anlık güncellemeler ve kayıtlar
+# - Ayrıntılı olay izleme: Düşme olayları için zaman, güven ve takip ID'si
+# - Bildirim merkezi: Anlık düşme bildirimleri
 # - Tema desteği: Koyu/açık mod ve özelleştirilebilir renkler
 #
-# Bağlantılı Dosyalar:
+# 🔗 Bağlantılı Dosyalar:
 # - app.py, login.py, settings.py, history.py (UI yönlendirme)
 # - config/settings.py, utils/logger.py (tema ve loglama)
 # - core/camera.py (çoklu kamera yönetimi)
-# - core/fall_detection.py (YOLOv11 düşme algılama)
+# - core/fall_detection.py (YOLOv11 insan takibi ve düşme algılama)
 # =======================================================================================
 
 import tkinter as tk
@@ -32,20 +34,22 @@ import time
 import datetime
 import os
 import math
+import winsound
+from core.fall_detection import FallDetector  # İnsan takibi ve düşme algılama için import
 
 class DashboardFrame(tk.Frame):
     """
-    Ultra modern ve profesyonel düşme algılama sistemi arayüzü (main dashboard frame).
+    Ultra modern ve profesyonel insan takibi ve düşme algılama sistemi arayüzü.
     """
 
     def __init__(self, parent, user, cameras, start_fn, stop_fn, settings_fn, history_fn, logout_fn):
         """
-        DashboardFrame başlatıcı (constructor) fonksiyonu.
+        DashboardFrame başlatıcı fonksiyonu.
 
         Args:
             parent (tk.Frame): Ana container
             user (dict): Kullanıcı bilgileri
-            cameras (list): Kamera örneklerinin listesi (çoklu kamera desteği için)
+            cameras (list): Kamera örneklerinin listesi
             start_fn (callable): Algılama başlat fonksiyonu
             stop_fn (callable): Algılama durdur fonksiyonu
             settings_fn (callable): Ayarlar ekranı fonksiyonu
@@ -54,7 +58,7 @@ class DashboardFrame(tk.Frame):
         """
         super().__init__(parent)
         self.user = user
-        self.cameras = cameras  # Çoklu kamera desteği için Camera örnekleri
+        self.cameras = cameras
         self.start_fn = start_fn
         self.stop_fn = stop_fn
         self.settings_fn = settings_fn
@@ -63,60 +67,43 @@ class DashboardFrame(tk.Frame):
 
         # Durumlar
         self.system_running = False
-        self.last_frames = {f"camera_{cam.camera_index}": None for cam in cameras}  # Her kamera için son çerçeve
-        self.last_detection = None
+        self.last_frames = {f"camera_{cam.camera_index}": None for cam in cameras}
         self.last_detection_time = None
-        self.last_detection_confidence = None
+        self.last_detection_confidence = 0.0
+        self.last_track_id = None
         self.update_id = None
         self.animation_id = None
         self.pulse_value = 0
         self.is_destroyed = False
         self.bind("<Destroy>", self._on_widget_destroy)
 
-        # Renk teması (daha modern ve premium tonlarla güncellendi)
+        # Renk teması
         self.colors = {
-            'primary': "#6B46C1",  # Yumuşak mor tonu
-            'secondary': "#FF6B81",  # Canlı mercan
-            'success': "#38B2AC",  # Modern turkuaz
-            'warning': "#F6AD55",  # Yumuşak amber
-            'danger': "#E53E3E",   # Canlı kırmızı
-            'info': "#3182CE",     # Derin mavi
-            'dark': "#1A202C",     # Koyu gri
-            'light': "#F7FAFC",    # Çok yumuşak beyaz
-            'card': "#FFFFFF",     # Beyaz kartlar
-            'text': "#1A202C",     # Koyu gri
-            'text_secondary': "#718096",  # Hafif gri
-            'border': "#E2E8F0",   # Yumuşak sınır
-            'highlight': "#EDF2F7",  # Hafif gri vurgu
-            'gradient_start': "#B794F4",  # Açık mor gradient başı
-            'gradient_end': "#6B46C1"      # Mor gradient sonu
+            'primary': "#6B46C1", 'secondary': "#FF6B81", 'success': "#38B2AC",
+            'warning': "#F6AD55", 'danger': "#E53E3E", 'info': "#3182CE",
+            'dark': "#1A202C", 'light': "#F7FAFC", 'card': "#FFFFFF",
+            'text': "#1A202C", 'text_secondary': "#718096", 'border': "#E2E8F0",
+            'highlight': "#EDF2F7", 'gradient_start': "#B794F4", 'gradient_end': "#6B46C1"
         }
-
-        # Koyu mod için alternatif renkler (güncellendi)
         self.dark_colors = {
-            'primary': "#9F7AEA",  # Açık mor
-            'secondary': "#F687B3",  # Yumuşak mercan
-            'success': "#4FD1C5",  # Koyu turkuaz
-            'warning': "#F6AD55",  # Amber
-            'danger': "#F56565",   # Hafif kırmızı
-            'info': "#63B3ED",     # Açık mavi
-            'dark': "#171923",     # Çok koyu gri
-            'light': "#2D3748",    # Koyu gri
-            'card': "#1A202C",     # Koyu kartlar
-            'text': "#E2E8F0",     # Açık gri
-            'text_secondary': "#A0AEC0",  # Hafif gri
-            'border': "#4A5568",   # Koyu sınır
-            'highlight': "#5A67D8",  # Koyu mavi vurgu
-            'gradient_start': "#D6BCFA",  # Açık mor gradient başı
-            'gradient_end': "#9F7AEA"      # Mor gradient sonu
+            'primary': "#9F7AEA", 'secondary': "#F687B3", 'success': "#4FD1C5",
+            'warning': "#F6AD55", 'danger': "#F56565", 'info': "#63B3ED",
+            'dark': "#171923", 'light': "#2D3748", 'card': "#1A202C",
+            'text': "#E2E8F0", 'text_secondary': "#A0AEC0", 'border': "#4A5568",
+            'highlight': "#5A67D8", 'gradient_start': "#D6BCFA", 'gradient_end': "#9F7AEA"
         }
 
-        # Çoklu kamera için durumlar
-        self.current_camera_id = f"camera_{cameras[0].camera_index}" if cameras else None  # Varsayılan ilk kamera
-        self.frame_locks = {f"camera_{cam.camera_index}": threading.Lock() for cam in cameras}  # Her kamera için kilit
-        self.camera_labels = {}  # Her sekme için kamera etiketi
-        self.fps_vars = {f"camera_{cam.camera_index}": tk.StringVar(value="0 FPS") for cam in cameras}  # Her kamera için FPS
+        # Kamera durumları
+        self.current_camera_id = f"camera_{cameras[0].camera_index}" if cameras else None
+        self.frame_locks = {f"camera_{cam.camera_index}": threading.Lock() for cam in cameras}
+        self.camera_labels = {}
+        self.fps_vars = {f"camera_{cam.camera_index}": tk.StringVar(value="0 FPS") for cam in cameras}
         self.live_indicators = {}
+
+        # Son düşme olayı değişkenleri
+        self.event_time_var = tk.StringVar(value="Zaman: -")
+        self.event_conf_var = tk.StringVar(value="Güven: -")
+        self.event_id_var = tk.StringVar(value="ID: -")
 
         # İkonları yükle
         self.load_icons()
@@ -129,7 +116,6 @@ class DashboardFrame(tk.Frame):
 
     def load_icons(self):
         """Gerekli ikonları yükler veya eksikse yer tutucu ekler."""
-        # Mevcut fonksiyon korundu
         self.icons = {}
         icon_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "icons")
         icons_to_load = [
@@ -151,7 +137,6 @@ class DashboardFrame(tk.Frame):
 
     def _create_placeholder_icon(self, name):
         """Eksik ikonlar için basit bir yer tutucu ikonu çizer."""
-        # Mevcut fonksiyon korundu
         img = Image.new('RGBA', (24, 24), (255, 255, 255, 0))
         draw = ImageDraw.Draw(img)
         color = self.colors['primary']
@@ -180,7 +165,7 @@ class DashboardFrame(tk.Frame):
 
     def _create_ui(self):
         """Tüm ana UI bileşenlerini oluşturur."""
-        # Tasarım modernize edildi: Daha şık arka plan
+        # Ana çerçeve arka planı
         self.configure(bg=self.colors['light'])
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=3)
@@ -192,35 +177,33 @@ class DashboardFrame(tk.Frame):
 
     def _create_header(self):
         """Modern gradient başlık çubuğu ve kullanıcı bilgileri oluşturur."""
-        # Tasarım güncellendi: Daha akıcı gradient, gölgeli efekt
+        # Header canvas'ı gradient arka plan ile
         header = tk.Canvas(self, height=70, highlightthickness=0, bg=self.colors['light'])
         self._draw_gradient(header, self.colors['gradient_start'], self.colors['gradient_end'], width=2000, height=70)
         header.grid(row=0, column=0, columnspan=2, sticky="new")
-        self._draw_gradient(header, self.colors['gradient_start'], self.colors['gradient_end'], width=2000, height=70)
-        header.create_rectangle(0, 68, 2000, 70, fill="#000000", outline="")   # düz siyah
+        header.create_rectangle(0, 68, 2000, 70, fill="#000000", outline="")
 
-
-        # Logo
-        logo_frame = tk.Frame(header, bg="blue", bd=0, highlightthickness=0) 
+        # Logo çerçevesi
+        logo_frame = tk.Frame(header, bg=self.colors['light'], bd=0, highlightthickness=0)
         logo_frame.place(relx=0, rely=0.5, x=25, anchor="w")
         if "logo" in self.icons:
-            tk.Label(logo_frame, image=self.icons["logo"], bg="white").pack(side=tk.LEFT, padx=12)
+            tk.Label(logo_frame, image=self.icons["logo"], bg=self.colors['light']).pack(side=tk.LEFT, padx=12)
         tk.Label(
             logo_frame, text="Guard",
-            font=("Roboto", 24, "bold"), fg="#eaeaea", bg="blue"
+            font=("Roboto", 24, "bold"), fg="#ffffff", bg=self.colors['light']
         ).pack(side=tk.LEFT)
 
-        # Kullanıcı ve çıkış
-        user_frame = tk.Frame(header, bg="white")
+        # Kullanıcı ve çıkış çerçevesi
+        user_frame = tk.Frame(header, bg=self.colors['light'])
         user_frame.place(relx=1, rely=0.5, x=-25, anchor="e")
         if "user" in self.icons:
-            tk.Label(user_frame, image=self.icons["user"], bg="white").pack(side=tk.LEFT, padx=10)
+            tk.Label(user_frame, image=self.icons["user"], bg=self.colors['light']).pack(side=tk.LEFT, padx=10)
         tk.Label(
             user_frame, text=self.user.get('displayName', 'Kullanıcı'),
-            font=("Roboto", 14, "bold"), fg="#ef0909", bg="white"
+            font=("Helvetica", 14, "bold"), fg="#ffffff", bg=self.colors['light']
         ).pack(side=tk.LEFT, padx=20)
         logout_btn = tk.Button(
-            user_frame, text="Çıkış Yap", font=("Roboto", 12, "bold"),
+            user_frame, text="Çıkış Yap", font=("Helvetica", 12, "bold"),
             bg=self.colors['danger'], fg="#ffffff", relief=tk.FLAT,
             padx=15, pady=8, command=self.logout_fn,
             activebackground="#C62828", activeforeground="#ffffff", cursor="hand2"
@@ -232,7 +215,7 @@ class DashboardFrame(tk.Frame):
         logout_btn.bind("<Leave>", lambda e: logout_btn.config(bg=self.colors['danger']))
 
     def _create_left_panel(self):
-        """Sistem kontrolü, menü, son olay ve kart UI paneli."""
+        """Sistem kontrolü, menü ve son düşme olayı paneli."""
         left_panel = tk.Frame(self, bg=self.colors['light'])
         left_panel.grid(row=1, column=0, sticky="nsew", padx=25, pady=25)
         left_panel.columnconfigure(0, weight=1)
@@ -245,14 +228,14 @@ class DashboardFrame(tk.Frame):
         camera_select_frame = tk.Frame(control_card, bg=self.colors['card'])
         camera_select_frame.pack(fill=tk.X, pady=8)
         tk.Label(
-            camera_select_frame, text="Kamera:", font=("Roboto", 12, "bold"),
+            camera_select_frame, text="Kamera:", font=("Helvetica", 12, "bold"),
             fg=self.colors['text'], bg=self.colors['card']
         ).pack(side=tk.LEFT, padx=12)
         self.camera_var = tk.StringVar(value=self.current_camera_id or "Kamera Seç")
         camera_menu = ttk.Combobox(
             camera_select_frame, textvariable=self.camera_var,
             values=[f"camera_{cam.camera_index}" for cam in self.cameras],
-            state="readonly", width=20, font=("Roboto", 11)
+            state="readonly", width=20, font=("Arial", 11)
         )
         camera_menu.pack(side=tk.LEFT, padx=12)
         camera_menu.bind("<<ComboboxSelected>>", self._on_camera_select)
@@ -268,7 +251,7 @@ class DashboardFrame(tk.Frame):
         self.status_indicator = self.status_canvas.create_oval(1, 1, 11, 11, fill=self.colors['danger'], outline="")
         tk.Label(
             status_container, textvariable=self.status_var,
-            font=("Roboto", 16, "bold"), fg=self.colors['danger'], bg=self.colors['card'], padx=8
+            font=("Helvetica", 16, "bold"), fg=self.colors['danger'], bg=self.colors['card'], padx=8
         ).pack(side=tk.LEFT)
 
         # Başlat/Durdur butonu
@@ -276,7 +259,7 @@ class DashboardFrame(tk.Frame):
         button_frame.pack(fill=tk.X)
         self.control_var = tk.StringVar(value="Sistemi Başlat")
         self.control_button = tk.Button(
-            button_frame, textvariable=self.control_var, font=("Roboto", 14, "bold"),
+            button_frame, textvariable=self.control_var, font=("Helvetica", 14, "bold"),
             bg=self.colors['success'], fg="#ffffff", relief=tk.FLAT,
             padx=20, pady=12, command=self._toggle_system,
             activebackground="#2C7A7B", activeforeground="#ffffff", cursor="hand2"
@@ -297,14 +280,30 @@ class DashboardFrame(tk.Frame):
             tk.Label(info_header, image=self.icons["info"], bg="#EBF4FF").pack(side=tk.LEFT, padx=6)
         tk.Label(
             info_header, text="Sistem Bilgisi",
-            font=("Roboto", 12, "bold"), fg="#2B6CB0", bg="#EBF4FF"
+            font=("Helvetica", 12, "bold"), fg="#2B6CB0", bg="#EBF4FF"
         ).pack(side=tk.LEFT)
         tk.Label(
             info_frame,
-            text="Guard, yapay zeka ile düşme olaylarını algılar ve anında bildirim gönderir.",
-            font=("Roboto", 10), fg="#2B6CB0", bg="#EBF4FF",
+            text="Guard, yapay zeka ile insanları takip eder ve düşme olaylarını algılar.",
+            font=("Helvetica", 10), fg="#2B6CB0", bg="#EBF4FF",
             wraplength=260, justify=tk.LEFT
         ).pack(anchor=tk.W, pady=5)
+
+        # Son Düşme Olayı kartı
+        event_card = self._create_neuromorphic_card(left_panel, "Son Düşme Olayı")
+        event_card.pack(fill=tk.BOTH, pady=(0, 25))
+        tk.Label(
+            event_card, textvariable=self.event_time_var, font=("Arial", 12),
+            fg=self.colors['text'], bg=self.colors['card']
+        ).pack(anchor=tk.W, padx=12, pady=2)
+        tk.Label(
+            event_card, textvariable=self.event_conf_var, font=("Arial", 12),
+            fg=self.colors['text'], bg=self.colors['card']
+        ).pack(anchor=tk.W, padx=12, pady=2)
+        tk.Label(
+            event_card, textvariable=self.event_id_var, font=("Arial", 12),
+            fg=self.colors['text'], bg=self.colors['card']
+        ).pack(anchor=tk.W, padx=12, pady=2)
 
         # Menü kartı
         menu_card = self._create_neuromorphic_card(left_panel, "Menü")
@@ -316,7 +315,7 @@ class DashboardFrame(tk.Frame):
             btn_container = tk.Frame(menu_card, bg=self.colors['card'], pady=6)
             btn_container.pack(fill=tk.X)
             btn = tk.Button(
-                btn_container, text=text, font=("Roboto", 12, "bold"),
+                btn_container, text=text, font=("Helvetica", 12, "bold"),
                 bg=self.colors['card'], fg=color, relief=tk.FLAT,
                 padx=20, pady=10, command=cmd,
                 activebackground=self.colors['highlight'], activeforeground=color,
@@ -328,11 +327,10 @@ class DashboardFrame(tk.Frame):
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg=self.colors['highlight']))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=self.colors['card']))
 
-
     def _create_right_panel(self):
         """Kamera görüntülerini sekmeli şekilde gösteren panel."""
         right_panel = tk.Frame(self, bg=self.colors['light'])
-        right_panel.grid(row=1, column=1, sticky="nsew", padx=15, pady=25)
+        right_panel.grid(row=1, column=1, sticky="nsew", padx=20, pady=25)
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=1)
 
@@ -361,11 +359,11 @@ class DashboardFrame(tk.Frame):
             live_canvas.pack(side=tk.LEFT)
             live_indicator = live_canvas.create_oval(1, 1, 9, 9, fill=self.colors['danger'], outline="")
             tk.Label(
-                live_frame, text="CANLI", font=("Roboto", 11, "bold"),
+                live_frame, text="CANLI", font=("Helvetica", 11, "bold"),
                 fg=self.colors['danger'], bg=self.colors['card']
             ).pack(side=tk.LEFT, padx=5)
             tk.Label(
-                status_bar, textvariable=self.fps_vars[camera_id], font=("Roboto", 11),
+                status_bar, textvariable=self.fps_vars[camera_id], font=("Helvetica", 11),
                 fg=self.colors['text_secondary'], bg=self.colors['card']
             ).pack(side=tk.RIGHT)
 
@@ -384,7 +382,7 @@ class DashboardFrame(tk.Frame):
         """Yatay gradient arka plan çizer."""
         r1, g1, b1 = self._hex_to_rgb(start_color)
         r2, g2, b2 = self._hex_to_rgb(end_color)
-        steps = 150  # Daha akıcı geçiş
+        steps = 150
         for i in range(steps):
             ratio = i / (steps - 1)
             r = int(r1 + (r2 - r1) * ratio)
@@ -412,7 +410,7 @@ class DashboardFrame(tk.Frame):
         shadow_canvas.pack(fill=tk.X, side=tk.BOTTOM)
         shadow_canvas.create_rectangle(0, 0, 2000, 12, fill="#E0E0E0", outline="")
         tk.Label(
-            card, text=title, font=("Roboto", 16, "bold"),
+            card, text=title, font=("Helvetica", 16, "bold"),
             fg=self.colors['primary'], bg=self.colors['card']
         ).pack(anchor=tk.W, pady=(0, 14))
         return card
@@ -438,7 +436,7 @@ class DashboardFrame(tk.Frame):
                 self.pulse_value = (self.pulse_value + 1) % 20
             else:
                 self.control_button.config(bg=self.colors['success'])
-            self.after(80, self._animate_button_pulse)
+            self.after(80, safe_pulse)
 
         self._safe_widget_operation(safe_pulse)
 
@@ -455,11 +453,9 @@ class DashboardFrame(tk.Frame):
             if hasattr(self, 'update_id') and self.update_id:
                 self.after_cancel(self.update_id)
                 self.update_id = None
-                
             if hasattr(self, 'animation_id') and self.animation_id:
                 self.after_cancel(self.animation_id)
                 self.animation_id = None
-
             if hasattr(self, 'anim_ids'):
                 for anim_id in self.anim_ids:
                     try:
@@ -467,9 +463,7 @@ class DashboardFrame(tk.Frame):
                     except:
                         pass
                 self.anim_ids.clear()
-
             logging.info("Dashboard kaynakları temizlendi")
-            
         except Exception as e:
             logging.error(f"Dashboard kaynak temizleme hatası: {e}")
 
@@ -500,22 +494,39 @@ class DashboardFrame(tk.Frame):
             try:
                 if self.is_destroyed or not self.winfo_exists():
                     return
-                
+
+                fall_detector = FallDetector.get_instance()
                 for camera in self.cameras:
                     camera_id = f"camera_{camera.camera_index}"
                     if self.system_running:
-                        frame = camera.get_frame()  # Camera sınıfından çerçeve al
+                        frame = camera.get_frame()
                         if frame is not None and frame.size > 0:
                             with self.frame_locks[camera_id]:
                                 self.last_frames[camera_id] = frame.copy()
-                            
-                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                            # İnsan takibi ve kare çizimi
+                            annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+
+                            # Düşme algılama
+                            is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
+                            if is_fall and confidence > 0.5:
+                                now = datetime.datetime.now()
+                                self.last_detection_time = now
+                                self.last_detection_confidence = confidence
+                                self.last_track_id = track_id
+                                self.event_time_var.set(f"Zaman: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                                self.event_conf_var.set(f"Güven: {confidence:.2f}")
+                                self.event_id_var.set(f"ID: {track_id}")
+                                logging.info(f"Düşme algılandı: ID={track_id}, Güven={confidence}, Zaman={now}")
+                                self._show_fall_alert()
+
+                            # Görüntüyü güncelle
+                            frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                             pil_img = Image.fromarray(frame_rgb)
                             pil_img = ImageEnhance.Brightness(pil_img).enhance(1.09)
-                            pil_img = pil_img.filter(ImageFilter.SMOOTH_MORE)
                             pil_img = pil_img.resize((820, 600), Image.LANCZOS)
                             tk_img = ImageTk.PhotoImage(pil_img)
-                            
+
                             if not self.is_destroyed and self.winfo_exists():
                                 self.camera_labels[camera_id].configure(image=tk_img)
                                 self.camera_labels[camera_id].image = tk_img
@@ -524,13 +535,11 @@ class DashboardFrame(tk.Frame):
                 if "invalid command name" in str(e):
                     self.is_destroyed = True
                     return
-                else:
-                    logging.error(f"Kamera güncelleme hatası: {e}")
+                logging.error(f"Kamera güncelleme hatası: {e}")
             except Exception as e:
                 logging.error(f"Kamera güncelleme hatası: {e}")
-        
+
         self._safe_widget_operation(safe_update)
-        
         if not self.is_destroyed:
             self.update_id = self.after(40, self._update_camera_frame)
 
@@ -540,7 +549,6 @@ class DashboardFrame(tk.Frame):
             try:
                 if self.is_destroyed or not self.winfo_exists():
                     return
-                
                 for camera_id in self.fps_vars:
                     canvas, indicator = self.live_indicators[camera_id]
                     if self.system_running:
@@ -552,11 +560,11 @@ class DashboardFrame(tk.Frame):
                 if "invalid command name" in str(e):
                     self.is_destroyed = True
                     return
+                logging.error(f"Live indicator animasyon hatası: {e}")
             except Exception as e:
                 logging.error(f"Live indicator animasyon hatası: {e}")
 
         self._safe_widget_operation(safe_animate)
-        
         if not self.is_destroyed:
             self.after(350, self._animate_live_indicator)
 
@@ -566,7 +574,6 @@ class DashboardFrame(tk.Frame):
             try:
                 if self.is_destroyed or not self.winfo_exists():
                     return
-                
                 if self.system_running:
                     self.pulse_value = (self.pulse_value + 1) % 20
                     color_val = int(255 - 30 * abs(math.sin(self.pulse_value / 6.28)))
@@ -577,11 +584,11 @@ class DashboardFrame(tk.Frame):
                 if "invalid command name" in str(e):
                     self.is_destroyed = True
                     return
+                logging.error(f"Pulse animasyon hatası: {e}")
             except Exception as e:
                 logging.error(f"Pulse animasyon hatası: {e}")
 
         self._safe_widget_operation(safe_pulse)
-        
         if not self.is_destroyed:
             self.after(120, self._pulse_status_indicator)
 
@@ -604,122 +611,53 @@ class DashboardFrame(tk.Frame):
 
         self._safe_widget_operation(safe_status_update)
 
-    def update_fall_detection(self, screenshot, confidence, event_data):
-            """
-            Düşme algılama güncelleme.
-
-            Args:
-                screenshot (numpy.ndarray): Algılanan düşme görüntüsü
-                confidence (float): Güven skoru
-                event_data (dict): Olay verileri
-            """
-            def safe_fall_update():
+    def _show_fall_alert(self):
+        """Düşme algılandığında pop-up ve sesli uyarı gösterir."""
+        def safe_alert():
+            try:
+                if self.is_destroyed or not self.winfo_exists():
+                    return
+                messagebox.showwarning(
+                    "Düşme Algılandı!",
+                    f"ID: {self.last_track_id}\n"
+                    f"Güven: {self.last_detection_confidence:.2f}\n"
+                    f"Zaman: {self.last_detection_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                # Sesli uyarı
                 try:
-                    if self.is_destroyed or not self.winfo_exists():
-                        return
-                    
-                    with self.frame_locks[event_data.get('camera_id', self.current_camera_id)]:
-                        self.last_detection = screenshot.copy()
-                        self.last_detection_time = event_data.get("timestamp", time.time())
-                        self.last_detection_confidence = confidence
-
-                    dt = datetime.datetime.fromtimestamp(self.last_detection_time)
-                    self.event_time_var.set(dt.strftime("%d.%m.%Y %H:%M:%S"))
-                    self.event_conf_var.set(f"%{confidence * 100:.2f}")
-
-                    if confidence > 0.8:
-                        risk = "Yüksek"
-                        color = self.colors['danger']
-                    elif confidence > 0.6:
-                        risk = "Orta"
-                        color = self.colors['warning']
-                    else:
-                        risk = "Düşük"
-                        color = self.colors['success']
-                    
-                    self.risk_var.set(risk)
-                    self.conf_value.config(fg=color)
-                    self.risk_value.config(fg=color)
-
-                    if self.no_image_label.winfo_exists():
-                        self.no_image_label.pack_forget()
-                    
-                    detection_rgb = cv2.cvtColor(self.last_detection, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(detection_rgb).resize((250, 180), Image.LANCZOS)
-                    tk_img = ImageTk.PhotoImage(pil_img)
-                    
-                    self.event_image_label.configure(image=tk_img)
-                    self.event_image_label.image = tk_img
-                    self.event_image_label.pack(fill=tk.BOTH, expand=True)
-                    
-                    self.export_btn.config(state="normal")
-                    self.details_btn.config(state="normal")
-                    
-                    self._show_fall_alert(confidence)
-                    
-                except tk.TclError as e:
-                    if "invalid command name" in str(e):
-                        self.is_destroyed = True
-                    else:
-                        logging.error(f"Fall detection güncelleme hatası: {e}")
+                    winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS | winsound.SND_ASYNC)
                 except Exception as e:
-                    logging.error(f"Fall detection güncelleme hatası: {e}")
+                    logging.warning(f"Sesli uyarı hatası: {e}")
+            except tk.TclError as e:
+                if "invalid command name" in str(e):
+                    self.is_destroyed = True
+                logging.error(f"Uyarı gösterim hatası: {e}")
+            except Exception as e:
+                logging.error(f"Uyarı gösterim hatası: {e}")
 
-            self._safe_widget_operation(safe_fall_update)
-
-
-
-    def _show_fall_alert(self, confidence):
-        """Düşme algılandığında modern pop-up gösterir."""
-        alert = tk.Toplevel(self)
-        alert.title("Düşme Algılandı!")
-        alert.geometry("470x370+500+200")
-        alert.configure(bg=self.colors['card'])
-        alert.transient(self)
-        alert.grab_set()
-        header = tk.Canvas(alert, height=90, highlightthickness=0)
-        self._draw_gradient(header, self.colors['danger'], self.colors['primary'], width=470, height=90)
-        header.pack(fill=tk.X)
-        if "alert" in self.icons:
-            tk.Label(header, image=self.icons["alert"], bg="white").place(x=14, y=14)
-        tk.Label(
-            header, text="DÜŞME ALGILANDI!", font=("Roboto", 18, "bold"),
-            fg="#fff", bg="white"
-        ).place(relx=0.5, rely=0.5, anchor="center")
-        content = tk.Frame(alert, bg=self.colors['card'], padx=25, pady=25)
-        content.pack(fill=tk.BOTH, expand=True)
-        tk.Label(content, text="Yapay zeka bir düşme olayı tespit etti!",
-                 font=("Roboto", 14, "bold") if "Roboto" in tk.font.families() else ("Arial", 14, "bold"), fg=self.colors['text'], bg=self.colors['card']).pack(pady=10)
-        tk.Label(content, text=f"Düşme Olasılığı: %{confidence * 100:.2f}",
-                 font=("Roboto", 12), fg=self.colors['danger'], bg=self.colors['card']).pack()
-        risk = "Yüksek" if confidence > 0.8 else "Orta" if confidence > 0.6 else "Düşük"
-        risk_color = self.colors['danger'] if confidence > 0.8 else self.colors['warning'] if confidence > 0.6 else self.colors['success']
-        tk.Label(content, text=f"Risk Seviyesi: {risk}",
-                 font=("Roboto", 12), fg=risk_color, bg=self.colors['card']).pack(pady=7)
-        tk.Label(content, text="Bildirimler ilgili kişilere gönderildi.",
-                 font=("Roboto", 11), fg=self.colors['text_secondary'], bg=self.colors['card']).pack(pady=7)
-        tk.Button(content, text="Tamam", font=("Roboto", 12, "bold"),
-                  bg=self.colors['info'], fg="#fff", relief=tk.FLAT, padx=25, pady=10,
-                  command=alert.destroy, activebackground="#2B6CB0",
-                  activeforeground="#fff", cursor="hand2").pack(pady=12)
-        try:
-            import winsound
-            winsound.PlaySound("SystemExclamation", winsound.SND_ASYNC)
-        except:
-            logging.warning("Modern sesli uyarı çalınamadı.")
+        self._safe_widget_operation(safe_alert)
 
     def _export_event_image(self):
         """Olay görüntüsünü masaüstüne kaydeder."""
-        if self.last_detection is not None:
+        if self.last_frames.get(self.current_camera_id):
             now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"fall_event_{now}.jpg"
             path = os.path.join(os.path.expanduser("~"), "Desktop", filename)
-            cv2.imwrite(path, self.last_detection)
+            cv2.imwrite(path, self.last_frames[self.current_camera_id])
             messagebox.showinfo("Kayıt Başarılı", f"Görüntü başarıyla kaydedildi:\n{path}")
 
     def _show_event_details(self):
-        """Detayları popup ile gösterir (gelişmiş analiz eklenebilir)."""
-        messagebox.showinfo("Olay Detayı", "Olay geçmişi ve analizleri burada görünecek (beta).")
+        """Düşme olayının detaylarını popup ile gösterir."""
+        if self.last_detection_time:
+            messagebox.showinfo(
+                "Olay Detayı",
+                f"Düşme Olayı\n"
+                f"ID: {self.last_track_id}\n"
+                f"Güven: {self.last_detection_confidence:.2f}\n"
+                f"Zaman: {self.last_detection_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        else:
+            messagebox.showinfo("Olay Detayı", "Henüz düşme olayı algılanmadı.")
 
     def on_destroy(self):
         """Frame yok edilirken çağrılır."""
@@ -736,7 +674,7 @@ class DashboardFrame(tk.Frame):
             super().destroy()
         except Exception as e:
             logging.error(f"Dashboard destroy hatası: {e}")
-    
+
     def _toggle_system(self):
         """Sistemi başlat/durdur butonu için çağrılır."""
         try:
@@ -745,7 +683,7 @@ class DashboardFrame(tk.Frame):
             else:
                 self.stop_fn()
         except Exception as e:
-            logging.error(f"Sistem başlatılırken/durdurulurken hata: {str(e)}")
+            logging.error(f"Sistem başlatılırken/durdurulurken hatası: {str(e)}")
             messagebox.showerror("Hata", "Sistem başlatılamadı veya durdurulamadı.")
 
     def _on_camera_select(self, event=None):
@@ -753,9 +691,13 @@ class DashboardFrame(tk.Frame):
         selected_id = self.camera_var.get()
         if selected_id in [f"camera_{cam.camera_index}" for cam in self.cameras]:
             self.current_camera_id = selected_id
-            logging.info(f"Kamera seçildi: {selected_id}")
+            logging.info(f"Kamera seçildi: {self.selected_id}")
 
     def _start_animations(self):
+        """Tüm animasyonları başlatır."""
+        """
+        Tüm animasyon fonksiyonlarını başlatır: buton nabzı, canlı indikatör, durum göstergesi.
+        """
         self._animate_button_pulse()
         self._animate_live_indicator()
         self._pulse_status_indicator()
