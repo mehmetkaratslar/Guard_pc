@@ -380,3 +380,13 @@ FodyWeavers.xsd
 *.env
 resources/serviceAccounts.json
 
+# Guard AI - özel dışlanacak dosyalar
+main.spec
+test_model.py
+utils/model_calibration.py
+runs/
+resources/
+data/local_data/
+config/serviceAccountKey.json
+resources/fall_model.pt
+resources/models/yolo11l-pose.pt
