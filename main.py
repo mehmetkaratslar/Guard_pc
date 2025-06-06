@@ -635,14 +635,14 @@ def enhanced_main():
             'developer': APP_METADATA['developer']
         }
         
-        splash = SplashScreen(root, duration=6.0, app_info=splash_info)
-        logging.info("🎬 Ultra Enhanced splash screen gösteriliyor...")
+        splash = SplashScreen(root, duration=10, app_info=splash_info)
+        logging.info("🎬 Enhanced splash screen gösteriliyor...")
         
-        # ===== ULTRA GUARDAPP BAŞLATMA =====
+        # ===== GUARDAPP BAŞLATMA =====
         logging.info("🔍 Phase 7: GuardApp initialization")
         
         try:
-            # UltraGuardApp sınıfından ultra enhanced uygulama nesnesini oluştur
+            #GuardApp sınıfından ultra enhanced uygulama nesnesini oluştur
             app = GuardApp(root)
             
             # Enhanced başlangıç verilerini aktar

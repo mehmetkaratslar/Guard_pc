@@ -313,7 +313,175 @@ class FallDetector:
             "checks_passed": len(issues) == 0
         }
 
+
+
+
     def get_detection_visualization(self, frame):
+        """
+        Thread-safe pose estimation ile insan tespiti ve görselleştirme.
+        
+        Args:
+            frame (np.ndarray): Giriş görüntüsü
+            
+        Returns:
+            tuple: (görselleştirilmiş_frame, track_listesi)
+        """
+        if not self.is_model_loaded or self.model is None:
+            logging.warning("Model yüklü değil, orijinal frame döndürülüyor")
+            return frame, []
+        
+        start_time = time.time()
+        
+        with self.detection_lock:
+            try:
+                # Frame'i yeniden boyutlandır
+                frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
+                
+                # YOLO ile pose estimation
+                results = self.model.predict(
+                    frame_resized, 
+                    conf=self.conf_threshold, 
+                    classes=[0],  # sadece person class
+                    verbose=False
+                )
+                
+                # Detections'ı hazırla
+                detections = []
+                pose_data = []
+                
+                for result in results:
+                    # Boxes kontrolü - None olabilir
+                    if result.boxes is not None and hasattr(result.boxes, 'xyxy'):
+                        try:
+                            # Tensor'ü numpy'ye güvenli dönüştür
+                            boxes = result.boxes.xyxy
+                            if boxes is not None:
+                                # CPU'ya taşı ve numpy'ye dönüştür
+                                if hasattr(boxes, 'cpu'):
+                                    boxes = boxes.cpu().numpy()
+                                elif hasattr(boxes, 'numpy'):
+                                    boxes = boxes.numpy()
+                                else:
+                                    boxes = np.array(boxes)
+                            else:
+                                continue
+                            
+                            # Confidence değerlerini al
+                            confs = result.boxes.conf
+                            if confs is not None:
+                                if hasattr(confs, 'cpu'):
+                                    confs = confs.cpu().numpy()
+                                elif hasattr(confs, 'numpy'):
+                                    confs = confs.numpy()
+                                else:
+                                    confs = np.array(confs)
+                            else:
+                                continue
+                            
+                            # Keypoints varsa al
+                            keypoints = None
+                            keypoint_confs = None
+                            if hasattr(result, 'keypoints') and result.keypoints is not None:
+                                try:
+                                    # Keypoints xy koordinatları
+                                    if hasattr(result.keypoints, 'xy') and result.keypoints.xy is not None:
+                                        kp_xy = result.keypoints.xy
+                                        if hasattr(kp_xy, 'cpu'):
+                                            keypoints = kp_xy.cpu().numpy()
+                                        elif hasattr(kp_xy, 'numpy'):
+                                            keypoints = kp_xy.numpy()
+                                        else:
+                                            keypoints = np.array(kp_xy)
+                                    
+                                    # Keypoints confidence değerleri
+                                    if hasattr(result.keypoints, 'conf') and result.keypoints.conf is not None:
+                                        kp_conf = result.keypoints.conf
+                                        if hasattr(kp_conf, 'cpu'):
+                                            keypoint_confs = kp_conf.cpu().numpy()
+                                        elif hasattr(kp_conf, 'numpy'):
+                                            keypoint_confs = kp_conf.numpy()
+                                        else:
+                                            keypoint_confs = np.array(kp_conf)
+                                except Exception as kp_error:
+                                    logging.debug(f"Keypoint işleme hatası: {kp_error}")
+                                    keypoints = None
+                                    keypoint_confs = None
+                            
+                            # Her detection için işle
+                            for i, (box, conf) in enumerate(zip(boxes, confs)):
+                                x1, y1, x2, y2 = map(int, box)
+                                
+                                # Detection formatı: [x, y, w, h]
+                                detection = [x1, y1, x2-x1, y2-y1]
+                                detections.append((detection, conf, 0))  # class_id = 0 (person)
+                                
+                                # Pose data ekle
+                                person_keypoints = None
+                                person_keypoint_confs = None
+                                if keypoints is not None and i < len(keypoints):
+                                    person_keypoints = keypoints[i]
+                                    person_keypoint_confs = keypoint_confs[i] if keypoint_confs is not None else None
+                                
+                                pose_data.append({
+                                    'keypoints': person_keypoints,
+                                    'keypoint_confs': person_keypoint_confs,
+                                    'bbox': [x1, y1, x2, y2]
+                                })
+                        
+                        except Exception as box_error:
+                            logging.debug(f"Box işleme hatası: {box_error}")
+                            continue
+
+                # İstatistikleri güncelle
+                self.detection_stats['total_detections'] += len(detections)
+
+                # DeepSORT ile tracking (eğer mevcut ise)
+                tracks = []
+                if self.tracker is not None and len(detections) > 0:
+                    try:
+                        tracks = self.tracker.update_tracks(detections, frame=frame_resized)
+                    except Exception as e:
+                        logging.error(f"DeepSORT tracking hatası: {str(e)}")
+                        tracks = []
+                
+                # Tracking bilgilerini güncelle
+                self._update_person_tracks(tracks, pose_data)
+                
+                # Görselleştirme
+                annotated_frame = self._draw_visualizations(frame, tracks)
+                
+                # Track listesi oluştur
+                track_list = []
+                for track in tracks:
+                    if hasattr(track, 'is_confirmed') and track.is_confirmed():
+                        track_id = track.track_id
+                        bbox = track.to_ltrb()
+                        
+                        # Frame boyutlarına ölçeklendir
+                        scale_x = frame.shape[1] / self.frame_size
+                        scale_y = frame.shape[0] / self.frame_size
+                        
+                        x1 = int(bbox[0] * scale_x)
+                        y1 = int(bbox[1] * scale_y)
+                        x2 = int(bbox[2] * scale_x)
+                        y2 = int(bbox[3] * scale_y)
+                        
+                        track_list.append({
+                            'track_id': track_id,
+                            'bbox': [x1, y1, x2, y2],
+                            'confidence': getattr(track, 'confidence', 0.0)
+                        })
+                
+                # İşlem süresini kaydet
+                processing_time = time.time() - start_time
+                self.detection_stats['processing_times'].append(processing_time)
+                
+                return annotated_frame, track_list
+                
+            except Exception as e:
+                logging.error(f"Detection visualization hatası: {str(e)}")
+                return frame, []
+            
         """
         Thread-safe pose estimation ile insan tespiti ve görselleştirme.
         
@@ -427,6 +595,9 @@ class FallDetector:
             except Exception as e:
                 logging.error(f"Detection visualization hatası: {str(e)}")
                 return frame, []
+
+
+
 
     def detect_fall(self, frame, tracks=None):
         """

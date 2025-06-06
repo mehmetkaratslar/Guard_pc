@@ -1,6 +1,6 @@
 # =======================================================================================
 # 📄 Dosya Adı: camera.py (KAMERA BAŞLATMA SORUNU ÇÖZÜMÜ)
-# 📁 Konum: guard_pc_app/core/camera.py
+# 📁 Konum: pc/core/camera.py
 # 📌 Açıklama:
 # Kamera başlatma sorunlarını çözen güncellenmiş versiyon
 # =======================================================================================
