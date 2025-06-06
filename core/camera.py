@@ -1,10 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: camera.py (ENHANCED VERSION)
+# 📄 Dosya Adı: camera.py (ULTRA OPTIMIZED VERSION V2)
 # 📁 Konum: guard_pc_app/core/camera.py
 # 📌 Açıklama:
-# YOLOv11 Pose Estimation için optimize edilmiş kamera yönetimi.
-# MSMF backend sorunları düzeltildi, robust bağlantı yönetimi eklendi.
-# Çoklu backend fallback sistemi ve gelişmiş hata yönetimi.
+# Ultra optimize edilmiş kamera yönetimi - yüksek performans, düşük latency
+# Gelişmiş backend fallback, robust hata yönetimi, memory optimization
 # =======================================================================================
 
 import cv2
@@ -12,18 +11,18 @@ import numpy as np
 import threading
 import logging
 import time
-import os
 import platform
+from collections import deque
 from config.settings import CAMERA_CONFIGS, FRAME_WIDTH, FRAME_HEIGHT, FRAME_RATE
 
-class Camera:
-    """YOLOv11 Pose Estimation için optimize edilmiş kamera sınıfı."""
+class UltraOptimizedCamera:
+    """Ultra optimize edilmiş kamera sınıfı - yüksek performans ve düşük latency."""
     
     def __init__(self, camera_index, backend=cv2.CAP_ANY):
         """
         Args:
-            camera_index (int): Kullanılacak kamera indeksi
-            backend (int, optional): OpenCV backend
+            camera_index (int): Kamera indeksi
+            backend (int): OpenCV backend
         """
         self.camera_index = camera_index
         self.original_backend = backend
@@ -31,511 +30,472 @@ class Camera:
         self.cap = None
         self.is_running = False
         self.thread = None
+        
+        # Frame yönetimi - optimize edilmiş
         self.frame = None
+        self.frame_buffer = deque(maxlen=2)  # Çift buffer
+        self.frame_lock = threading.RLock()  # Re-entrant lock
         self.last_frame_time = 0
-        self.frame_lock = threading.Lock()
+        
+        # Bağlantı yönetimi
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 3  # Azaltıldı
-        self.reconnect_delay = 1.0  # Kısaltıldı
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 0.5  # Daha hızlı reconnect
+        self.connection_stable = False
         
-        # FPS ve performans istatistikleri
+        # Performans metrikleri
         self.fps = 0
-        self.frame_times = []
-        self.max_frame_times = 30
+        self.avg_frame_time = 0
+        self.frame_count = 0
+        self.fps_calculation_start = time.time()
+        self.performance_stats = {
+            'frames_processed': 0,
+            'frames_dropped': 0,
+            'avg_processing_time': 0,
+            'connection_uptime': 0
+        }
         
-        # Backend fallback listesi - Windows için optimize edildi
-        self.backend_fallbacks = self._get_backend_fallbacks()
+        # Backend yönetimi - optimize edilmiş
+        self.backend_fallbacks = self._get_optimized_backends()
         self.current_backend_index = 0
-        
-        # Kamera durumu takibi
-        self.status_timer = None
         self.last_successful_backend = None
         
+        # Thread yönetimi
+        self.should_stop = threading.Event()
+        self.frame_ready = threading.Event()
+        
+        # Kamera ayarları cache
+        self.camera_properties = {}
+        
         # İlk doğrulama
-        self._validate_camera_with_fallback()
+        self._initialize_camera_system()
     
-    def _get_backend_fallbacks(self):
-        """Platform ve kamera tipine göre backend fallback listesi oluşturur."""
+    def _get_optimized_backends(self):
+        """Platform için optimize edilmiş backend sıralaması."""
         if platform.system() == "Windows":
-            # Windows için optimize edilmiş sıralama
             return [
-                cv2.CAP_DSHOW,      # DirectShow - en kararlı
-                cv2.CAP_ANY,        # Varsayılan
-                cv2.CAP_MSMF,       # Media Foundation - sorunlu olabilir
-                cv2.CAP_VFW,        # Video for Windows - eski
+                cv2.CAP_DSHOW,      # En hızlı ve kararlı
+                cv2.CAP_ANY,        # Fallback
+                cv2.CAP_MSMF        # Son seçenek
             ]
         elif platform.system() == "Linux":
             return [
-                cv2.CAP_V4L2,       # Video4Linux2
-                cv2.CAP_ANY,        # Varsayılan
-                cv2.CAP_GSTREAMER,  # GStreamer
+                cv2.CAP_V4L2,       # Linux için optimal
+                cv2.CAP_ANY,
+                cv2.CAP_GSTREAMER
             ]
         elif platform.system() == "Darwin":  # macOS
             return [
-                cv2.CAP_AVFOUNDATION,  # AVFoundation
-                cv2.CAP_ANY,           # Varsayılan
+                cv2.CAP_AVFOUNDATION,
+                cv2.CAP_ANY
             ]
         else:
             return [cv2.CAP_ANY]
     
-    def _validate_camera_with_fallback(self):
-        """Kamerayı farklı backend'lerle doğrular."""
-        # Eğer özel bir backend belirtilmişse önce onu dene
+    def _initialize_camera_system(self):
+        """Kamera sistemini başlatır."""
+        success = False
+        
+        # Belirtilen backend'i önce dene
         if self.original_backend != cv2.CAP_ANY:
-            if self._test_backend(self.original_backend):
+            if self._test_backend_fast(self.original_backend):
                 self.backend = self.original_backend
                 self.last_successful_backend = self.original_backend
-                logging.info(f"Kamera {self.camera_index} belirtilen backend ile başarılı: {self.original_backend}")
-                return True
+                success = True
+                logging.info(f"Kamera {self.camera_index}: Belirtilen backend başarılı ({self._backend_name(self.original_backend)})")
         
-        # Backend fallback listesini dene
-        for i, backend in enumerate(self.backend_fallbacks):
-            if self._test_backend(backend):
-                self.backend = backend
-                self.current_backend_index = i
-                self.last_successful_backend = backend
-                backend_name = self._get_backend_name(backend)
-                logging.info(f"Kamera {self.camera_index} {backend_name} backend ile başarılı")
-                return True
+        # Fallback listesini dene
+        if not success:
+            for i, backend in enumerate(self.backend_fallbacks):
+                if self._test_backend_fast(backend):
+                    self.backend = backend
+                    self.current_backend_index = i
+                    self.last_successful_backend = backend
+                    success = True
+                    logging.info(f"Kamera {self.camera_index}: {self._backend_name(backend)} backend ile başarılı")
+                    break
         
-        logging.error(f"Kamera {self.camera_index} hiçbir backend ile başlatılamadı!")
-        return False
+        if not success:
+            logging.error(f"Kamera {self.camera_index}: Hiçbir backend ile başlatılamadı!")
+            return False
+        
+        return True
     
-    def _test_backend(self, backend):
-        """Belirli bir backend'i test eder."""
+    def _test_backend_fast(self, backend):
+        """Hızlı backend testi."""
         try:
             test_cap = cv2.VideoCapture(self.camera_index, backend)
             if not test_cap.isOpened():
                 test_cap.release()
                 return False
             
-            # Frame okuma testi
-            for _ in range(3):  # 3 deneme
-                ret, frame = test_cap.read()
-                if ret and frame is not None and frame.size > 0:
-                    test_cap.release()
-                    return True
-                time.sleep(0.1)
-            
+            # Hızlı frame testi
+            test_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            ret, frame = test_cap.read()
             test_cap.release()
-            return False
             
-        except Exception as e:
-            logging.debug(f"Backend {backend} test hatası: {str(e)}")
+            return ret and frame is not None and frame.size > 0
+            
+        except Exception:
             return False
-    
-    def _get_backend_name(self, backend):
-        """Backend kodunu okunabilir isme çevirir."""
-        backend_names = {
-            cv2.CAP_ANY: "AUTO",
-            cv2.CAP_DSHOW: "DirectShow",
-            cv2.CAP_MSMF: "MediaFoundation", 
-            cv2.CAP_VFW: "VideoForWindows",
-            cv2.CAP_V4L2: "Video4Linux2",
-            cv2.CAP_GSTREAMER: "GStreamer",
-            cv2.CAP_AVFOUNDATION: "AVFoundation"
-        }
-        return backend_names.get(backend, f"Backend_{backend}")
     
     def start(self):
-        """Kamerayı başlatır - gelişmiş hata yönetimi ile."""
+        """Ultra hızlı kamera başlatma."""
         with self.frame_lock:
             if self.is_running:
-                logging.warning(f"Kamera {self.camera_index} zaten çalışıyor.")
+                logging.warning(f"Kamera {self.camera_index} zaten çalışıyor")
                 return True
             
-            # Mevcut bağlantıyı temizle
-            if self.cap and self.cap.isOpened():
-                try:
-                    self.cap.release()
-                except:
-                    pass
-                self.cap = None
+            # Mevcut kaynakları temizle
+            self._cleanup_resources()
             
-            # En iyi backend ile başlat
-            success = self._start_with_best_backend()
-            if not success:
-                logging.error(f"Kamera {self.camera_index} hiçbir backend ile başlatılamadı!")
+            # Kamerayı başlat
+            if not self._start_optimized_capture():
+                logging.error(f"Kamera {self.camera_index} başlatılamadı")
                 return False
             
             # Thread başlat
+            self.should_stop.clear()
             self.is_running = True
-            self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.thread = threading.Thread(target=self._ultra_fast_capture_loop, daemon=True)
             self.thread.start()
             
-            # Durum takibi başlat
-            self._start_status_timer()
+            # İstatistikleri sıfırla
+            self._reset_performance_stats()
             
-            backend_name = self._get_backend_name(self.backend)
-            logging.info(f"Kamera {self.camera_index} başarıyla başlatıldı ({backend_name})")
+            logging.info(f"Kamera {self.camera_index} ultra optimize modda başlatıldı ({self._backend_name(self.backend)})")
             return True
     
-    def _start_with_best_backend(self):
-        """En iyi çalışan backend ile kamerayı başlatır."""
-        # Son başarılı backend'i önce dene
-        if self.last_successful_backend:
-            if self._initialize_camera(self.last_successful_backend):
-                self.backend = self.last_successful_backend
-                return True
-        
-        # Backend fallback listesini dene
-        for backend in self.backend_fallbacks:
-            if self._initialize_camera(backend):
-                self.backend = backend
-                self.last_successful_backend = backend
-                return True
-        
-        return False
-    
-    def _initialize_camera(self, backend):
-        """Belirli bir backend ile kamerayı başlatır."""
+    def _start_optimized_capture(self):
+        """Optimize edilmiş kamera başlatma."""
         try:
-            cap = cv2.VideoCapture(self.camera_index, backend)
-            if not cap.isOpened():
-                cap.release()
+            self.cap = cv2.VideoCapture(self.camera_index, self.backend)
+            if not self.cap.isOpened():
                 return False
             
-            # Kamera ayarları - YOLOv11 için optimize edilmiş
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-            cap.set(cv2.CAP_PROP_FPS, FRAME_RATE)
+            # Ultra optimize edilmiş ayarlar
+            optimization_settings = [
+                (cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH),
+                (cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT),
+                (cv2.CAP_PROP_FPS, FRAME_RATE),
+                (cv2.CAP_PROP_BUFFERSIZE, 1),  # Minimum latency
+                (cv2.CAP_PROP_AUTOFOCUS, 0),   # Autofocus kapalı (daha hızlı)
+                (cv2.CAP_PROP_AUTO_EXPOSURE, 0.25),  # Manuel exposure
+            ]
             
-            # Buffer boyutunu azalt (daha düşük latency)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            for prop, value in optimization_settings:
+                try:
+                    self.cap.set(prop, value)
+                    self.camera_properties[prop] = value
+                except:
+                    pass
             
-            # Codec ayarları (mümkünse)
+            # Codec optimize edildi
             try:
-                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
             except:
                 pass
             
-            # İlk frame testi - robust
-            frame_received = False
-            for attempt in range(10):  # 10 deneme
-                ret, frame = cap.read()
-                if ret and frame is not None and frame.size > 0:
-                    self.frame = frame
-                    self.last_frame_time = time.time()
-                    frame_received = True
-                    break
-                time.sleep(0.05)  # 50ms bekle
+            # İlk frame testi
+            for _ in range(3):
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    with self.frame_lock:
+                        self.frame = frame
+                        self.last_frame_time = time.time()
+                    self.connection_stable = True
+                    return True
+                time.sleep(0.02)
             
-            if not frame_received:
-                logging.warning(f"Kamera {self.camera_index} backend {backend} frame alınamadı")
-                cap.release()
-                return False
-            
-            self.cap = cap
-            self.reconnect_attempts = 0
-            return True
+            return False
             
         except Exception as e:
-            logging.debug(f"Kamera {self.camera_index} backend {backend} init hatası: {str(e)}")
+            logging.error(f"Kamera {self.camera_index} optimize edilmiş başlatma hatası: {e}")
             return False
     
     def stop(self):
-        """Kamerayı güvenli şekilde durdurur."""
+        """Ultra hızlı kamera durdurma."""
+        if not self.is_running:
+            return
+        
+        # Stop signal gönder
+        self.should_stop.set()
+        self.is_running = False
+        
+        # Thread'i bekle (kısa timeout)
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        
+        # Kaynakları temizle
+        self._cleanup_resources()
+        
+        logging.info(f"Kamera {self.camera_index} durduruldu")
+    
+    def _cleanup_resources(self):
+        """Kaynakları temizle."""
+        if self.cap:
+            try:
+                self.cap.release()
+            except:
+                pass
+            self.cap = None
+        
         with self.frame_lock:
-            if not self.is_running:
-                return
-            
-            self.is_running = False
-            
-            # Timer'ı durdur
-            if self.status_timer:
-                try:
-                    self.status_timer.cancel()
-                except:
-                    pass
-                self.status_timer = None
-            
-            # Thread'i bekle
-            if self.thread and self.thread.is_alive():
-                try:
-                    self.thread.join(timeout=2.0)
-                except:
-                    pass
-                self.thread = None
-            
-            # Kamerayı serbest bırak
-            if self.cap:
-                try:
-                    self.cap.release()
-                except:
-                    pass
-                self.cap = None
-            
-            logging.info(f"Kamera {self.camera_index} durduruldu.")
+            self.frame = None
+            self.frame_buffer.clear()
+        
+        self.connection_stable = False
     
     def get_frame(self):
-        """YOLOv11 için optimize edilmiş frame alma."""
+        """Ultra hızlı frame alma."""
         with self.frame_lock:
             if not self.is_running or self.frame is None:
-                # Siyah frame döndür
-                black_frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
-                
-                # Durum mesajı ekle
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                if not self.is_running:
-                    message = f"Kamera {self.camera_index} Kapalı"
-                    color = (100, 100, 100)
-                else:
-                    message = f"Kamera {self.camera_index} Bağlanıyor..."
-                    color = (255, 255, 0)
-                
-                # Metni ortala
-                text_size = cv2.getTextSize(message, font, 0.8, 2)[0]
-                text_x = (FRAME_WIDTH - text_size[0]) // 2
-                text_y = (FRAME_HEIGHT + text_size[1]) // 2
-                
-                cv2.putText(black_frame, message, (text_x, text_y), 
-                           font, 0.8, color, 2, cv2.LINE_AA)
-                
-                return black_frame
+                return self._create_status_frame()
             
-            # Frame'i kopyala ve boyutlandır
             try:
+                # En son frame'i kopyala
                 frame_copy = self.frame.copy()
-                # YOLOv11 için kare format (640x640)
-                resized_frame = cv2.resize(frame_copy, (FRAME_WIDTH, FRAME_HEIGHT))
-                return resized_frame
+                
+                # Resize (gerekirse)
+                if frame_copy.shape[:2] != (FRAME_HEIGHT, FRAME_WIDTH):
+                    frame_copy = cv2.resize(frame_copy, (FRAME_WIDTH, FRAME_HEIGHT), 
+                                          interpolation=cv2.INTER_LINEAR)
+                
+                return frame_copy
+                
             except Exception as e:
-                logging.error(f"Frame resize hatası: {str(e)}")
-                return np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+                logging.error(f"Frame alma hatası: {e}")
+                return self._create_status_frame()
     
-    def capture_screenshot(self):
-        """Ekran görüntüsü al - timestamp ile."""
-        frame = self.get_frame()
-        if frame is not None:
-            timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame, timestamp, (10, 30), font, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-            
-            # Kamera bilgisi ekle
-            backend_name = self._get_backend_name(self.backend)
-            info_text = f"Kamera {self.camera_index} ({backend_name})"
-            cv2.putText(frame, info_text, (10, frame.shape[0] - 10), 
-                       font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    def _create_status_frame(self):
+        """Durum frame'i oluştur."""
+        status_frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
         
-        return frame
-    
-    def get_camera_status(self):
-        """Detaylı kamera durumu bilgisi."""
-        status = {
-            "is_running": self.is_running,
-            "fps": round(self.fps, 1),
-            "last_frame_time": self.last_frame_time,
-            "camera_index": self.camera_index,
-            "backend": self.backend,
-            "backend_name": self._get_backend_name(self.backend),
-            "reconnect_attempts": self.reconnect_attempts,
-            "has_frame": self.frame is not None
-        }
+        # Arka plan gradient
+        for i in range(FRAME_HEIGHT):
+            intensity = int(20 + (i / FRAME_HEIGHT) * 40)
+            status_frame[i, :] = [intensity, intensity, intensity]
         
-        # Bağlantı durumu
-        if self.is_running and self.cap and self.cap.isOpened():
-            if time.time() - self.last_frame_time < 5:
-                status["connection"] = "connected"
-            else:
-                status["connection"] = "stalled"
-        elif self.is_running:
-            status["connection"] = "connecting"
+        # Durum mesajı
+        if not self.is_running:
+            message = f"Kamera {self.camera_index} - KAPALI"
+            color = (100, 100, 100)
+        elif not self.connection_stable:
+            message = f"Kamera {self.camera_index} - BAGLANILIYOR..."
+            color = (0, 255, 255)  # Sarı
         else:
-            status["connection"] = "disconnected"
+            message = f"Kamera {self.camera_index} - HAZIR"
+            color = (0, 255, 0)  # Yeşil
         
-        return status
-    
-    def reconnect(self):
-        """Gelişmiş yeniden bağlanma - backend rotation ile."""
-        with self.frame_lock:
-            self.reconnect_attempts += 1
-            
-            if self.reconnect_attempts > self.max_reconnect_attempts:
-                logging.error(f"Kamera {self.camera_index} maksimum deneme aşıldı.")
-                # Bir sonraki backend'i dene
-                self._try_next_backend()
-                return self.reconnect_attempts <= self.max_reconnect_attempts * len(self.backend_fallbacks)
-            
-            logging.info(f"Kamera {self.camera_index} yeniden bağlanıyor (Deneme {self.reconnect_attempts})...")
-            
-            # Mevcut bağlantıyı temizle
-            if self.cap:
-                try:
-                    self.cap.release()
-                except:
-                    pass
-                self.cap = None
-            
-            # Kısa bir bekleme
-            time.sleep(self.reconnect_delay)
-            
-            # Yeniden başlat
-            if self._initialize_camera(self.backend):
-                logging.info(f"Kamera {self.camera_index} başarıyla yeniden bağlandı.")
-                self.reconnect_attempts = 0
-                return True
-            
-            return False
-    
-    def _try_next_backend(self):
-        """Sonraki backend'i dene."""
-        self.current_backend_index = (self.current_backend_index + 1) % len(self.backend_fallbacks)
-        self.backend = self.backend_fallbacks[self.current_backend_index]
-        self.reconnect_attempts = 0  # Reset deneme sayısı
+        # Metni ortala
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1.0
+        thickness = 2
+        text_size = cv2.getTextSize(message, font, font_scale, thickness)[0]
+        text_x = (FRAME_WIDTH - text_size[0]) // 2
+        text_y = (FRAME_HEIGHT + text_size[1]) // 2
         
-        backend_name = self._get_backend_name(self.backend)
-        logging.info(f"Kamera {self.camera_index} farklı backend deneniyor: {backend_name}")
+        cv2.putText(status_frame, message, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
+        
+        # Performans bilgisi
+        if self.is_running:
+            fps_text = f"FPS: {self.fps:.1f}"
+            cv2.putText(status_frame, fps_text, (20, 40), font, 0.7, (0, 255, 136), 2, cv2.LINE_AA)
+            
+            backend_text = f"Backend: {self._backend_name(self.backend)}"
+            cv2.putText(status_frame, backend_text, (20, FRAME_HEIGHT - 20), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        
+        return status_frame
     
-    def _capture_loop(self):
-        """Optimize edilmiş frame yakalama döngüsü."""
-        frame_count = 0
-        fps_start_time = time.time()
+    def _ultra_fast_capture_loop(self):
+        """Ultra hızlı frame yakalama döngüsü."""
         consecutive_failures = 0
-        max_consecutive_failures = 10
+        max_failures = 5
+        target_frame_time = 1.0 / FRAME_RATE
         
-        while self.is_running:
+        while not self.should_stop.is_set():
+            loop_start = time.time()
+            
             try:
                 if not self.cap or not self.cap.isOpened():
-                    if not self.reconnect():
-                        time.sleep(0.5)
+                    if not self._quick_reconnect():
+                        time.sleep(0.1)
                         continue
                 
-                start_time = time.time()
+                # Frame yakala
                 ret, frame = self.cap.read()
                 
-                if not ret or frame is None or frame.size == 0:
+                if not ret or frame is None:
                     consecutive_failures += 1
-                    if consecutive_failures >= max_consecutive_failures:
-                        logging.warning(f"Kamera {self.camera_index} çok fazla başarısız frame, yeniden bağlanıyor...")
-                        if not self.reconnect():
-                            time.sleep(1.0)
+                    if consecutive_failures >= max_failures:
+                        logging.warning(f"Kamera {self.camera_index}: Çok fazla hata, yeniden bağlanılıyor...")
+                        self._quick_reconnect()
                         consecutive_failures = 0
                     continue
                 
-                # Frame başarılı
+                # Başarılı frame
                 consecutive_failures = 0
+                self.connection_stable = True
                 
+                # Frame'i güncelle
                 with self.frame_lock:
                     self.frame = frame
                     self.last_frame_time = time.time()
+                    
+                    # Buffer'a ekle
+                    self.frame_buffer.append(frame.copy())
                 
-                # FPS hesaplama
-                frame_count += 1
-                elapsed_time = time.time() - fps_start_time
+                # Performans hesaplama
+                self._update_performance_stats(loop_start)
                 
-                if elapsed_time >= 1.0:
-                    self.fps = frame_count / elapsed_time
-                    frame_count = 0
-                    fps_start_time = time.time()
-                
-                # Frame timing
-                frame_time = time.time() - start_time
-                self.frame_times.append(frame_time)
-                
-                if len(self.frame_times) > self.max_frame_times:
-                    self.frame_times.pop(0)
-                
-                # FPS kontrol - hedef FPS'e göre bekle
-                target_delay = 1.0 / FRAME_RATE
-                sleep_time = max(0, target_delay - frame_time)
+                # FPS kontrolü
+                elapsed = time.time() - loop_start
+                sleep_time = max(0, target_frame_time - elapsed)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
                 
             except Exception as e:
-                logging.error(f"Kamera {self.camera_index} capture loop hatası: {str(e)}")
+                logging.error(f"Kamera {self.camera_index} capture loop hatası: {e}")
                 consecutive_failures += 1
-                if consecutive_failures >= max_consecutive_failures:
-                    if not self.reconnect():
-                        time.sleep(1.0)
+                if consecutive_failures >= max_failures:
+                    self._quick_reconnect()
                     consecutive_failures = 0
-                else:
-                    time.sleep(0.1)
+                time.sleep(0.05)
     
-    def _start_status_timer(self):
-        """Kamera durumu kontrol zamanlayıcısı."""
-        if self.status_timer:
+    def _quick_reconnect(self):
+        """Hızlı yeniden bağlanma."""
+        self.reconnect_attempts += 1
+        
+        if self.reconnect_attempts > self.max_reconnect_attempts:
+            # Farklı backend dene
+            self._try_next_backend()
+            if self.reconnect_attempts > self.max_reconnect_attempts * len(self.backend_fallbacks):
+                logging.error(f"Kamera {self.camera_index}: Tüm backend'ler denendi, başarısız")
+                return False
+        
+        logging.debug(f"Kamera {self.camera_index}: Hızlı yeniden bağlanma (#{self.reconnect_attempts})")
+        
+        # Mevcut bağlantıyı temizle
+        if self.cap:
             try:
-                self.status_timer.cancel()
+                self.cap.release()
             except:
                 pass
+            self.cap = None
         
-        def check_status():
-            try:
-                if not self.is_running:
-                    return
-                
-                status = self.get_camera_status()
-                if status["connection"] == "stalled":
-                    logging.warning(f"Kamera {self.camera_index} donmuş durumda, yeniden başlatılıyor...")
-                    self.reconnect()
-                
-                # Zamanlayıcıyı yeniden başlat
-                if self.is_running:
-                    self.status_timer = threading.Timer(10.0, check_status)
-                    self.status_timer.daemon = True
-                    self.status_timer.start()
-            except Exception as e:
-                logging.error(f"Status timer hatası: {str(e)}")
+        # Kısa bekleme
+        time.sleep(self.reconnect_delay)
         
-        self.status_timer = threading.Timer(10.0, check_status)
-        self.status_timer.daemon = True
-        self.status_timer.start()
+        # Yeniden başlat
+        if self._start_optimized_capture():
+            self.reconnect_attempts = 0
+            self.connection_stable = True
+            return True
+        
+        return False
     
-    @staticmethod
-    def get_available_cameras():
-        """Sistem genelinde kullanılabilir kameraları listele."""
-        available_cameras = []
+    def _try_next_backend(self):
+        """Sonraki backend'e geç."""
+        self.current_backend_index = (self.current_backend_index + 1) % len(self.backend_fallbacks)
+        self.backend = self.backend_fallbacks[self.current_backend_index]
+        self.reconnect_attempts = 0
         
-        # Platform spesifik backend'ler
-        if platform.system() == "Windows":
-            backends_to_test = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
-        elif platform.system() == "Linux":
-            backends_to_test = [cv2.CAP_V4L2, cv2.CAP_ANY]
-        elif platform.system() == "Darwin":
-            backends_to_test = [cv2.CAP_AVFOUNDATION, cv2.CAP_ANY]
+        logging.info(f"Kamera {self.camera_index}: {self._backend_name(self.backend)} backend'e geçiliyor")
+    
+    def _update_performance_stats(self, start_time):
+        """Performans istatistiklerini güncelle."""
+        frame_time = time.time() - start_time
+        self.frame_count += 1
+        
+        # FPS hesaplama
+        elapsed = time.time() - self.fps_calculation_start
+        if elapsed >= 1.0:
+            self.fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.fps_calculation_start = time.time()
+        
+        # Ortalama frame süresi
+        if hasattr(self, '_frame_times'):
+            self._frame_times.append(frame_time)
+            if len(self._frame_times) > 30:
+                self._frame_times.pop(0)
         else:
-            backends_to_test = [cv2.CAP_ANY]
+            self._frame_times = [frame_time]
         
-        # 0-4 arası kamera indekslerini test et
-        for index in range(5):
-            for backend in backends_to_test:
-                try:
-                    cap = cv2.VideoCapture(index, backend)
-                    if cap.isOpened():
-                        # Frame test
-                        ret, _ = cap.read()
-                        if ret:
-                            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                            fps = int(cap.get(cv2.CAP_PROP_FPS))
-                            
-                            backend_name = Camera._get_backend_name_static(backend)
-                            camera_info = {
-                                "index": index,
-                                "backend": backend,
-                                "backend_name": backend_name,
-                                "name": f"Kamera {index} ({backend_name})",
-                                "resolution": f"{width}x{height}",
-                                "fps": fps,
-                                "working": True
-                            }
-                            
-                            # Duplicate kontrolü
-                            if not any(cam["index"] == index and cam["backend"] == backend 
-                                     for cam in available_cameras):
-                                available_cameras.append(camera_info)
-                                logging.info(f"Kamera bulundu: {camera_info['name']}")
-                    
-                    cap.release()
-                except Exception as e:
-                    logging.debug(f"Kamera {index} backend {backend} test hatası: {str(e)}")
+        self.avg_frame_time = sum(self._frame_times) / len(self._frame_times)
         
-        return available_cameras
+        # İstatistikleri güncelle
+        self.performance_stats['frames_processed'] += 1
+        self.performance_stats['avg_processing_time'] = self.avg_frame_time
     
-    @staticmethod
-    def _get_backend_name_static(backend):
-        """Static backend isim çevirici."""
-        backend_names = {
+    def _reset_performance_stats(self):
+        """Performans istatistiklerini sıfırla."""
+        self.performance_stats = {
+            'frames_processed': 0,
+            'frames_dropped': 0,
+            'avg_processing_time': 0,
+            'connection_uptime': time.time()
+        }
+        self.frame_count = 0
+        self.fps_calculation_start = time.time()
+        self._frame_times = []
+    
+    def get_detailed_status(self):
+        """Detaylı kamera durumu."""
+        status = {
+            "camera_index": self.camera_index,
+            "is_running": self.is_running,
+            "connection_stable": self.connection_stable,
+            "backend": self._backend_name(self.backend),
+            "fps": round(self.fps, 2),
+            "avg_frame_time": round(self.avg_frame_time * 1000, 2),  # ms
+            "reconnect_attempts": self.reconnect_attempts,
+            "has_frame": self.frame is not None,
+            "last_frame_age": time.time() - self.last_frame_time if self.last_frame_time > 0 else float('inf'),
+            "performance": self.performance_stats.copy()
+        }
+        
+        # Bağlantı durumu
+        if self.is_running and self.connection_stable:
+            if status["last_frame_age"] < 2:
+                status["connection_status"] = "excellent"
+            elif status["last_frame_age"] < 5:
+                status["connection_status"] = "good"
+            else:
+                status["connection_status"] = "poor"
+        elif self.is_running:
+            status["connection_status"] = "connecting"
+        else:
+            status["connection_status"] = "disconnected"
+        
+        return status
+    
+    def capture_high_quality_screenshot(self):
+        """Yüksek kaliteli screenshot."""
+        frame = self.get_frame()
+        if frame is None:
+            return None
+        
+        # Timestamp ekle
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        
+        # Arka plan kutusu
+        text_size = cv2.getTextSize(timestamp, font, 0.8, 2)[0]
+        cv2.rectangle(frame, (10, 10), (text_size[0] + 20, 50), (0, 0, 0), -1)
+        cv2.putText(frame, timestamp, (15, 35), font, 0.8, (0, 255, 136), 2, cv2.LINE_AA)
+        
+        # Kamera bilgisi
+        info_text = f"Camera {self.camera_index} | {self._backend_name(self.backend)} | {self.fps:.1f} FPS"
+        info_size = cv2.getTextSize(info_text, font, 0.6, 1)[0]
+        cv2.rectangle(frame, (10, frame.shape[0] - 30), (info_size[0] + 20, frame.shape[0] - 5), (0, 0, 0), -1)
+        cv2.putText(frame, info_text, (15, frame.shape[0] - 15), font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+        
+        return frame
+    
+    def _backend_name(self, backend):
+        """Backend adını döndür."""
+        names = {
             cv2.CAP_ANY: "AUTO",
             cv2.CAP_DSHOW: "DirectShow",
             cv2.CAP_MSMF: "MediaFoundation",
@@ -544,50 +504,221 @@ class Camera:
             cv2.CAP_GSTREAMER: "GStreamer",
             cv2.CAP_AVFOUNDATION: "AVFoundation"
         }
-        return backend_names.get(backend, f"Backend_{backend}")
+        return names.get(backend, f"Backend_{backend}")
 
-# Kamera test fonksiyonu
-def test_camera(camera_index=0, duration=10):
-    """Belirli bir kamerayı test eder."""
-    logging.info(f"Kamera {camera_index} test ediliyor ({duration} saniye)...")
+
+class CameraManager:
+    """Ultra optimize edilmiş kamera yöneticisi."""
     
-    camera = Camera(camera_index)
+    def __init__(self):
+        self.cameras = {}
+        self.active_cameras = []
+        self.manager_lock = threading.Lock()
+        
+    def add_camera(self, camera_index, backend=cv2.CAP_ANY):
+        """Kamera ekle."""
+        with self.manager_lock:
+            if camera_index in self.cameras:
+                logging.warning(f"Kamera {camera_index} zaten mevcut")
+                return False
+            
+            camera = UltraOptimizedCamera(camera_index, backend)
+            self.cameras[camera_index] = camera
+            
+            logging.info(f"Kamera {camera_index} yöneticiye eklendi")
+            return True
+    
+    def start_camera(self, camera_index):
+        """Belirli kamerayı başlat."""
+        with self.manager_lock:
+            if camera_index in self.cameras:
+                success = self.cameras[camera_index].start()
+                if success and camera_index not in self.active_cameras:
+                    self.active_cameras.append(camera_index)
+                return success
+            return False
+    
+    def stop_camera(self, camera_index):
+        """Belirli kamerayı durdur."""
+        with self.manager_lock:
+            if camera_index in self.cameras:
+                self.cameras[camera_index].stop()
+                if camera_index in self.active_cameras:
+                    self.active_cameras.remove(camera_index)
+                return True
+            return False
+    
+    def start_all_cameras(self):
+        """Tüm kameraları başlat."""
+        with self.manager_lock:
+            success_count = 0
+            for camera_index in self.cameras:
+                if self.start_camera(camera_index):
+                    success_count += 1
+            
+            logging.info(f"{success_count}/{len(self.cameras)} kamera başlatıldı")
+            return success_count
+    
+    def stop_all_cameras(self):
+        """Tüm kameraları durdur."""
+        with self.manager_lock:
+            for camera_index in list(self.active_cameras):
+                self.stop_camera(camera_index)
+            
+            logging.info("Tüm kameralar durduruldu")
+    
+    def get_frame(self, camera_index):
+        """Belirli kameradan frame al."""
+        if camera_index in self.cameras:
+            return self.cameras[camera_index].get_frame()
+        return None
+    
+    def get_all_frames(self):
+        """Tüm aktif kameralardan frame al."""
+        frames = {}
+        for camera_index in self.active_cameras:
+            frame = self.get_frame(camera_index)
+            if frame is not None:
+                frames[camera_index] = frame
+        return frames
+    
+    def get_camera_status(self, camera_index):
+        """Kamera durumu al."""
+        if camera_index in self.cameras:
+            return self.cameras[camera_index].get_detailed_status()
+        return None
+    
+    def get_all_camera_status(self):
+        """Tüm kamera durumları."""
+        status = {}
+        for camera_index in self.cameras:
+            status[camera_index] = self.get_camera_status(camera_index)
+        return status
+
+
+def discover_cameras():
+    """Sistem kameralarını keşfet."""
+    available_cameras = []
+    
+    # Platform spesifik backend'ler
+    if platform.system() == "Windows":
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+    elif platform.system() == "Linux":
+        backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
+    elif platform.system() == "Darwin":
+        backends = [cv2.CAP_AVFOUNDATION, cv2.CAP_ANY]
+    else:
+        backends = [cv2.CAP_ANY]
+    
+    logging.info("Kameralar taranıyor...")
+    
+    for index in range(10):  # 0-9 arası test et
+        for backend in backends:
+            try:
+                cap = cv2.VideoCapture(index, backend)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        fps = int(cap.get(cv2.CAP_PROP_FPS))
+                        
+                        backend_name = UltraOptimizedCamera(0, backend)._backend_name(backend)
+                        
+                        camera_info = {
+                            "index": index,
+                            "backend": backend,
+                            "backend_name": backend_name,
+                            "name": f"Kamera {index}",
+                            "resolution": f"{width}x{height}",
+                            "fps": fps,
+                            "status": "available"
+                        }
+                        
+                        # Duplicate kontrolü
+                        if not any(cam["index"] == index for cam in available_cameras):
+                            available_cameras.append(camera_info)
+                            logging.info(f"Kamera bulundu: {camera_info['name']} ({backend_name})")
+                
+                cap.release()
+                
+            except Exception as e:
+                logging.debug(f"Kamera {index} test hatası: {e}")
+    
+    logging.info(f"Toplam {len(available_cameras)} kamera bulundu")
+    return available_cameras
+
+
+def benchmark_camera(camera_index=0, duration=10):
+    """Kamera performans testi."""
+    logging.info(f"Kamera {camera_index} performans testi başlatılıyor ({duration}s)...")
+    
+    camera = UltraOptimizedCamera(camera_index)
     if not camera.start():
-        logging.error(f"Kamera {camera_index} başlatılamadı!")
-        return False
+        logging.error("Kamera başlatılamadı!")
+        return None
     
     try:
         start_time = time.time()
         frame_count = 0
+        total_processing_time = 0
         
         while time.time() - start_time < duration:
+            process_start = time.time()
             frame = camera.get_frame()
+            process_time = time.time() - process_start
+            
             if frame is not None:
                 frame_count += 1
-            time.sleep(0.1)
+                total_processing_time += process_time
+            
+            time.sleep(0.01)  # 100 FPS test
         
-        status = camera.get_camera_status()
+        # Sonuçlar
+        test_duration = time.time() - start_time
+        status = camera.get_detailed_status()
+        
+        results = {
+            "camera_index": camera_index,
+            "test_duration": test_duration,
+            "frames_captured": frame_count,
+            "average_fps": frame_count / test_duration,
+            "camera_reported_fps": status["fps"],
+            "average_processing_time": (total_processing_time / frame_count * 1000) if frame_count > 0 else 0,
+            "backend": status["backend"],
+            "connection_status": status["connection_status"],
+            "performance_grade": "A" if status["fps"] > 25 else "B" if status["fps"] > 15 else "C"
+        }
+        
         logging.info(f"Test tamamlandı:")
-        logging.info(f"  - Toplam frame: {frame_count}")
-        logging.info(f"  - FPS: {status['fps']}")
-        logging.info(f"  - Backend: {status['backend_name']}")
-        logging.info(f"  - Durum: {status['connection']}")
+        logging.info(f"  📸 Frame sayısı: {frame_count}")
+        logging.info(f"  ⚡ Ortalama FPS: {results['average_fps']:.1f}")
+        logging.info(f"  🔧 Backend: {results['backend']}")
+        logging.info(f"  📊 Performans: {results['performance_grade']}")
         
-        return True
+        return results
         
     finally:
         camera.stop()
 
+
+# Alias for backward compatibility
+Camera = UltraOptimizedCamera
+
 if __name__ == "__main__":
-    # Test kodu
-    logging.basicConfig(level=logging.INFO)
+    # Test ve demo
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    # Kullanılabilir kameraları listele
-    cameras = Camera.get_available_cameras()
-    print(f"Bulunan kameralar: {len(cameras)}")
-    for cam in cameras:
-        print(f"  {cam['name']} - {cam['resolution']}")
+    print("🔍 Kamera keşif başlatılıyor...")
+    cameras = discover_cameras()
     
-    # İlk kamerayı test et
     if cameras:
-        test_camera(cameras[0]['index'])
+        print(f"\n✅ {len(cameras)} kamera bulundu:")
+        for cam in cameras:
+            print(f"  📹 {cam['name']} - {cam['resolution']} @ {cam['fps']} FPS ({cam['backend_name']})")
+        
+        # İlk kamerayı test et
+        print(f"\n🧪 İlk kamera test ediliyor...")
+        benchmark_camera(cameras[0]['index'], 5)
+    else:
+        print("❌ Hiç kamera bulunamadı!")

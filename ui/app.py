@@ -1,26 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: app.py
+# 📄 Dosya Adı: app.py (ULTRA ENHANCED VERSION V3)
 # 📁 Konum: guard_pc_app/ui/app.py
 # 📌 Açıklama:
-# Ana uygulama arayüzü - YOLOv11 entegrasyonu ile güncellenmiş.
-# _handle_fall_detection, olayları /fall_events/{eventId} yoluna kaydeder.
-# _detection_loop tamamlandı, mobil uygulama için Firestore ve Storage erişimi optimize edildi.
-# Koleksiyon yolu /records yerine /fall_events olarak güncellendi.
-# 🔗 Bağlantılı Dosyalar:
-# - ui/login.py (giriş ekranı)
-# - ui/register.py (kayıt ekranı)
-# - ui/dashboard.py (ana gösterge paneli)
-# - ui/settings.py (ayarlar ekranı)
-# - ui/history.py (geçmiş olaylar ekranı)
-# - config/firebase_config.py (Firebase yapılandırma)
-# - config/settings.py (tema ve genel ayarlar)
-# - utils/auth.py (Firebase Authentication)
-# - data/database.py (Firestore işlemleri)
-# - data/storage.py (Firebase Storage işlemleri)
-# - core/camera.py (kamera yönetimi)
-# - core/fall_detection.py (YOLOv11 düşme algılama)
-# - core/notification.py (bildirim sistemi)
-# - api/server.py (FastAPI sunucusu)
+# Ultra gelişmiş ana uygulama arayüzü - AdvancedFallDetector entegrasyonu
+# Enhanced düşme algılama, çoklu model desteği, real-time analytics
 # =======================================================================================
 
 import tkinter as tk
@@ -30,27 +13,34 @@ import logging
 import time
 import os
 import sys
-from typing import Optional
+from typing import Optional, Dict, Any
 import uuid
+import cv2
+import numpy as np
+from datetime import datetime, timedelta
 
+# UI Components
 from ui.login import LoginFrame
 from ui.register import RegisterFrame
 from ui.dashboard import DashboardFrame
 from ui.settings import SettingsFrame
 from ui.history import HistoryFrame
 
+# Configuration
 from config.firebase_config import FIREBASE_CONFIG
 from config.settings import THEME_LIGHT, THEME_DARK, DEFAULT_THEME, CAMERA_CONFIGS
+
+# Services
 from utils.auth import FirebaseAuth
 from data.database import FirestoreManager
 from data.storage import StorageManager
 from core.camera import Camera
 from core.fall_detection import FallDetector
 from core.notification import NotificationManager
-from api.server import run_api_server_in_thread
+from core.stream_server import run_api_server_in_thread
 
 class GuardApp:
-    """Ana uygulama sınıfı - YOLOv11 düşme algılama entegrasyonu."""
+    """Ultra gelişmiş ana uygulama sınıfı - AdvancedFallDetector entegrasyonu."""
 
     def __init__(self, root: tk.Tk):
         """
@@ -58,191 +48,333 @@ class GuardApp:
             root (tk.Tk): Tkinter kök penceresi
         """
         self.root = root
-        self.root.title("Guard - YOLOv11 Düşme Algılama Sistemi")
-        self.root.geometry("1200x800")
-        self.root.minsize(1000, 700)
+        self.root.title("Guard AI - Ultra Enhanced Fall Detection System v3.0")
+        self.root.geometry("1400x900")
+        self.root.minsize(1200, 800)
         self.root.configure(bg="#f5f5f5")
 
+        # App metadata
+        self.app_version = "3.0.0"
+        self.app_name = "Guard AI Ultra"
+        self.build_date = "2025-06-06"
+        
         # Tema durumu
         self.current_theme = DEFAULT_THEME
 
+        # Enhanced sistem durumu
+        self.system_state = {
+            'running': False,
+            'cameras_active': 0,
+            'detection_active': False,
+            'ai_model_loaded': False,
+            'current_model': None,
+            'session_start': None,
+            'total_detections': 0,
+            'fall_events': 0,
+            'last_activity': None
+        }
+
         # Stiller
-        self._setup_styles()
+        self._setup_enhanced_styles()
 
         # Firebase servisleri
         self._setup_firebase()
 
-        # YOLOv11 düşme algılama sistemi
-        self._setup_fall_detection()
+        # Ultra gelişmiş düşme algılama sistemi
+        self._setup_advanced_fall_detection()
 
-        # API sunucusu
+        # Enhanced API sunucusu
         self.api_thread = run_api_server_in_thread()
 
+        # Performance monitoring
+        self.performance_monitor = {
+            'start_time': time.time(),
+            'frame_count': 0,
+            'detection_time_total': 0.0,
+            'avg_fps': 0.0,
+            'memory_usage': 0.0
+        }
+
         # Çıkış planı
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_enhanced_close)
 
-        # UI bileşenleri
-        self._create_ui()
+        # Enhanced UI bileşenleri
+        self._create_enhanced_ui()
 
-    def _setup_styles(self):
-        """Tkinter stillerini ayarlar."""
+        # Background monitoring
+        self._start_background_monitoring()
+
+    def _setup_enhanced_styles(self):
+        """Gelişmiş Tkinter stillerini ayarlar."""
         self.style = ttk.Style()
         self.style.theme_use("clam")
         theme = THEME_LIGHT if self.current_theme == "light" else THEME_DARK
 
-        primary_color = theme["accent_primary"]
-        secondary_color = theme["accent_secondary"]
-        danger_color = theme["accent_danger"]
-        warning_color = theme["accent_warning"]
-        light_bg = theme["bg_secondary"]
-        dark_bg = theme["bg_primary"]
-        text_light = theme["text_primary"] if self.current_theme == "dark" else "#ffffff"
-        text_dark = theme["text_primary"]
+        # Enhanced color palette
+        self.colors = {
+            'primary': theme["accent_primary"],
+            'secondary': theme["accent_secondary"],
+            'success': "#28a745",
+            'danger': "#dc3545",
+            'warning': "#ffc107",
+            'info': "#17a2b8",
+            'light': theme["bg_secondary"],
+            'dark': theme["bg_primary"],
+            'text_primary': theme["text_primary"],
+            'text_secondary': "#6c757d",
+            'border': "#dee2e6",
+            'gradient_start': "#667eea",
+            'gradient_end': "#764ba2"
+        }
 
+        # Enhanced style configurations
         self.style.configure(".", font=("Segoe UI", 10))
-        self.style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), foreground=primary_color, padding=10)
-        self.style.configure("Logo.TLabel", font=("Segoe UI", 10))
-        self.style.configure("Login.TFrame", relief="ridge", borderwidth=1)
-        self.style.configure("TButton", font=("Segoe UI", 10), padding=8, relief="flat")
-        self.style.map("TButton", background=[('active', '#2980b9'), ('disabled', '#bdc3c7')])
-        self.style.configure("Wide.TButton", font=("Segoe UI", 11, "bold"), padding=10)
-        self.style.configure("Start.TButton", font=("Segoe UI", 11, "bold"), padding=10)
-        self.style.configure("Stop.TButton", font=("Segoe UI", 11, "bold"), padding=10)
-        self.style.configure("Card.TFrame", relief="flat")
-        self.style.configure("Section.TLabel", font=("Segoe UI", 14, "bold"), foreground=text_dark, padding=(0, 5))
-        self.style.configure("TEntry", padding=8, relief="flat")
-        self.style.configure("TCheckbutton", font=("Segoe UI", 10))
-        self.style.configure("TProgressbar", troughcolor=light_bg, thickness=8)
-        self.style.configure("TCombobox", padding=8)
-        self.style.configure("TNotebook", tabmargins=[2, 5, 2, 0])
-        self.style.configure("TNotebook.Tab", foreground=text_dark, padding=[10, 5], font=("Segoe UI", 10))
-        self.style.map("TNotebook.Tab", foreground=[('selected', primary_color)])
-        self.style.configure("Info.TFrame", relief="flat", borderwidth=1)
-        self.style.configure("Warning.TFrame", relief="flat", borderwidth=1)
-        self.style.configure("Danger.TFrame", relief="flat", borderwidth=1)
-        self.style.configure("Success.TFrame", relief="flat", borderwidth=1)
+        self.style.configure("Title.TLabel", font=("Segoe UI", 20, "bold"), 
+                           foreground=self.colors['primary'], padding=15)
+        self.style.configure("Subtitle.TLabel", font=("Segoe UI", 12), 
+                           foreground=self.colors['text_secondary'], padding=5)
+        self.style.configure("Enhanced.TButton", font=("Segoe UI", 11, "bold"), 
+                           padding=12, relief="flat")
+        self.style.configure("Critical.TButton", font=("Segoe UI", 12, "bold"), 
+                           padding=15, relief="flat")
+        
+        # Status indicators
+        self.style.configure("Status.Running.TLabel", font=("Segoe UI", 11, "bold"), 
+                           foreground=self.colors['success'])
+        self.style.configure("Status.Stopped.TLabel", font=("Segoe UI", 11, "bold"), 
+                           foreground=self.colors['danger'])
+        self.style.configure("Status.Warning.TLabel", font=("Segoe UI", 11, "bold"), 
+                           foreground=self.colors['warning'])
 
     def _setup_firebase(self):
-        """Firebase servisleri ayarlanır."""
+        """Enhanced Firebase servisleri ayarlanır."""
         try:
+            logging.info("🔥 Enhanced Firebase servisleri başlatılıyor...")
+            
             self.auth = FirebaseAuth(FIREBASE_CONFIG)
             self.db_manager = FirestoreManager()
             self.storage_manager = StorageManager()
             self.notification_manager = None
             self.current_user = None
-            self.system_running = False
             self.detection_threads = {}
-            logging.info("Firebase servisleri başlatıldı.")
+            
+            logging.info("✅ Enhanced Firebase servisleri başarıyla başlatıldı")
+            
         except Exception as e:
-            logging.error(f"Firebase servisleri başlatılırken hata: {str(e)}")
+            logging.error(f"❌ Enhanced Firebase servisleri başlatılırken hata: {str(e)}")
             messagebox.showerror(
                 "Bağlantı Hatası",
-                "Firebase servislerine bağlanılamadı.\nLütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
+                f"Firebase servislerine bağlanılamadı.\n"
+                f"Hata: {str(e)}\n"
+                "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
             )
-            self.root.after(2000, self._show_error_screen)
+            self.root.after(2000, self._show_enhanced_error_screen)
 
-    def _setup_fall_detection(self):
-        """YOLOv11 düşme algılama sistemi ayarlanır."""
+    def _setup_advanced_fall_detection(self):
+        """Ultra gelişmiş düşme algılama sistemi ayarlanır."""
         try:
+            logging.info("🤖 Ultra gelişmiş düşme algılama sistemi başlatılıyor...")
+            
+            # Enhanced kamera yönetimi
             self.cameras = []
             for config in CAMERA_CONFIGS:
-                camera = Camera(camera_index=config['index'], backend=config['backend'])
-                if camera._validate_camera_with_fallback():
-                    self.cameras.append(camera)
-                    logging.info(f"Kamera eklendi: {config['name']} (indeks: {config['index']}, backend: {config['backend']})")
+                try:
+                    camera = Camera(camera_index=config['index'], backend=config['backend'])
+                    
+                    # Enhanced camera validation
+                    if hasattr(camera, '_validate_camera_with_fallback') and camera._validate_camera_with_fallback():
+                        self.cameras.append(camera)
+                        logging.info(f"✅ Kamera eklendi: {config['name']} "
+                                   f"(indeks: {config['index']}, backend: {config['backend']})")
+                    else:
+                        logging.warning(f"⚠️ Kamera {config['index']} başlatılamadı, listeye eklenmedi")
+                        
+                except Exception as e:
+                    logging.error(f"❌ Kamera {config['index']} hatası: {str(e)}")
+            
+            # AdvancedFallDetector başlat
+            try:
+                # Default model ile başlat
+                default_model = 'yolo11l-pose.pt'
+                self.fall_detector = FallDetector.get_instance(default_model)
+                
+                model_info = self.fall_detector.get_enhanced_model_info()
+                self.system_state['ai_model_loaded'] = model_info['model_loaded']
+                self.system_state['current_model'] = model_info['model_name']
+                
+                logging.info("🎯 Ultra Enhanced Fall Detection Sistemi:")
+                logging.info(f"   📦 Model: {model_info['model_name']}")
+                logging.info(f"   ✅ Yüklü: {model_info['model_loaded']}")
+                logging.info(f"   🖥️ Cihaz: {model_info['device']}")
+                logging.info(f"   📊 Güven Eşiği: {model_info.get('fall_detection_params', {}).get('confidence_threshold', 'N/A')}")
+                logging.info(f"   🎨 Keypoints: {model_info['keypoints_count']}")
+                logging.info(f"   📈 Mevcut Modeller: {len(model_info['available_models'])}")
+                
+                if not model_info['model_loaded']:
+                    logging.warning("⚠️ AI modeli yüklenemedi! Düşme algılama devre dışı olacak.")
+                    messagebox.showwarning(
+                        "AI Model Uyarısı",
+                        f"AI düşme algılama modeli yüklenemedi.\n"
+                        f"Model: {model_info['model_name']}\n"
+                        "Sistem çalışacak ancak düşme algılama devre dışı olacak."
+                    )
                 else:
-                    logging.warning(f"Kamera {config['index']} başlatılamadı, listeye eklenmedi.")
-            
-            self.fall_detector = FallDetector.get_instance()
-            model_info = self.fall_detector.get_model_info()
-            logging.info(f"YOLOv11 Düşme Algılama Sistemi:")
-            logging.info(f"  - Model Yüklü: {model_info['model_loaded']}")
-            logging.info(f"  - Cihaz: {model_info['device']}")
-            logging.info(f"  - Güven Eşiği: {model_info['confidence_threshold']}")
-            logging.info(f"  - Frame Boyutu: {model_info['frame_size']}")
-            
-            if not model_info['model_loaded']:
-                logging.warning("YOLOv11 modeli yüklenemedi! Düşme algılama devre dışı olacak.")
-                messagebox.showwarning(
-                    "Model Uyarısı",
-                    "YOLOv11 düşme algılama modeli yüklenemedi.\n"
-                    f"Model dosyası: {model_info['model_path']}\n"
-                    "Sistem çalışacak ancak düşme algılama devre dışı olacak."
+                    logging.info("✅ AI Model başarıyla yüklendi ve hazır!")
+                
+            except Exception as e:
+                logging.error(f"❌ AdvancedFallDetector başlatma hatası: {str(e)}")
+                self.fall_detector = None
+                self.system_state['ai_model_loaded'] = False
+                
+                messagebox.showerror(
+                    "AI Model Hatası",
+                    f"Gelişmiş düşme algılama sistemi başlatılamadı:\n{str(e)}\n"
+                    "Uygulama çalışacak ancak AI özellikleri devre dışı olacak."
                 )
             
+            logging.info(f"📹 Toplam kamera sayısı: {len(self.cameras)}")
+            logging.info(f"🤖 AI Model durumu: {'Aktif' if self.system_state['ai_model_loaded'] else 'Deaktif'}")
+            
         except Exception as e:
-            logging.error(f"Düşme algılama sistemi başlatılırken hata: {str(e)}")
-            messagebox.showerror(
-                "Model Hatası",
-                f"Düşme algılama sistemi başlatılamadı:\n{str(e)}\n"
-                "Uygulama çalışacak ancak düşme algılama devre dışı olacak."
-            )
+            logging.error(f"❌ Advanced fall detection setup hatası: {str(e)}")
             self.fall_detector = None
             self.cameras = []
+            self.system_state['ai_model_loaded'] = False
 
+    def _start_background_monitoring(self):
+        """Arka plan izleme thread'lerini başlat."""
+        def monitoring_worker():
+            while True:
+                try:
+                    # Performance monitoring
+                    current_time = time.time()
+                    uptime = current_time - self.performance_monitor['start_time']
+                    
+                    # Memory usage (basit hesaplama)
+                    import psutil
+                    process = psutil.Process()
+                    self.performance_monitor['memory_usage'] = process.memory_info().rss / 1024 / 1024  # MB
+                    
+                    # System state güncelle
+                    if hasattr(self, 'fall_detector') and self.fall_detector:
+                        try:
+                            analytics = self.fall_detector.analytics.get_summary() if hasattr(self.fall_detector, 'analytics') else {}
+                            self.system_state['total_detections'] = analytics.get('total_detections', 0)
+                            self.system_state['fall_events'] = analytics.get('fall_events', 0)
+                        except:
+                            pass
+                    
+                    time.sleep(10)  # 10 saniyede bir güncelle
+                    
+                except Exception as e:
+                    logging.error(f"Background monitoring hatası: {e}")
+                    time.sleep(30)
+        
+        monitor_thread = threading.Thread(target=monitoring_worker, daemon=True)
+        monitor_thread.start()
+        logging.info("📊 Background monitoring başlatıldı")
 
-
-
-
-    def _show_error_screen(self):
-        """Hata ekranını gösterir."""
+    def _show_enhanced_error_screen(self):
+        """Gelişmiş hata ekranını gösterir."""
         self._clear_content()
-        error_frame = tk.Frame(self.content_frame, bg="#f5f5f5")
+        error_frame = tk.Frame(self.content_frame, bg="#f8f9fa")
         error_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Error icon area
+        icon_frame = tk.Frame(error_frame, bg="#f8f9fa")
+        icon_frame.pack(pady=30)
+        
+        tk.Label(
+            icon_frame,
+            text="⚠️",
+            font=("Segoe UI", 48),
+            bg="#f8f9fa",
+            fg="#dc3545"
+        ).pack()
 
         tk.Label(
             error_frame,
             text="Bağlantı Hatası",
             font=("Segoe UI", 24, "bold"),
-            fg="#d32f2f",
-            bg="#f5f5f5"
-        ).pack(pady=20)
+            fg="#dc3545",
+            bg="#f8f9fa"
+        ).pack(pady=10)
 
         tk.Label(
             error_frame,
-            text="Firebase servislerine bağlanılamadı.\nLütfen internet bağlantınızı kontrol edin ve uygulamayı yeniden başlatın.",
+            text="Firebase servislerine bağlanılamadı.\n"
+                 "Lütfen internet bağlantınızı kontrol edin ve\n"
+                 "uygulamayı yeniden başlatın.",
             font=("Segoe UI", 14),
-            fg="#555",
-            bg="#f5f5f5",
+            fg="#6c757d",
+            bg="#f8f9fa",
             justify=tk.CENTER
-        ).pack(pady=10)
+        ).pack(pady=15)
+
+        # Action buttons
+        button_frame = tk.Frame(error_frame, bg="#f8f9fa")
+        button_frame.pack(pady=20)
 
         tk.Button(
-            error_frame,
-            text="Uygulamayı Kapat",
-            command=self.root.destroy,
+            button_frame,
+            text="🔄 Yeniden Dene",
+            command=self._retry_firebase_connection,
             font=("Segoe UI", 12, "bold"),
-            bg="#d32f2f",
+            bg="#28a745",
             fg="white",
             relief="flat",
             padx=20,
-            pady=10
-        ).pack(pady=20)
+            pady=10,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=10)
 
-    def _create_ui(self):
-        """UI bileşenleri oluşturulur."""
-        self.main_frame = tk.Frame(self.root, bg="#f5f5f5", padx=10, pady=10)
+        tk.Button(
+            button_frame,
+            text="❌ Uygulamayı Kapat",
+            command=self.root.destroy,
+            font=("Segoe UI", 12, "bold"),
+            bg="#dc3545",
+            fg="white",
+            relief="flat",
+            padx=20,
+            pady=10,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=10)
+
+    def _retry_firebase_connection(self):
+        """Firebase bağlantısını yeniden dene."""
+        try:
+            self._setup_firebase()
+            if hasattr(self, 'auth'):
+                self.show_login()
+                messagebox.showinfo("Başarı", "Firebase bağlantısı yeniden kuruldu!")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Bağlantı yeniden kurulamadı:\n{str(e)}")
+
+    def _create_enhanced_ui(self):
+        """Enhanced UI bileşenleri oluşturulur."""
+        self.main_frame = tk.Frame(self.root, bg="#f8f9fa", padx=15, pady=15)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.content_frame = tk.Frame(self.main_frame, bg="#f5f5f5")
+        self.content_frame = tk.Frame(self.main_frame, bg="#f8f9fa")
         self.content_frame.pack(fill=tk.BOTH, expand=True)
 
         self.show_login()
 
     def show_login(self):
-        """Giriş ekranını gösterir."""
+        """Enhanced giriş ekranını gösterir."""
         self._clear_content()
         self.login_frame = LoginFrame(
             self.content_frame,
             self.auth,
-            self._on_login_success,
+            self._on_enhanced_login_success,
             on_register_click=self.show_register
         )
         self.login_frame.pack(fill=tk.BOTH, expand=True)
-        logging.info("Giriş ekranı gösterildi")
+        logging.info("🔐 Enhanced giriş ekranı gösterildi")
 
     def show_register(self):
-        """Kayıt ekranını gösterir."""
+        """Enhanced kayıt ekranını gösterir."""
         self._clear_content()
         self.register_frame = RegisterFrame(
             self.content_frame,
@@ -251,32 +383,33 @@ class GuardApp:
             on_back_to_login=self.show_login
         )
         self.register_frame.pack(fill=tk.BOTH, expand=True)
-        logging.info("Kayıt ekranı gösterildi")
+        logging.info("📝 Enhanced kayıt ekranı gösterildi")
 
     def show_dashboard(self):
-        """Ana gösterge panelini gösterir - sistem durumunu korur."""
+        """Ultra enhanced gösterge panelini gösterir."""
         self._clear_content()
         
         self.dashboard_frame = DashboardFrame(
             self.content_frame,
             self.current_user,
             self.cameras,
-            self.start_detection,
-            self.stop_detection,
+            self.start_enhanced_detection,
+            self.stop_enhanced_detection,
             self.show_settings,
             self.show_history,
             self.logout
         )
         self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
         
-        if hasattr(self, 'system_running') and self.system_running:
+        # Enhanced sistem durumu aktarma
+        if self.system_state['running']:
             self.dashboard_frame.update_system_status(True)
-            logging.info("Dashboard yeniden oluşturuldu - sistem durumu aktarıldı")
+            logging.info("📊 Enhanced Dashboard yeniden oluşturuldu - sistem durumu aktarıldı")
         
-        logging.info("Dashboard ekranı gösterildi")
+        logging.info("🖥️ Ultra Enhanced Dashboard ekranı gösterildi")
 
     def show_settings(self):
-        """Ayarlar ekranını gösterir - dashboard referansını temizler."""
+        """Enhanced ayarlar ekranını gösterir."""
         if hasattr(self, 'dashboard_frame'):
             try:
                 self.dashboard_frame.on_destroy()
@@ -285,17 +418,20 @@ class GuardApp:
             self.dashboard_frame = None
             
         self._clear_content()
+        
+        # Enhanced settings frame with AI model management
         self.settings_frame = SettingsFrame(
             self.content_frame,
             self.current_user,
             self.db_manager,
-            self.show_dashboard
+            self.show_dashboard,
+            fall_detector=self.fall_detector  # AI model yönetimi için
         )
         self.settings_frame.pack(fill=tk.BOTH, expand=True)
-        logging.info("Ayarlar ekranı gösterildi")
+        logging.info("⚙️ Enhanced Ayarlar ekranı gösterildi")
 
     def show_history(self):
-        """Geçmiş olaylar ekranını gösterir - dashboard referansını temizler."""
+        """Enhanced geçmiş olaylar ekranını gösterir."""
         if hasattr(self, 'dashboard_frame'):
             try:
                 self.dashboard_frame.on_destroy()
@@ -311,10 +447,10 @@ class GuardApp:
             self.show_dashboard
         )
         self.history_frame.pack(fill=tk.BOTH, expand=True)
-        logging.info("Geçmiş ekranı gösterildi")
+        logging.info("📜 Enhanced Geçmiş ekranı gösterildi")
 
     def _clear_content(self):
-        """İçerik çerçevesindeki tüm bileşenleri güvenli şekilde temizler."""
+        """Enhanced içerik temizleme."""
         try:
             for widget in self.content_frame.winfo_children():
                 try:
@@ -324,563 +460,814 @@ class GuardApp:
                 except Exception as e:
                     logging.warning(f"Widget temizleme hatası: {e}")
         except Exception as e:
-            logging.error(f"Content temizleme hatası: {e}")
+            logging.error(f"Enhanced content temizleme hatası: {e}")
 
-    def _on_login_success(self, user):
-        """Giriş başarılı olduğunda çağrılır."""
-        self.current_user = user
-        self.db_manager.update_last_login(user["localId"])
-        user_data = self.db_manager.get_user_data(user["localId"])
-
-        if not user_data:
-            user_data = {
-                "email": user.get("email", ""),
-                "displayName": user.get("displayName", "")
-            }
-            self.db_manager.create_new_user(user["localId"], user_data)
+    def _on_enhanced_login_success(self, user):
+        """Enhanced giriş başarılı callback."""
+        try:
+            self.current_user = user
+            self.system_state['session_start'] = time.time()
+            
+            # User data management
+            self.db_manager.update_last_login(user["localId"])
             user_data = self.db_manager.get_user_data(user["localId"])
 
-        if user_data and "settings" in user_data and "theme" in user_data["settings"]:
-            if user_data["settings"]["theme"] != self.current_theme:
-                self.current_theme = user_data["settings"]["theme"]
-                self._setup_styles()
+            if not user_data:
+                user_data = {
+                    "email": user.get("email", ""),
+                    "displayName": user.get("displayName", ""),
+                    "lastLogin": time.time(),
+                    "appVersion": self.app_version,
+                    "preferences": {
+                        "theme": self.current_theme,
+                        "notifications": True,
+                        "ai_model": self.system_state['current_model']
+                    }
+                }
+                self.db_manager.create_new_user(user["localId"], user_data)
+                user_data = self.db_manager.get_user_data(user["localId"])
 
-        self.notification_manager = NotificationManager(user_data)
-        self.show_dashboard()
+            # Theme update
+            if user_data and "settings" in user_data and "theme" in user_data["settings"]:
+                if user_data["settings"]["theme"] != self.current_theme:
+                    self.current_theme = user_data["settings"]["theme"]
+                    self._setup_enhanced_styles()
 
-    def start_detection(self):
-        """YOLOv11 düşme algılama sistemini başlatır - çoklu kamera desteği."""
-        if hasattr(self, 'system_running') and self.system_running:
-            logging.warning("Sistem zaten çalışıyor.")
+            # Enhanced notification manager
+            self.notification_manager = NotificationManager(user_data)
+            
+            logging.info(f"✅ Enhanced login başarılı: {user.get('email', 'Unknown')}")
+            logging.info(f"👤 User ID: {user['localId']}")
+            logging.info(f"🎨 Tema: {self.current_theme}")
+            
+            self.show_dashboard()
+            
+        except Exception as e:
+            logging.error(f"❌ Enhanced login success hatası: {str(e)}")
+            messagebox.showerror("Login Hatası", f"Giriş işlemi tamamlanamadı:\n{str(e)}")
+
+    def start_enhanced_detection(self):
+        """Ultra gelişmiş düşme algılama sistemini başlatır."""
+        if self.system_state['running']:
+            logging.warning("⚠️ Sistem zaten çalışıyor")
             if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
                 self.dashboard_frame.update_system_status(True)
             return
 
-        for camera in self.cameras:
-            if not camera.start():
-                messagebox.showerror(f"Kamera {camera.camera_index} Hatası", f"Kamera {camera.camera_index} başlatılamadı. Lütfen bağlantıyı kontrol edin.")
+        try:
+            logging.info("🚀 Ultra Enhanced Detection sistemi başlatılıyor...")
+            
+            # Kameraları başlat
+            camera_start_count = 0
+            for camera in self.cameras:
+                try:
+                    if camera.start():
+                        camera_start_count += 1
+                        logging.info(f"✅ Kamera {camera.camera_index} başlatıldı")
+                    else:
+                        logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
+                        messagebox.showerror(
+                            f"Kamera {camera.camera_index} Hatası", 
+                            f"Kamera {camera.camera_index} başlatılamadı.\n"
+                            "Lütfen kamera bağlantısını kontrol edin."
+                        )
+                except Exception as e:
+                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(e)}")
+
+            if camera_start_count == 0:
+                messagebox.showerror("Kamera Hatası", "Hiçbir kamera başlatılamadı!")
                 return
 
-        if not self.fall_detector or not self.fall_detector.is_model_loaded:
-            messagebox.showwarning(
-                "Model Uyarısı",
-                "YOLOv11 düşme algılama modeli yüklü değil.\n"
-                "Sistem kamera görüntülerini gösterecek ancak düşme algılama çalışmayacak."
-            )
-
-        self.system_running = True
-        
-        for camera in self.cameras:
-            camera_id = f"camera_{camera.camera_index}"
-            if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
-                logging.warning(f"Kamera {camera_id} detection thread zaten çalışıyor")
-            else:
-                self.detection_threads[camera_id] = threading.Thread(
-                    target=self._detection_loop,
-                    args=(camera,),
-                    daemon=True
+            # AI Model kontrolü
+            if not self.fall_detector or not self.system_state['ai_model_loaded']:
+                messagebox.showwarning(
+                    "AI Model Uyarısı",
+                    "Ultra Enhanced AI düşme algılama modeli yüklü değil.\n"
+                    "Sistem kamera görüntülerini gösterecek ancak AI algılama çalışmayacak.\n\n"
+                    "Ayarlar menüsünden model yükleyebilirsiniz."
                 )
-                self.detection_threads[camera_id].start()
 
-        if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-            self.dashboard_frame.update_system_status(True)
+            # Sistem durumunu güncelle
+            self.system_state['running'] = True
+            self.system_state['cameras_active'] = camera_start_count
+            self.system_state['detection_active'] = self.system_state['ai_model_loaded']
+            self.system_state['last_activity'] = time.time()
+            
+            # Detection thread'lerini başlat
+            for camera in self.cameras:
+                if camera.is_running:
+                    camera_id = f"camera_{camera.camera_index}"
+                    
+                    if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
+                        logging.warning(f"⚠️ Kamera {camera_id} detection thread zaten çalışıyor")
+                    else:
+                        self.detection_threads[camera_id] = threading.Thread(
+                            target=self._enhanced_detection_loop,
+                            args=(camera,),
+                            daemon=True,
+                            name=f"EnhancedDetection-{camera_id}"
+                        )
+                        self.detection_threads[camera_id].start()
+                        logging.info(f"🧵 Enhanced detection thread başlatıldı: {camera_id}")
 
-        logging.info("YOLOv11 düşme algılama sistemi başlatıldı (çoklu kamera).")
+            # Dashboard güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(True)
 
-    def stop_detection(self):
-        """Düşme algılama sistemini durdurur - çoklu kamera desteği."""
-        if not hasattr(self, 'system_running') or not self.system_running:
-            logging.warning("Sistem zaten durmuş durumda.")
+            logging.info("✅ Ultra Enhanced Detection sistemi başarıyla başlatıldı!")
+            logging.info(f"📹 Aktif kameralar: {camera_start_count}/{len(self.cameras)}")
+            logging.info(f"🤖 AI Algılama: {'Aktif' if self.system_state['detection_active'] else 'Deaktif'}")
+
+        except Exception as e:
+            logging.error(f"❌ Enhanced detection başlatma hatası: {str(e)}")
+            messagebox.showerror("Sistem Hatası", f"Gelişmiş algılama sistemi başlatılamadı:\n{str(e)}")
+
+    def stop_enhanced_detection(self):
+        """Ultra gelişmiş düşme algılama sistemini durdurur."""
+        if not self.system_state['running']:
+            logging.warning("⚠️ Sistem zaten durmuş durumda")
             if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
                 self.dashboard_frame.update_system_status(False)
             return
 
-        self.system_running = False
+        try:
+            logging.info("🛑 Ultra Enhanced Detection sistemi durduruluyor...")
+            
+            # Sistem durumunu güncelle
+            self.system_state['running'] = False
+            self.system_state['detection_active'] = False
+            
+            # Detection thread'lerini durdur
+            for camera_id, thread in list(self.detection_threads.items()):
+                if thread and thread.is_alive():
+                    logging.info(f"🧵 Thread durduruluyor: {camera_id}")
+                    thread.join(timeout=3.0)
+                    if thread.is_alive():
+                        logging.warning(f"⚠️ Thread zorla sonlandırıldı: {camera_id}")
+                
+                self.detection_threads[camera_id] = None
+            
+            self.detection_threads.clear()
 
-        for camera_id, thread in self.detection_threads.items():
-            if thread and thread.is_alive():
-                thread.join(timeout=2.0)
-            self.detection_threads[camera_id] = None
-        self.detection_threads.clear()
+            # Kameraları durdur
+            stopped_cameras = 0
+            for camera in self.cameras:
+                try:
+                    if camera.is_running:
+                        camera.stop()
+                        stopped_cameras += 1
+                        logging.info(f"✅ Kamera {camera.camera_index} durduruldu")
+                except Exception as e:
+                    logging.error(f"❌ Kamera {camera.camera_index} durdurma hatası: {str(e)}")
 
-        for camera in self.cameras:
-            camera.stop()
+            self.system_state['cameras_active'] = 0
 
-        if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-            self.dashboard_frame.update_system_status(False)
+            # Dashboard güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(False)
 
-        logging.info("YOLOv11 düşme algılama sistemi durduruldu (çoklu kamera).")
+            logging.info("✅ Ultra Enhanced Detection sistemi başarıyla durduruldu!")
+            logging.info(f"📹 Durdurulan kameralar: {stopped_cameras}")
 
+        except Exception as e:
+            logging.error(f"❌ Enhanced detection durdurma hatası: {str(e)}")
 
-
-
-# YOLOv11 Pose Estimation + DeepSORT tabanlı düşme algılama
-# =======================================================================================
-
-    def _detection_loop(self, camera):
+    def _enhanced_detection_loop(self, camera):
         """
-        YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş düşme algılama döngüsü.
+        Ultra Enhanced AI düşme algılama döngüsü.
+        AdvancedFallDetector ile tam entegrasyon.
         
         Args:
-            camera (Camera): İşlenecek kamera nesnesi
+            camera: İşlenecek kamera nesnesi
         """
         try:
-            error_count = 0
-            max_errors = 10
-            last_detection_time = 0
-            min_detection_interval = 5  # 5 saniye minimum aralık (false positive kontrolü)
-            target_fps = 30
-            frame_duration = 1.0 / target_fps
-            
             camera_id = f"camera_{camera.camera_index}"
-            logging.info(f"🎥 Kamera {camera_id} için YOLOv11 Pose + DeepSORT döngüsü başlatıldı")
+            logging.info(f"🎥 Enhanced Detection Loop başlatıldı: {camera_id}")
             
-            # Model durumunu kontrol et
-            if not self.fall_detector or not self.fall_detector.is_model_loaded:
-                logging.error(f"❌ YOLOv11 modeli yüklü değil! Kamera {camera_id} için algılama başlatılamıyor.")
-                return
+            # Loop configuration
+            config = {
+                'target_fps': 30,
+                'max_errors': 15,
+                'min_detection_interval': 3,  # 3 saniye minimum
+                'performance_log_interval': 150,  # 150 frame'de bir
+                'ai_enabled': self.system_state['ai_model_loaded']
+            }
             
-            # İstatistik değişkenleri
-            frame_count = 0
-            detection_count = 0
-            fall_detection_count = 0
-            session_start = time.time()
+            # Statistics
+            stats = {
+                'frame_count': 0,
+                'detection_count': 0,
+                'fall_detection_count': 0,
+                'error_count': 0,
+                'session_start': time.time(),
+                'last_detection_time': 0,
+                'total_processing_time': 0.0
+            }
             
-            while self.system_running:
-                start_time = time.time()
+            frame_duration = 1.0 / config['target_fps']
+            
+            # Model durumu kontrolü
+            if not self.fall_detector or not config['ai_enabled']:
+                logging.warning(f"⚠️ {camera_id}: AI model yüklü değil, basit tracking modunda çalışıyor")
+            
+            while self.system_state['running']:
+                loop_start = time.time()
+                
                 try:
+                    # Camera status check
                     if not camera or not camera.is_running:
                         time.sleep(0.5)
                         continue
                     
+                    # Frame acquisition
                     frame = camera.get_frame()
                     if frame is None or frame.size == 0:
-                        logging.warning(f"⚠️ Kamera {camera_id} geçerli çerçeve alınamadı.")
+                        stats['error_count'] += 1
+                        if stats['error_count'] % 10 == 0:
+                            logging.warning(f"⚠️ {camera_id}: {stats['error_count']} frame hatası")
                         time.sleep(0.1)
                         continue
                     
-                    frame_count += 1
+                    stats['frame_count'] += 1
+                    processing_start = time.time()
                     
-                    # YOLOv11 Pose Estimation + DeepSORT
-                    annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
+                    if config['ai_enabled'] and self.fall_detector:
+                        # Enhanced AI Detection
+                        annotated_frame, tracks = self.fall_detector.get_enhanced_detection_visualization(frame)
+                        
+                        # Update detection count
+                        if tracks:
+                            stats['detection_count'] += len(tracks)
+                            self.system_state['total_detections'] += len(tracks)
+                            self.system_state['last_activity'] = time.time()
+                        
+                        # Enhanced Fall Detection
+                        is_fall, confidence, track_id, analysis_result = self.fall_detector.detect_enhanced_fall(frame, tracks)
+                        
+                        # Fall event processing
+                        current_time = time.time()
+                        if (is_fall and confidence > 0.6 and 
+                            (current_time - stats['last_detection_time']) > config['min_detection_interval']):
+                            
+                            stats['last_detection_time'] = current_time
+                            stats['fall_detection_count'] += 1
+                            self.system_state['fall_events'] += 1
+                            
+                            # Enhanced fall event processing
+                            self.root.after(0, self._handle_enhanced_fall_detection, 
+                                          annotated_frame, confidence, camera_id, track_id, analysis_result)
+                            
+                            logging.warning(f"🚨 {camera_id} ENHANCED FALL DETECTED!")
+                            logging.info(f"   📍 Track ID: {track_id}")
+                            logging.info(f"   📊 Confidence: {confidence:.4f}")
+                            if analysis_result:
+                                logging.info(f"   🎯 Fall Score: {analysis_result.fall_score:.3f}")
+                                logging.info(f"   🤸 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
+                                logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
                     
-                    # Detection sayısını güncelle
-                    if tracks:
-                        detection_count += len(tracks)
-                        logging.debug(f"📊 Kamera {camera_id}: {len(tracks)} kişi tespit edildi")
+                    else:
+                        # Basic detection mode (AI olmadan)
+                        annotated_frame = frame
+                        logging.debug(f"{camera_id}: Basic mode - AI disabled")
                     
-                    # Düşme algılama - Gelişmiş analiz
-                    is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
+                    # Processing time
+                    processing_time = time.time() - processing_start
+                    stats['total_processing_time'] += processing_time
                     
-                    # Düşme algılandı ve yeterli süre geçti mi?
-                    current_time = time.time()
-                    if is_fall and confidence > 0.6 and (current_time - last_detection_time) > min_detection_interval:
-                        last_detection_time = current_time
-                        fall_detection_count += 1
-                        
-                        # Pose analizi bilgilerini topla
-                        pose_analysis = {}
-                        if track_id in self.fall_detector.person_tracks:
-                            person_track = self.fall_detector.person_tracks[track_id]
-                            if person_track.has_valid_pose():
-                                valid_keypoints = np.sum(person_track.latest_keypoint_confs > 0.3)
-                                pose_analysis = {
-                                    'valid_points': int(valid_keypoints),
-                                    'total_points': 17,
-                                    'stability': person_track.get_pose_stability(),
-                                    'keypoint_confidence': float(np.mean(person_track.latest_keypoint_confs))
-                                }
-                        
-                        # Gelişmiş ekran görüntüsü al (pose points dahil)
-                        screenshot = annotated_frame.copy()
-                        
-                        # Zaman damgası ve analiz bilgileri ekle
-                        timestamp_text = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        analysis_text = f"YOLOv11 Pose | ID:{track_id} | Confidence:{confidence:.3f}"
-                        pose_text = f"Pose Points: {pose_analysis.get('valid_points', 0)}/17"
-                        
-                        # Metinleri screenshot'a ekle
-                        font = cv2.FONT_HERSHEY_SIMPLEX
-                        cv2.putText(screenshot, timestamp_text, (10, 30), font, 0.8, (255, 255, 255), 2)
-                        cv2.putText(screenshot, analysis_text, (10, 60), font, 0.7, (0, 255, 255), 2)
-                        cv2.putText(screenshot, pose_text, (10, 90), font, 0.7, (255, 0, 255), 2)
-                        
-                        # FALL DETECTED uyarısı
-                        cv2.putText(screenshot, "*** FALL DETECTED ***", (frame.shape[1]//2-150, 50), 
-                                font, 1.2, (0, 0, 255), 3)
-                        
-                        # UI thread'de işle
-                        self.root.after(0, self._handle_fall_detection, screenshot, confidence, camera_id, pose_analysis)
-                        
-                        logging.info(f"🚨 Kamera {camera_id} YOLOv11 DÜŞME ALGILANDI!")
-                        logging.info(f"   📍 Takip ID: {track_id}")
-                        logging.info(f"   📊 Güven Skoru: {confidence:.4f}")
-                        logging.info(f"   🤸 Pose Noktaları: {pose_analysis.get('valid_points', 0)}/17")
-                        logging.info(f"   🎯 Kararlılık: {pose_analysis.get('stability', 0):.3f}")
+                    # Performance logging
+                    if stats['frame_count'] % config['performance_log_interval'] == 0:
+                        self._log_enhanced_performance_stats(camera_id, stats, config)
                     
-                    # Her 100 frame'de bir istatistik logla
-                    if frame_count % 100 == 0:
-                        elapsed_time = current_time - session_start
-                        avg_fps = frame_count / elapsed_time if elapsed_time > 0 else 0
-                        detection_rate = detection_count / frame_count if frame_count > 0 else 0
-                        
-                        logging.info(f"📈 Kamera {camera_id} İstatistikleri:")
-                        logging.info(f"   🎬 İşlenen Frame: {frame_count}")
-                        logging.info(f"   👥 Toplam Tespit: {detection_count}")
-                        logging.info(f"   🚨 Düşme Uyarısı: {fall_detection_count}")
-                        logging.info(f"   📊 Ortalama FPS: {avg_fps:.1f}")
-                        logging.info(f"   🎯 Tespit Oranı: {detection_rate:.2f} kişi/frame")
-                    
-                    # FPS kontrolü
-                    elapsed_time = time.time() - start_time
+                    # FPS control
+                    elapsed_time = time.time() - loop_start
                     sleep_time = max(0, frame_duration - elapsed_time)
                     if sleep_time > 0:
                         time.sleep(sleep_time)
                     
-                    error_count = 0
+                    # Reset error count on success
+                    stats['error_count'] = 0
                     
                 except Exception as e:
-                    error_count += 1
-                    logging.error(f"❌ Kamera {camera_id} düşme algılama döngüsünde hata ({error_count}/{max_errors}): {str(e)}")
+                    stats['error_count'] += 1
+                    logging.error(f"❌ {camera_id} detection loop hatası ({stats['error_count']}/{config['max_errors']}): {str(e)}")
                     
-                    if error_count >= max_errors:
-                        logging.error(f"💥 Kamera {camera_id} maksimum hata sayısına ulaştı. Algılama durduruluyor.")
-                        self.root.after(0, self.stop_detection)
+                    if stats['error_count'] >= config['max_errors']:
+                        logging.error(f"💥 {camera_id} maksimum hata sayısına ulaştı. Loop sonlandırılıyor.")
+                        self.root.after(0, self.stop_enhanced_detection)
                         break
-                        
+                    
                     time.sleep(1.0)
             
-            # Döngü sonlandırılınca istatistikleri logla
-            total_time = time.time() - session_start
-            logging.info(f"🏁 Kamera {camera_id} algılama döngüsü tamamlandı:")
-            logging.info(f"   ⏱️ Toplam Süre: {total_time:.1f} saniye")
-            logging.info(f"   🎬 İşlenen Frame: {frame_count}")
-            logging.info(f"   👥 Toplam Tespit: {detection_count}")
-            logging.info(f"   🚨 Düşme Uyarısı: {fall_detection_count}")
-            if total_time > 0:
-                logging.info(f"   📊 Ortalama FPS: {frame_count/total_time:.1f}")
+            # Final statistics
+            self._log_enhanced_session_summary(camera_id, stats)
             
         except Exception as e:
-            logging.error(f"💥 Kamera {camera_id} algılama döngüsü tamamen başarısız: {str(e)}")
-            self.root.after(0, self.stop_detection)
+            logging.error(f"💥 {camera_id} Enhanced detection loop kritik hatası: {str(e)}")
+            self.root.after(0, self.stop_enhanced_detection)
 
+    def _log_enhanced_performance_stats(self, camera_id: str, stats: Dict, config: Dict):
+        """Enhanced performans istatistiklerini logla."""
+        try:
+            current_time = time.time()
+            elapsed_time = current_time - stats['session_start']
+            
+            avg_fps = stats['frame_count'] / elapsed_time if elapsed_time > 0 else 0
+            avg_processing_time = (stats['total_processing_time'] / stats['frame_count'] 
+                                 if stats['frame_count'] > 0 else 0)
+            detection_rate = (stats['detection_count'] / stats['frame_count'] 
+                            if stats['frame_count'] > 0 else 0)
+            
+            logging.info(f"📊 {camera_id} Enhanced Performance Stats:")
+            logging.info(f"   🎬 Frames: {stats['frame_count']}")
+            logging.info(f"   👥 Detections: {stats['detection_count']}")
+            logging.info(f"   🚨 Fall Events: {stats['fall_detection_count']}")
+            logging.info(f"   📈 Avg FPS: {avg_fps:.1f}")
+            logging.info(f"   ⚡ Avg Processing: {avg_processing_time*1000:.1f}ms")
+            logging.info(f"   🎯 Detection Rate: {detection_rate:.3f}")
+            logging.info(f"   ❌ Error Count: {stats['error_count']}")
+            
+            # Performance monitoring güncelle
+            self.performance_monitor['avg_fps'] = avg_fps
+            self.performance_monitor['detection_time_total'] = stats['total_processing_time']
+            self.performance_monitor['frame_count'] = stats['frame_count']
+            
+        except Exception as e:
+            logging.error(f"Performance stats log hatası: {e}")
 
+    def _log_enhanced_session_summary(self, camera_id: str, stats: Dict):
+        """Enhanced session özeti logla."""
+        total_time = time.time() - stats['session_start']
+        avg_fps = stats['frame_count'] / total_time if total_time > 0 else 0
+        
+        logging.info(f"🏁 {camera_id} Enhanced Session Summary:")
+        logging.info(f"   ⏱️ Total Time: {total_time:.1f}s")
+        logging.info(f"   🎬 Total Frames: {stats['frame_count']}")
+        logging.info(f"   👥 Total Detections: {stats['detection_count']}")
+        logging.info(f"   🚨 Fall Events: {stats['fall_detection_count']}")
+        logging.info(f"   📊 Average FPS: {avg_fps:.1f}")
+        logging.info(f"   ❌ Final Error Count: {stats['error_count']}")
 
-
-
-
-
-    def _handle_fall_detection(self, screenshot, confidence, camera_id, pose_analysis=None):
+    def _handle_enhanced_fall_detection(self, screenshot: np.ndarray, confidence: float, 
+                                      camera_id: str, track_id: int, analysis_result=None):
         """
-        YOLOv11 Pose Estimation ile düşme algılandığında çağrılır.
+        Enhanced düşme algılama event handler.
+        AdvancedFallDetector analysis_result ile tam entegrasyon.
         
         Args:
-            screenshot (np.ndarray): Pose points dahil ekran görüntüsü
-            confidence (float): Düşme güven skoru
-            camera_id (str): Kamera ID'si
-            pose_analysis (dict): Pose analizi bilgileri
+            screenshot: Enhanced pose visualizations dahil ekran görüntüsü
+            confidence: Düşme güven skoru
+            camera_id: Kamera ID'si
+            track_id: Tracking ID'si
+            analysis_result: PoseAnalysisResult object
         """
         try:
-            logging.info(f"🎯 Kamera {camera_id} YOLOv11 Pose Düşme Algılandı! Olasılık: {confidence:.4f}")
+            logging.info(f"🎯 {camera_id} ULTRA ENHANCED FALL DETECTED! Confidence: {confidence:.4f}")
             event_id = str(uuid.uuid4())
             
-            # Storage'a görüntü yükle ve URL al
-            image_url = self.storage_manager.upload_screenshot(self.current_user["localId"], screenshot, event_id)
+            # Enhanced screenshot processing
+            enhanced_screenshot = self._enhance_screenshot(screenshot, analysis_result, camera_id)
+            
+            # Storage'a yükle
+            image_url = self.storage_manager.upload_screenshot(
+                self.current_user["localId"], enhanced_screenshot, event_id
+            )
+            
             if not image_url:
-                logging.error(f"❌ Kamera {camera_id} görüntü yüklenemedi, olay kaydedilmeyecek.")
+                logging.error(f"❌ {camera_id} görüntü yüklenemedi, olay kaydedilmeyecek")
                 return
             
-            # Model ve pose bilgilerini al
-            model_info = self.fall_detector.get_model_info() if self.fall_detector else {}
+            # Enhanced model ve analiz bilgilerini al
+            model_info = self.fall_detector.get_enhanced_model_info() if self.fall_detector else {}
             
-            # Gelişmiş olay verilerini oluştur
+            # Ultra enhanced event data
             event_data = {
                 "id": event_id,
                 "user_id": self.current_user["localId"],
                 "timestamp": time.time(),
                 "confidence": float(confidence),
                 "image_url": image_url,
-                "detection_method": "YOLOv11_Pose_DeepSORT",
+                "detection_method": "AdvancedFallDetector_v3",
                 "camera_id": camera_id,
+                "track_id": track_id,
+                
+                # Enhanced model info
                 "model_info": {
-                    "model_name": model_info.get("model_name", "YOLOv11"),
-                    "model_version": model_info.get("model_version", "unknown"),
+                    "model_name": model_info.get("model_name", "Unknown"),
+                    "model_version": "3.0",
                     "device": model_info.get("device", "unknown"),
-                    "confidence_threshold": model_info.get("confidence_threshold", 0.5),
-                    "keypoints_count": model_info.get("keypoints_count", 17)
+                    "keypoints_count": model_info.get("keypoints_count", 17),
+                    "available_models": list(model_info.get("available_models", {}).keys())
                 },
-                "pose_analysis": pose_analysis or {},
-                "detection_metadata": {
-                    "frame_size": model_info.get("frame_size", 640),
+                
+                # Enhanced analysis data
+                "enhanced_analysis": self._serialize_analysis_result(analysis_result) if analysis_result else {},
+                
+                # Performance metadata
+                "performance_metadata": {
                     "processing_time": time.time(),
-                    "algorithm": "pose_estimation_fall_detection",
-                    "version": "2.0"
+                    "app_version": self.app_version,
+                    "session_uptime": time.time() - self.performance_monitor['start_time'],
+                    "total_memory_mb": self.performance_monitor['memory_usage'],
+                    "system_fps": self.performance_monitor['avg_fps']
+                },
+                
+                # Enhanced detection metadata
+                "detection_metadata": {
+                    "algorithm": "enhanced_pose_estimation_fall_detection",
+                    "version": "3.0",
+                    "frame_size": model_info.get("config", {}).get("frame_size", 640),
+                    "multi_scale_detection": model_info.get("config", {}).get("multi_scale_detection", False),
+                    "adaptive_thresholds": model_info.get("config", {}).get("adaptive_thresholds", False)
                 }
             }
             
-            # Pose analizi detaylarını logla
-            if pose_analysis:
-                logging.info(f"🤸 Pose Analizi Detayları:")
-                logging.info(f"   📍 Geçerli Nokta: {pose_analysis.get('valid_points', 0)}/17")
-                logging.info(f"   🎯 Kararlılık: {pose_analysis.get('stability', 0):.3f}")
-                logging.info(f"   📊 Keypoint Güveni: {pose_analysis.get('keypoint_confidence', 0):.3f}")
+            # Enhanced analysis logging
+            if analysis_result:
+                logging.info(f"🧠 Enhanced Analysis Details:")
+                logging.info(f"   📊 Fall Score: {analysis_result.fall_score:.4f}")
+                logging.info(f"   🎯 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
+                logging.info(f"   🔄 Pose Stability: {analysis_result.pose_stability:.3f}")
+                logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
+                logging.info(f"   📋 Risk List: {', '.join(analysis_result.risk_factors)}")
+                
+                # Detailed analysis components
+                for component, data in analysis_result.analysis_details.items():
+                    if isinstance(data, dict) and 'confidence' in data:
+                        logging.debug(f"   🔍 {component}: {data}")
             
-            # Firestore'a /fall_events/{eventId} yoluna kaydet
+            # Enhanced Firestore save
             save_result = self.db_manager.save_fall_event(event_data)
             if not save_result:
-                logging.error(f"❌ Kamera {camera_id} düşme olayı veritabanına kaydedilemedi!")
+                logging.error(f"❌ {camera_id} enhanced fall event veritabanına kaydedilemedi!")
             else:
-                logging.info(f"✅ Kamera {camera_id} YOLOv11 düşme olayı veritabanına kaydedildi: {event_id}")
-                logging.debug(f"🔗 Kayıt detayları: user_id={self.current_user['localId']}, image_url={image_url}")
+                logging.info(f"✅ {camera_id} Enhanced fall event başarıyla kaydedildi: {event_id}")
+                logging.debug(f"🔗 Enhanced event details: user_id={self.current_user['localId']}")
 
-            # Gelişmiş bildirim gönder
+            # Enhanced notifications
             if self.notification_manager:
-                user_data = self.db_manager.get_user_data(self.current_user["localId"])
-                if user_data:
-                    self.notification_manager.update_user_data(user_data)
-                
-                # Bildirim verilerine pose analizi ekle
-                notification_event_data = event_data.copy()
-                notification_event_data['pose_summary'] = self._create_pose_summary(pose_analysis)
-                
-                notification_result = self.notification_manager.send_notifications(notification_event_data, screenshot)
-                if not notification_result:
-                    logging.error(f"❌ Kamera {camera_id} bildirimleri gönderilemedi!")
-                else:
-                    logging.info(f"📧 Kamera {camera_id} YOLOv11 düşme bildirimleri başarıyla gönderildi")
+                try:
+                    user_data = self.db_manager.get_user_data(self.current_user["localId"])
+                    if user_data:
+                        self.notification_manager.update_user_data(user_data)
+                    
+                    # Enhanced notification data
+                    notification_data = event_data.copy()
+                    notification_data['enhanced_summary'] = self._create_enhanced_summary(analysis_result)
+                    notification_data['severity_level'] = self._calculate_severity_level(analysis_result)
+                    
+                    notification_result = self.notification_manager.send_notifications(
+                        notification_data, enhanced_screenshot
+                    )
+                    
+                    if notification_result:
+                        logging.info(f"📧 {camera_id} Enhanced notifications başarıyla gönderildi")
+                    else:
+                        logging.error(f"❌ {camera_id} Enhanced notifications gönderilemedi!")
+                        
+                except Exception as e:
+                    logging.error(f"❌ Enhanced notification hatası: {str(e)}")
 
-            # Dashboard'ı güncelle
+            # Enhanced dashboard update
             if hasattr(self, "dashboard_frame") and self.dashboard_frame:
                 try:
-                    if not self.dashboard_frame.is_destroyed and self.dashboard_frame.winfo_exists():
-                        # Gelişmiş event data ile dashboard güncelle
-                        enhanced_event_data = event_data.copy()
-                        enhanced_event_data['display_summary'] = self._create_display_summary(event_data, pose_analysis)
+                    if (not hasattr(self.dashboard_frame, 'is_destroyed') or 
+                        not self.dashboard_frame.is_destroyed) and self.dashboard_frame.winfo_exists():
                         
-                        self.dashboard_frame.update_fall_detection(screenshot, confidence, enhanced_event_data)
-                        logging.info(f"🖥️ Kamera {camera_id} dashboard başarıyla güncellendi")
+                        # Enhanced display data
+                        enhanced_display_data = event_data.copy()
+                        enhanced_display_data['display_summary'] = self._create_enhanced_display_summary(
+                            event_data, analysis_result
+                        )
+                        
+                        self.dashboard_frame.update_fall_detection(
+                            enhanced_screenshot, confidence, enhanced_display_data
+                        )
+                        logging.info(f"🖥️ {camera_id} Enhanced dashboard başarıyla güncellendi")
                     else:
-                        logging.warning("⚠️ Dashboard widget mevcut değil, güncelleme atlandı")
+                        logging.warning("⚠️ Enhanced dashboard widget mevcut değil")
+                        
                 except Exception as e:
-                    logging.error(f"❌ Kamera {camera_id} dashboard güncellenirken hata: {str(e)}")
+                    logging.error(f"❌ {camera_id} Enhanced dashboard güncelleme hatası: {str(e)}")
             else:
-                logging.warning("⚠️ Dashboard referansı bulunamadı!")
+                logging.warning("⚠️ Enhanced dashboard referansı bulunamadı!")
 
         except Exception as e:
-            logging.error(f"💥 Kamera {camera_id} YOLOv11 düşme olayı işlenirken hata: {str(e)}")
+            logging.error(f"💥 {camera_id} Enhanced fall detection event hatası: {str(e)}")
 
-
-        """YOLOv11 ile düşme algılandığında çağrılır."""
+    def _enhance_screenshot(self, screenshot: np.ndarray, analysis_result, camera_id: str) -> np.ndarray:
+        """Screenshot'ı gelişmiş bilgilerle zenginleştir."""
         try:
-            logging.info(f"Kamera {camera_id} YOLOv11 Düşme Algılandı! Olasılık: {confidence:.4f}")
-            event_id = str(uuid.uuid4())
+            enhanced = screenshot.copy()
+            h, w = enhanced.shape[:2]
             
-            # Storage’a görüntü yükle ve URL al
-            image_url = self.storage_manager.upload_screenshot(self.current_user["localId"], screenshot, event_id)
-            if not image_url:
-                logging.error(f"Kamera {camera_id} görüntü yüklenemedi, olay kaydedilmeyecek.")
-                return
+            # Enhanced overlay background
+            overlay = enhanced.copy()
+            cv2.rectangle(overlay, (0, 0), (w, 120), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, enhanced, 0.3, 0, enhanced)
             
-            # Olay verilerini oluştur
-            event_data = {
-                "id": event_id,
-                "user_id": self.current_user["localId"],
-                "timestamp": time.time(),
-                "confidence": float(confidence),
-                "image_url": image_url,
-                "detection_method": "YOLOv11",
-                "camera_id": camera_id,
-                "model_info": self.fall_detector.get_model_info() if self.fall_detector else {}
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            
+            # Enhanced header
+            cv2.putText(enhanced, "GUARD AI v3.0 - ENHANCED FALL DETECTION", 
+                       (10, 25), font, 0.7, (0, 255, 255), 2)
+            
+            # Timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cv2.putText(enhanced, f"Time: {timestamp}", (10, 50), font, 0.6, (255, 255, 255), 1)
+            
+            # Camera info
+            cv2.putText(enhanced, f"Camera: {camera_id}", (10, 75), font, 0.6, (255, 255, 255), 1)
+            
+            # Enhanced analysis info
+            if analysis_result:
+                cv2.putText(enhanced, f"Fall Score: {analysis_result.fall_score:.3f}", 
+                           (300, 50), font, 0.6, (0, 0, 255), 2)
+                cv2.putText(enhanced, f"Quality: {analysis_result.keypoint_quality:.3f}", 
+                           (300, 75), font, 0.6, (255, 255, 0), 1)
+                cv2.putText(enhanced, f"Risks: {len(analysis_result.risk_factors)}", 
+                           (300, 100), font, 0.6, (255, 0, 255), 1)
+            
+            # App signature
+            cv2.putText(enhanced, f"Guard AI v{self.app_version}", 
+                       (w-150, h-10), font, 0.5, (128, 128, 128), 1)
+            
+            return enhanced
+            
+        except Exception as e:
+            logging.error(f"Screenshot enhancement hatası: {e}")
+            return screenshot
+
+    def _serialize_analysis_result(self, analysis_result) -> Dict[str, Any]:
+        """PoseAnalysisResult'ı serialize et."""
+        try:
+            if not analysis_result:
+                return {}
+            
+            return {
+                "is_fall": analysis_result.is_fall,
+                "confidence": float(analysis_result.confidence),
+                "fall_score": float(analysis_result.fall_score),
+                "keypoint_quality": float(analysis_result.keypoint_quality),
+                "pose_stability": float(analysis_result.pose_stability),
+                "risk_factors": analysis_result.risk_factors,
+                "timestamp": analysis_result.timestamp,
+                "analysis_details": {
+                    k: self._serialize_analysis_component(v) 
+                    for k, v in analysis_result.analysis_details.items()
+                }
+            }
+        except Exception as e:
+            logging.error(f"Analysis result serialization hatası: {e}")
+            return {"error": str(e)}
+
+    def _serialize_analysis_component(self, component) -> Any:
+        """Analysis component'ini serialize et."""
+        try:
+            if isinstance(component, dict):
+                return {k: float(v) if isinstance(v, (int, float, np.number)) else v 
+                       for k, v in component.items()}
+            elif isinstance(component, (int, float, np.number)):
+                return float(component)
+            elif isinstance(component, (list, tuple)):
+                return [float(x) if isinstance(x, (int, float, np.number)) else x for x in component]
+            else:
+                return str(component)
+        except:
+            return str(component)
+
+    def _create_enhanced_summary(self, analysis_result) -> str:
+        """Enhanced özet oluştur."""
+        if not analysis_result:
+            return "Enhanced analiz mevcut değil"
+        
+        try:
+            # Risk level
+            risk_level = "YÜKSEK" if len(analysis_result.risk_factors) > 4 else \
+                        "ORTA" if len(analysis_result.risk_factors) > 2 else "DÜŞÜK"
+            
+            # Quality assessment
+            quality = "Mükemmel" if analysis_result.keypoint_quality > 0.8 else \
+                     "İyi" if analysis_result.keypoint_quality > 0.6 else \
+                     "Orta" if analysis_result.keypoint_quality > 0.4 else "Düşük"
+            
+            # Stability assessment
+            stability = "Çok Kararlı" if analysis_result.pose_stability > 0.8 else \
+                       "Kararlı" if analysis_result.pose_stability > 0.6 else \
+                       "Orta" if analysis_result.pose_stability > 0.4 else "Kararsız"
+            
+            return (f"Enhanced AI Analizi: Risk {risk_level}, "
+                   f"Kalite {quality}, Kararlılık {stability}, "
+                   f"Skor {analysis_result.fall_score:.3f}")
+            
+        except Exception as e:
+            return f"Enhanced özet hatası: {str(e)}"
+
+    def _calculate_severity_level(self, analysis_result) -> str:
+        """Severity level hesapla."""
+        try:
+            if not analysis_result:
+                return "medium"
+            
+            score = analysis_result.fall_score
+            risk_count = len(analysis_result.risk_factors)
+            quality = analysis_result.keypoint_quality
+            
+            # Enhanced severity calculation
+            if score > 0.9 and quality > 0.7:
+                return "critical"
+            elif score > 0.8 or risk_count > 5:
+                return "high"
+            elif score > 0.7 or risk_count > 3:
+                return "medium"
+            else:
+                return "low"
+                
+        except Exception:
+            return "medium"
+
+    def _create_enhanced_display_summary(self, event_data: Dict, analysis_result) -> Dict[str, Any]:
+        """Enhanced dashboard display summary."""
+        try:
+            base_summary = {
+                'detection_method': 'Advanced AI v3.0',
+                'tracking_method': 'Enhanced DeepSORT',
+                'model_name': event_data.get('model_info', {}).get('model_name', 'Unknown'),
+                'app_version': self.app_version,
+                'timestamp_formatted': datetime.fromtimestamp(
+                    event_data.get('timestamp', time.time())
+                ).strftime('%H:%M:%S'),
+                'uptime': f"{(time.time() - self.performance_monitor['start_time'])/60:.1f}m"
             }
             
-            # Firestore’a /fall_events/{eventId} yoluna kaydet
-            save_result = self.db_manager.save_fall_event(event_data)
-            if not save_result:
-                logging.error(f"Kamera {camera_id} düşme olayı veritabanına kaydedilemedi!")
-            else:
-                logging.info(f"Kamera {camera_id} YOLOv11 düşme olayı veritabanına kaydedildi: {event_id}")
-                logging.debug(f"Olay kaydedildi: user_id={self.current_user['localId']}, image_url={image_url}")
-
-            # Bildirim gönder
-            if self.notification_manager:
-                user_data = self.db_manager.get_user_data(self.current_user["localId"])
-                if user_data:
-                    self.notification_manager.update_user_data(user_data)
-                notification_result = self.notification_manager.send_notifications(event_data, screenshot)
-                if not notification_result:
-                    logging.error(f"Kamera {camera_id} bildirimleri gönderilemedi!")
-                else:
-                    logging.info(f"Kamera {camera_id} YOLOv11 düşme bildirimleri başarıyla gönderildi")
-
-            # Dashboard’ı güncelle
-            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-                try:
-                    if not self.dashboard_frame.is_destroyed and self.dashboard_frame.winfo_exists():
-                        self.dashboard_frame.update_fall_detection(screenshot, confidence, event_data)
-                        logging.info(f"Kamera {camera_id} dashboard başarıyla güncellendi")
-                    else:
-                        logging.warning("Dashboard widget mevcut değil, güncelleme atlandı")
-                except Exception as e:
-                    logging.error(f"Kamera {camera_id} dashboard güncellenirken hata: {str(e)}")
-            else:
-                logging.warning("Dashboard referansı bulunamadı!")
-
+            if analysis_result:
+                base_summary.update({
+                    'confidence_level': 'Kritik' if analysis_result.confidence > 0.9 else
+                                      'Yüksek' if analysis_result.confidence > 0.7 else 'Orta',
+                    'pose_quality': self._get_quality_description(analysis_result.keypoint_quality),
+                    'fall_score': f"{analysis_result.fall_score:.3f}",
+                    'risk_factors_count': len(analysis_result.risk_factors),
+                    'severity': self._calculate_severity_level(analysis_result)
+                })
+            
+            return base_summary
+            
         except Exception as e:
-            logging.error(f"Kamera {camera_id} YOLOv11 düşme olayı işlenirken hata: {str(e)}")
+            logging.error(f"Enhanced display summary hatası: {e}")
+            return {'error': str(e)}
 
-    def _create_pose_summary(self, pose_analysis):
-        """
-        Pose analizi için özet oluşturur.
-        
-        Args:
-            pose_analysis (dict): Pose analizi verileri
-            
-        Returns:
-            str: Pose özeti
-        """
-        if not pose_analysis:
-            return "Pose analizi mevcut değil"
-        
-        valid_points = pose_analysis.get('valid_points', 0)
-        total_points = pose_analysis.get('total_points', 17)
-        stability = pose_analysis.get('stability', 0)
-        confidence = pose_analysis.get('keypoint_confidence', 0)
-        
-        # Pose kalitesi değerlendirmesi
-        if valid_points >= 15:
-            quality = "Mükemmel"
-        elif valid_points >= 12:
-            quality = "İyi"
-        elif valid_points >= 8:
-            quality = "Orta"
-        else:
-            quality = "Düşük"
-        
-        # Kararlılık değerlendirmesi
-        if stability >= 0.8:
-            stability_desc = "Çok Kararlı"
-        elif stability >= 0.6:
-            stability_desc = "Kararlı"
-        elif stability >= 0.4:
-            stability_desc = "Orta"
-        else:
-            stability_desc = "Kararsız"
-        
-        return f"{quality} ({valid_points}/{total_points} nokta, {stability_desc}, %{confidence*100:.1f} güven)"
-    
-
-
-    def _create_display_summary(self, event_data, pose_analysis):
-        """
-        Dashboard görüntüleme için özet oluşturur.
-        
-        Args:
-            event_data (dict): Olay verileri
-            pose_analysis (dict): Pose analizi
-            
-        Returns:
-            dict: Görüntüleme özeti
-        """
-        summary = {
-            'detection_method': 'YOLOv11 Pose Estimation',
-            'tracking_method': 'DeepSORT',
-            'confidence_level': 'Yüksek' if event_data.get('confidence', 0) > 0.8 else 'Orta',
-            'pose_quality': self._get_pose_quality_level(pose_analysis),
-            'timestamp_formatted': datetime.datetime.fromtimestamp(
-                event_data.get('timestamp', time.time())
-            ).strftime('%H:%M:%S'),
-            'model_version': event_data.get('model_info', {}).get('model_name', 'Unknown')
-        }
-        
-        return summary
-
-
-    def _get_pose_quality_level(self, pose_analysis):
-        """
-        Pose kalite seviyesini belirler.
-        
-        Args:
-            pose_analysis (dict): Pose analizi
-            
-        Returns:
-            str: Kalite seviyesi
-        """
-        if not pose_analysis:
-            return "Bilinmiyor"
-        
-        valid_points = pose_analysis.get('valid_points', 0)
-        stability = pose_analysis.get('stability', 0)
-        
-        # Kombinasyon değerlendirmesi
-        if valid_points >= 15 and stability >= 0.7:
+    def _get_quality_description(self, quality: float) -> str:
+        """Kalite açıklaması."""
+        if quality > 0.8:
             return "Mükemmel"
-        elif valid_points >= 12 and stability >= 0.5:
+        elif quality > 0.6:
             return "İyi"
-        elif valid_points >= 8 and stability >= 0.3:
+        elif quality > 0.4:
             return "Orta"
         else:
             return "Düşük"
 
-
-
-
-
-
-
     def logout(self):
-        """Kullanıcı çıkışı yapar."""
-        if self.system_running:
-            self.stop_detection()
-        self.current_user = None
-        self.notification_manager = None
-        self.show_login()
-        logging.info("Kullanıcı çıkış yaptı.")
-
-    def toggle_theme(self):
-        """Açık/koyu tema arasında geçiş yapar."""
-        if self.current_theme == "light":
-            self.current_theme = "dark"
-        else:
-            self.current_theme = "light"
-        self.root.configure(bg="#000000" if self.current_theme == "dark" else "#f5f5f5")
-        self._setup_styles()
-        self._update_ui_theme()
-        if self.current_user:
-            settings = self.db_manager.get_user_data(self.current_user["localId"]).get("settings", {})
-            settings["theme"] = self.current_theme
-            self.db_manager.save_user_settings(self.current_user["localId"], settings)
-
-    def _update_ui_theme(self):
-        """Tüm UI bileşenlerini mevcut temaya göre günceller."""
-        self.main_frame.configure(bg="#f5f5f5" if self.current_theme == "light" else "#212121")
-        self.content_frame.configure(bg="#f5f5f5" if self.current_theme == "light" else "#212121")
-        if hasattr(self, "login_frame") and self.login_frame.winfo_exists():
-            self.login_frame.update_theme(self.current_theme)
-        elif hasattr(self, "register_frame") and self.register_frame.winfo_exists():
-            self.register_frame.update_theme(self.current_theme)
-        elif hasattr(self, "dashboard_frame") and self.dashboard_frame.winfo_exists():
-            self.dashboard_frame.update_theme(self.current_theme)
-        elif hasattr(self, "settings_frame") and self.settings_frame.winfo_exists():
-            self.settings_frame.update_theme(self.current_theme)
-        elif hasattr(self, "history_frame") and self.history_frame.winfo_exists():
-            self.history_frame.update_theme(self.current_theme)
-
-    def _on_close(self):
-        """Uygulama kapatıldığında çağrılır."""
+        """Enhanced kullanıcı çıkışı."""
         try:
-            if self.system_running:
-                self.stop_detection()
-            for camera in self.cameras:
-                camera.stop()
+            logging.info("🚪 Enhanced logout başlatılıyor...")
+            
+            # Sistemi durdur
+            if self.system_state['running']:
+                self.stop_enhanced_detection()
+            
+            # Enhanced cleanup
             if hasattr(self, 'fall_detector') and self.fall_detector:
-                pass
-            logging.info("Uygulama kapatılıyor...")
-            self.root.destroy()
+                try:
+                    self.fall_detector.cleanup()
+                except:
+                    pass
+            
+            # Session bilgilerini temizle
+            self.current_user = None
+            self.notification_manager = None
+            self.system_state['session_start'] = None
+            
+            # UI'ya dön
+            self.show_login()
+            
+            logging.info("✅ Enhanced logout tamamlandı")
+            
         except Exception as e:
-            logging.error(f"Uygulama kapatılırken hata: {str(e)}")
+            logging.error(f"❌ Enhanced logout hatası: {str(e)}")
+
+    def switch_ai_model(self, model_name: str) -> bool:
+        """AI modelini değiştir (UI'dan çağrılır)."""
+        try:
+            if not self.fall_detector:
+                messagebox.showerror("Hata", "Fall detector başlatılmamış!")
+                return False
+            
+            success, message = self.fall_detector.switch_model(model_name)
+            
+            if success:
+                self.system_state['current_model'] = model_name
+                messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {model_name}")
+                logging.info(f"🔄 AI Model değiştirildi: {model_name}")
+                return True
+            else:
+                messagebox.showerror("Hata", f"Model değiştirilemedi: {message}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ Model switch hatası: {str(e)}")
+            messagebox.showerror("Hata", f"Model değiştirme hatası: {str(e)}")
+            return False
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """Enhanced sistem durumunu döndür."""
+        try:
+            uptime = time.time() - self.performance_monitor['start_time']
+            
+            return {
+                'app_info': {
+                    'name': self.app_name,
+                    'version': self.app_version,
+                    'build_date': self.build_date,
+                    'uptime_seconds': uptime,
+                    'uptime_formatted': f"{int(uptime//3600):02d}:{int((uptime%3600)//60):02d}:{int(uptime%60):02d}"
+                },
+                'system_state': self.system_state.copy(),
+                'performance': self.performance_monitor.copy(),
+                'cameras': {
+                    'total': len(self.cameras),
+                    'active': self.system_state['cameras_active'],
+                    'available_configs': len(CAMERA_CONFIGS)
+                },
+                'ai_model': {
+                    'loaded': self.system_state['ai_model_loaded'],
+                    'current': self.system_state['current_model'],
+                    'available': list(self.fall_detector.available_models.keys()) if self.fall_detector else []
+                }
+            }
+        except Exception as e:
+            logging.error(f"System status hatası: {e}")
+            return {'error': str(e)}
+
+    def _on_enhanced_close(self):
+        """Enhanced uygulama kapatma."""
+        try:
+            logging.info("🔚 Enhanced uygulama kapatılıyor...")
+            
+            # Sistem durdur
+            if self.system_state['running']:
+                self.stop_enhanced_detection()
+            
+            # Kameraları durdur
+            for camera in self.cameras:
+                try:
+                    camera.stop()
+                except:
+                    pass
+            
+            # Enhanced cleanup
+            if hasattr(self, 'fall_detector') and self.fall_detector:
+                try:
+                    self.fall_detector.cleanup()
+                except:
+                    pass
+            
+            # Final istatistikler
+            total_uptime = time.time() - self.performance_monitor['start_time']
+            logging.info(f"📊 Final Statistics:")
+            logging.info(f"   ⏱️ Total Uptime: {total_uptime:.1f}s")
+            logging.info(f"   👥 Total Detections: {self.system_state['total_detections']}")
+            logging.info(f"   🚨 Fall Events: {self.system_state['fall_events']}")
+            logging.info(f"   🎬 Processed Frames: {self.performance_monitor['frame_count']}")
+            
+            logging.info("✅ Enhanced Guard AI uygulaması güvenli şekilde kapatıldı")
+            self.root.destroy()
+            
+        except Exception as e:
+            logging.error(f"❌ Enhanced close hatası: {str(e)}")
             sys.exit(1)
 
+
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = GuardApp(root)
-    root.mainloop()
+    # Enhanced logging setup
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('guard_ai_v3.log', encoding='utf-8')
+        ]
+    )
+    
+    logging.info("🚀 Guard AI Ultra v3.0 başlatılıyor...")
+    
+    try:
+        root = tk.Tk()
+        app = GuardApp(root)
+        
+        logging.info("✅ Ultra Guard AI başarıyla başlatıldı!")
+        root.mainloop()
+        
+    except Exception as e:
+        logging.error(f"❌ Ultra Guard AI başlatma hatası: {str(e)}")
+        messagebox.showerror("Kritik Hata", f"Uygulama başlatılamadı:\n{str(e)}")
+        sys.exit(1)

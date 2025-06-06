@@ -1,11 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: fall_detection.py (ENHANCED VERSION)
+# 📄 Dosya Adı: fall_detection.py (ENHANCED VERSION - COMPLETE FIX)
 # 📁 Konum: guard_pc_app/core/fall_detection.py
 # 📌 Açıklama:
 # YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş düşme algılama sistemi.
-# 17 eklem noktası ile pose estimation, baş-pelvis oranı ve eğiklik açısı kontrolü.
-# DeepSORT ile robust insan takibi ve ID assignment.
-# Süreklilik kontrolü ile false positive eliminasyonu.
+# Eksik metodlar eklendi, tam uyumluluk sağlandı.
 # =======================================================================================
 
 import cv2
@@ -13,40 +11,84 @@ import numpy as np
 import logging
 import math
 import time
+import threading
+import datetime
 from collections import defaultdict, deque
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 from config.settings import MODEL_PATH, CONFIDENCE_THRESHOLD, FRAME_WIDTH
 import winsound
-import threading
 
 class FallDetector:
     """
     YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş düşme algılama sistemi.
+    Thread-safe Singleton pattern ile implement edildi.
     """
     _instance = None
+    _lock = threading.Lock()
 
     @classmethod
-    def get_instance(cls):
-        """Singleton örneğini döndürür."""
+    def get_instance(cls, model_path=None, confidence_threshold=None, frame_width=None):
+        """
+        Thread-safe singleton örneğini döndürür.
+        
+        Args:
+            model_path (str, optional): YOLO model dosya yolu
+            confidence_threshold (float, optional): Güven eşiği
+            frame_width (int, optional): Frame genişliği
+            
+        Returns:
+            FallDetector: Singleton instance
+        """
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._lock:
+                # Double-checked locking pattern
+                if cls._instance is None:
+                    cls._instance = cls(model_path, confidence_threshold, frame_width)
         return cls._instance
 
-    def __init__(self):
-        """FallDetector başlatıcı fonksiyonu."""
+    @classmethod
+    def reset_instance(cls):
+        """Singleton instance'ını sıfırlar (test amaçlı)."""
+        with cls._lock:
+            if cls._instance is not None:
+                try:
+                    cls._instance.cleanup()
+                except:
+                    pass
+                cls._instance = None
+
+    def __init__(self, model_path=None, confidence_threshold=None, frame_width=None):
+        """
+        FallDetector başlatıcı fonksiyonu.
+        
+        Args:
+            model_path (str, optional): YOLO model dosya yolu
+            confidence_threshold (float, optional): Güven eşiği
+            frame_width (int, optional): Frame genişliği
+        """
         if FallDetector._instance is not None:
             raise Exception("Bu sınıf singleton! get_instance() kullanın.")
         
+        # Parametreleri ayarla
+        self.model_path = model_path or MODEL_PATH
+        self.conf_threshold = confidence_threshold or CONFIDENCE_THRESHOLD
+        self.frame_size = frame_width or FRAME_WIDTH
+        
+        # Model ve sistem bilgileri
+        self.model_version = "YOLOv11-L"
+        self.detector_version = "3.0"
+        self.initialization_time = time.time()
+        
         # YOLO modelini yükle (pose estimation modeli)
         try:
-            self.model = YOLO(MODEL_PATH)
+            self.model = YOLO(self.model_path)
             self.is_model_loaded = True
-            logging.info(f"YOLOv11 Pose modeli başarıyla yüklendi: {MODEL_PATH}")
+            logging.info(f"YOLOv11 Pose modeli başarıyla yüklendi: {self.model_path}")
         except Exception as e:
             logging.error(f"YOLO model yüklenirken hata: {str(e)}")
             self.is_model_loaded = False
-            raise
+            self.model = None
 
         # DeepSORT tracker'ı başlat
         try:
@@ -60,11 +102,7 @@ class FallDetector:
             logging.info("DeepSORT tracker başarıyla başlatıldı.")
         except Exception as e:
             logging.error(f"DeepSORT tracker başlatılırken hata: {str(e)}")
-            raise
-
-        # Ayarlar
-        self.conf_threshold = CONFIDENCE_THRESHOLD
-        self.frame_size = FRAME_WIDTH
+            self.tracker = None
 
         # COCO pose keypoints (17 nokta)
         self.keypoint_names = [
@@ -90,22 +128,145 @@ class FallDetector:
         # Performans takibi
         self.frame_count = 0
         self.last_detection_time = 0
+        self.detection_stats = {
+            'total_detections': 0,
+            'fall_detections': 0,
+            'false_positives': 0,
+            'processing_times': deque(maxlen=100),
+            'session_start': time.time()
+        }
+        
+        # Thread güvenliği için lock
+        self.detection_lock = threading.Lock()
 
     def get_model_info(self):
-        """Model bilgilerini döndürür."""
+        """Temel model bilgilerini döndürür."""
+        device_type = "unknown"
+        if self.model is not None:
+            try:
+                device_type = "cuda" if self.model.device.type == "cuda" else "cpu"
+            except:
+                device_type = "cpu"
+        
         return {
             "model_name": "YOLOv11 Pose",
-            "model_path": MODEL_PATH,
+            "model_path": self.model_path,
             "model_loaded": self.is_model_loaded,
             "confidence_threshold": self.conf_threshold,
             "frame_size": self.frame_size,
-            "device": "cuda" if self.model.device.type == "cuda" else "cpu",
-            "keypoints_count": len(self.keypoint_names)
+            "device": device_type,
+            "keypoints_count": len(self.keypoint_names),
+            "tracker_available": self.tracker is not None
+        }
+
+    def get_enhanced_model_info(self):
+        """
+        Gelişmiş model bilgilerini döndürür (FallDetector uyumluluğu için).
+        
+        Returns:
+            dict: Detaylı model ve sistem bilgileri
+        """
+        basic_info = self.get_model_info()
+        
+        # Gelişmiş bilgiler ekle
+        enhanced_info = {
+            **basic_info,
+            "detector_version": self.detector_version,
+            "model_version": self.model_version,
+            "initialization_time": self.initialization_time,
+            "uptime": time.time() - self.initialization_time,
+            "detection_stats": self.detection_stats.copy(),
+            "fall_detection_params": self.fall_detection_params.copy(),
+            "active_tracks": len(self.person_tracks),
+            "active_alerts": len(self.fall_alerts),
+            "performance_metrics": self._get_performance_metrics(),
+            "system_status": self._get_system_status(),
+            "capabilities": {
+                "pose_estimation": True,
+                "object_tracking": self.tracker is not None,
+                "fall_detection": True,
+                "multi_person": True,
+                "real_time": True,
+                "keypoint_analysis": True
+            },
+            "supported_formats": {
+                "input": ["BGR", "RGB", "GRAY"],
+                "output": ["annotated_frame", "tracking_data", "pose_data"],
+                "video_codecs": ["mp4", "avi", "mov"]
+            }
+        }
+        
+        return enhanced_info
+
+    def _get_performance_metrics(self):
+        """Performans metriklerini hesapla."""
+        processing_times = list(self.detection_stats['processing_times'])
+        
+        if not processing_times:
+            return {
+                "avg_processing_time": 0.0,
+                "fps": 0.0,
+                "min_processing_time": 0.0,
+                "max_processing_time": 0.0
+            }
+        
+        avg_time = np.mean(processing_times)
+        fps = 1.0 / avg_time if avg_time > 0 else 0.0
+        
+        return {
+            "avg_processing_time": float(avg_time),
+            "fps": float(fps),
+            "min_processing_time": float(np.min(processing_times)),
+            "max_processing_time": float(np.max(processing_times)),
+            "total_frames_processed": self.frame_count,
+            "detection_accuracy": self._calculate_detection_accuracy()
+        }
+
+    def _calculate_detection_accuracy(self):
+        """Algılama doğruluğunu hesapla."""
+        total = self.detection_stats['total_detections']
+        false_pos = self.detection_stats['false_positives']
+        
+        if total == 0:
+            return 1.0
+        
+        accuracy = 1.0 - (false_pos / total)
+        return max(0.0, min(1.0, accuracy))
+
+    def _get_system_status(self):
+        """Sistem durumunu değerlendir."""
+        status = "healthy"
+        issues = []
+        
+        # Model durumu
+        if not self.is_model_loaded:
+            status = "warning"
+            issues.append("Model yüklü değil")
+        
+        # Tracker durumu
+        if self.tracker is None:
+            if status == "healthy":
+                status = "warning"
+            issues.append("Tracker kullanılamıyor")
+        
+        # Performans kontrolü
+        if self.detection_stats['processing_times']:
+            avg_time = np.mean(list(self.detection_stats['processing_times']))
+            if avg_time > 0.5:  # 500ms'den fazla
+                if status == "healthy":
+                    status = "warning"
+                issues.append("Yavaş işleme")
+        
+        return {
+            "status": status,
+            "issues": issues,
+            "last_check": time.time(),
+            "checks_passed": len(issues) == 0
         }
 
     def get_detection_visualization(self, frame):
         """
-        Pose estimation ile insan tespiti ve görselleştirme.
+        Thread-safe pose estimation ile insan tespiti ve görselleştirme.
         
         Args:
             frame (np.ndarray): Giriş görüntüsü
@@ -113,93 +274,114 @@ class FallDetector:
         Returns:
             tuple: (görselleştirilmiş_frame, track_listesi)
         """
-        try:
-            # Frame'i yeniden boyutlandır
-            frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
-            
-            # YOLO ile pose estimation
-            results = self.model.predict(
-                frame_resized, 
-                conf=self.conf_threshold, 
-                classes=[0],  # sadece person class
-                verbose=False
-            )
-            
-            # Detections'ı hazırla
-            detections = []
-            pose_data = []
-            
-            for result in results:
-                if result.boxes is not None:
-                    boxes = result.boxes.xyxy.cpu().numpy()
-                    confs = result.boxes.conf.cpu().numpy()
-                    
-                    # Keypoints varsa al
-                    keypoints = None
-                    if hasattr(result, 'keypoints') and result.keypoints is not None:
-                        keypoints = result.keypoints.xy.cpu().numpy()
-                        keypoint_confs = result.keypoints.conf.cpu().numpy()
-                    
-                    for i, (box, conf) in enumerate(zip(boxes, confs)):
-                        x1, y1, x2, y2 = map(int, box)
-                        
-                        # Detection formatı: [x, y, w, h]
-                        detection = [x1, y1, x2-x1, y2-y1]
-                        detections.append((detection, conf, 0))  # class_id = 0 (person)
-                        
-                        # Pose data ekle
-                        person_keypoints = None
-                        person_keypoint_confs = None
-                        if keypoints is not None and i < len(keypoints):
-                            person_keypoints = keypoints[i]
-                            person_keypoint_confs = keypoint_confs[i] if keypoints is not None else None
-                        
-                        pose_data.append({
-                            'keypoints': person_keypoints,
-                            'keypoint_confs': person_keypoint_confs,
-                            'bbox': [x1, y1, x2, y2]
-                        })
-
-            # DeepSORT ile tracking
-            tracks = self.tracker.update_tracks(detections, frame=frame_resized)
-            
-            # Tracking bilgilerini güncelle
-            self._update_person_tracks(tracks, pose_data)
-            
-            # Görselleştirme
-            annotated_frame = self._draw_visualizations(frame, tracks)
-            
-            # Track listesi oluştur
-            track_list = []
-            for track in tracks:
-                if track.is_confirmed():
-                    track_id = track.track_id
-                    bbox = track.to_ltrb()
-                    
-                    # Frame boyutlarına ölçeklendir
-                    scale_x = frame.shape[1] / self.frame_size
-                    scale_y = frame.shape[0] / self.frame_size
-                    
-                    x1 = int(bbox[0] * scale_x)
-                    y1 = int(bbox[1] * scale_y)
-                    x2 = int(bbox[2] * scale_x)
-                    y2 = int(bbox[3] * scale_y)
-                    
-                    track_list.append({
-                        'track_id': track_id,
-                        'bbox': [x1, y1, x2, y2],
-                        'confidence': getattr(track, 'confidence', 0.0)
-                    })
-            
-            return annotated_frame, track_list
-            
-        except Exception as e:
-            logging.error(f"Detection visualization hatası: {str(e)}")
+        if not self.is_model_loaded or self.model is None:
+            logging.warning("Model yüklü değil, orijinal frame döndürülüyor")
             return frame, []
+        
+        start_time = time.time()
+        
+        with self.detection_lock:
+            try:
+                # Frame'i yeniden boyutlandır
+                frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
+                
+                # YOLO ile pose estimation
+                results = self.model.predict(
+                    frame_resized, 
+                    conf=self.conf_threshold, 
+                    classes=[0],  # sadece person class
+                    verbose=False
+                )
+                
+                # Detections'ı hazırla
+                detections = []
+                pose_data = []
+                
+                for result in results:
+                    if result.boxes is not None:
+                        boxes = result.boxes.xyxy.cpu().numpy()
+                        confs = result.boxes.conf.cpu().numpy()
+                        
+                        # Keypoints varsa al
+                        keypoints = None
+                        keypoint_confs = None
+                        if hasattr(result, 'keypoints') and result.keypoints is not None:
+                            keypoints = result.keypoints.xy.cpu().numpy()
+                            keypoint_confs = result.keypoints.conf.cpu().numpy()
+                        
+                        for i, (box, conf) in enumerate(zip(boxes, confs)):
+                            x1, y1, x2, y2 = map(int, box)
+                            
+                            # Detection formatı: [x, y, w, h]
+                            detection = [x1, y1, x2-x1, y2-y1]
+                            detections.append((detection, conf, 0))  # class_id = 0 (person)
+                            
+                            # Pose data ekle
+                            person_keypoints = None
+                            person_keypoint_confs = None
+                            if keypoints is not None and i < len(keypoints):
+                                person_keypoints = keypoints[i]
+                                person_keypoint_confs = keypoint_confs[i] if keypoint_confs is not None else None
+                            
+                            pose_data.append({
+                                'keypoints': person_keypoints,
+                                'keypoint_confs': person_keypoint_confs,
+                                'bbox': [x1, y1, x2, y2]
+                            })
+
+                # İstatistikleri güncelle
+                self.detection_stats['total_detections'] += len(detections)
+
+                # DeepSORT ile tracking (eğer mevcut ise)
+                tracks = []
+                if self.tracker is not None:
+                    try:
+                        tracks = self.tracker.update_tracks(detections, frame=frame_resized)
+                    except Exception as e:
+                        logging.error(f"DeepSORT tracking hatası: {str(e)}")
+                        tracks = []
+                
+                # Tracking bilgilerini güncelle
+                self._update_person_tracks(tracks, pose_data)
+                
+                # Görselleştirme
+                annotated_frame = self._draw_visualizations(frame, tracks)
+                
+                # Track listesi oluştur
+                track_list = []
+                for track in tracks:
+                    if hasattr(track, 'is_confirmed') and track.is_confirmed():
+                        track_id = track.track_id
+                        bbox = track.to_ltrb()
+                        
+                        # Frame boyutlarına ölçeklendir
+                        scale_x = frame.shape[1] / self.frame_size
+                        scale_y = frame.shape[0] / self.frame_size
+                        
+                        x1 = int(bbox[0] * scale_x)
+                        y1 = int(bbox[1] * scale_y)
+                        x2 = int(bbox[2] * scale_x)
+                        y2 = int(bbox[3] * scale_y)
+                        
+                        track_list.append({
+                            'track_id': track_id,
+                            'bbox': [x1, y1, x2, y2],
+                            'confidence': getattr(track, 'confidence', 0.0)
+                        })
+                
+                # İşlem süresini kaydet
+                processing_time = time.time() - start_time
+                self.detection_stats['processing_times'].append(processing_time)
+                
+                return annotated_frame, track_list
+                
+            except Exception as e:
+                logging.error(f"Detection visualization hatası: {str(e)}")
+                return frame, []
 
     def detect_fall(self, frame, tracks=None):
         """
-        Pose tabanlı düşme algılama.
+        Thread-safe pose tabanlı düşme algılama.
         
         Args:
             frame (np.ndarray): Giriş görüntüsü
@@ -208,52 +390,75 @@ class FallDetector:
         Returns:
             tuple: (düşme_durumu, güven_skoru, track_id)
         """
-        try:
-            self.frame_count += 1
-            current_time = time.time()
-            
-            # Tracks yoksa detection_visualization'dan al
-            if tracks is None:
-                _, tracks = self.get_detection_visualization(frame)
-            
-            # Her track için düşme kontrolü
-            for person_id, person_track in self.person_tracks.items():
-                fall_detected, confidence = self._analyze_fall_for_person(person_track)
+        if not self.is_model_loaded or self.model is None:
+            return False, 0.0, None
+        
+        with self.detection_lock:
+            try:
+                self.frame_count += 1
+                current_time = time.time()
                 
-                if fall_detected:
-                    # Süreklilik kontrolü
-                    if person_id not in self.fall_alerts:
-                        self.fall_alerts[person_id] = {
-                            'start_time': current_time,
-                            'frame_count': 1,
-                            'max_confidence': confidence
-                        }
-                    else:
-                        self.fall_alerts[person_id]['frame_count'] += 1
-                        self.fall_alerts[person_id]['max_confidence'] = max(
-                            self.fall_alerts[person_id]['max_confidence'], 
-                            confidence
-                        )
+                # Tracks yoksa detection_visualization'dan al
+                if tracks is None:
+                    _, tracks = self.get_detection_visualization(frame)
+                
+                # Her track için düşme kontrolü
+                for person_id, person_track in self.person_tracks.items():
+                    fall_detected, confidence = self._analyze_fall_for_person(person_track)
                     
-                    # Süreklilik eşiği kontrolü
-                    alert = self.fall_alerts[person_id]
-                    if alert['frame_count'] >= self.fall_detection_params['continuity_frames']:
-                        logging.info(f"DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
+                    if fall_detected:
+                        # Süreklilik kontrolü
+                        if person_id not in self.fall_alerts:
+                            self.fall_alerts[person_id] = {
+                                'start_time': current_time,
+                                'frame_count': 1,
+                                'max_confidence': confidence
+                            }
+                        else:
+                            self.fall_alerts[person_id]['frame_count'] += 1
+                            self.fall_alerts[person_id]['max_confidence'] = max(
+                                self.fall_alerts[person_id]['max_confidence'], 
+                                confidence
+                            )
                         
-                        # Sesli uyarı (thread'de)
-                        threading.Thread(target=self._play_fall_alert_sound, daemon=True).start()
-                        
-                        return True, alert['max_confidence'], person_id
-                else:
-                    # Düşme algılanmadıysa alert'i temizle
-                    if person_id in self.fall_alerts:
-                        del self.fall_alerts[person_id]
-            
-            return False, 0.0, None
-            
-        except Exception as e:
-            logging.error(f"Fall detection hatası: {str(e)}")
-            return False, 0.0, None
+                        # Süreklilik eşiği kontrolü
+                        alert = self.fall_alerts[person_id]
+                        if alert['frame_count'] >= self.fall_detection_params['continuity_frames']:
+                            logging.info(f"DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
+                            
+                            # İstatistikleri güncelle
+                            self.detection_stats['fall_detections'] += 1
+                            
+                            # Sesli uyarı (thread'de)
+                            threading.Thread(target=self._play_fall_alert_sound, daemon=True).start()
+                            
+                            return True, alert['max_confidence'], person_id
+                    else:
+                        # Düşme algılanmadıysa alert'i temizle
+                        if person_id in self.fall_alerts:
+                            del self.fall_alerts[person_id]
+                
+                return False, 0.0, None
+                
+            except Exception as e:
+                logging.error(f"Fall detection hatası: {str(e)}")
+                return False, 0.0, None
+
+    def get_detection_summary(self):
+        """Algılama özetini döndürür."""
+        uptime = time.time() - self.initialization_time
+        
+        return {
+            "session_uptime": uptime,
+            "total_frames": self.frame_count,
+            "total_detections": self.detection_stats['total_detections'],
+            "fall_detections": self.detection_stats['fall_detections'],
+            "active_tracks": len(self.person_tracks),
+            "active_alerts": len(self.fall_alerts),
+            "avg_fps": self._get_performance_metrics()['fps'],
+            "model_status": "loaded" if self.is_model_loaded else "error",
+            "tracker_status": "active" if self.tracker else "disabled"
+        }
 
     def _update_person_tracks(self, tracks, pose_data):
         """Person tracking bilgilerini günceller."""
@@ -262,7 +467,7 @@ class FallDetector:
             current_track_ids = set()
             
             for i, track in enumerate(tracks):
-                if not track.is_confirmed():
+                if not hasattr(track, 'is_confirmed') or not track.is_confirmed():
                     continue
                     
                 track_id = track.track_id
@@ -423,7 +628,7 @@ class FallDetector:
             scale_y = frame.shape[0] / self.frame_size
             
             for track in tracks:
-                if not track.is_confirmed():
+                if not hasattr(track, 'is_confirmed') or not track.is_confirmed():
                     continue
                 
                 track_id = track.track_id
@@ -544,7 +749,8 @@ class FallDetector:
     def cleanup(self):
         """Kaynakları temizler."""
         try:
-            self.tracker.delete_all_tracks()
+            if self.tracker is not None:
+                self.tracker.delete_all_tracks()
             self.person_tracks.clear()
             self.fall_alerts.clear()
             logging.info("FallDetector kaynakları temizlendi.")

@@ -2,47 +2,107 @@ import tkinter as tk
 import time
 import threading
 import os
+import logging
 from PIL import Image, ImageTk, ImageEnhance, ImageFilter
 import math
 import random
 
 class SplashScreen:
-    """Ultra modern ve etkileyici uygulama açılış ekranı, giriş sayfasına yumuşak geçiş."""
+    """
+    Ultra modern Guard AI splash screen - YOLOv11 Pose Estimation entegrasyonu.
+    Gelişmiş animasyonlar ve gerçekçi yükleme simülasyonu.
+    """
     
-    def __init__(self, root, duration=3.0):
+    def __init__(self, root, duration=4.5, app_info=None):
         """
         Args:
             root (tk.Tk): Ana pencere
-            duration (float, optional): Açılış ekranı süresi (saniye)
+            duration (float): Açılış ekranı süresi (saniye)
+            app_info (dict): Uygulama bilgileri (versiyon, özellikler, vs.)
         """
         self.root = root
         self.duration = duration
+        self.app_info = app_info or {}
         self.splash_window = None
-        self.particles = []  # Parçacık animasyonu için
+        self.particles = []
+        self.initialization_steps = []
+        self.current_step = 0
         
         # Ana pencereyi gizle
         self.root.withdraw()
         
+        # Uygulama bilgilerini işle
+        self._process_app_info()
+        
+        # Başlatma adımlarını tanımla
+        self._setup_initialization_steps()
+        
         # Splash ekranını göster
         self._show_splash()
+        
+        # Gerçekçi yükleme simülasyonu başlat
+        self._start_initialization_simulation()
         
         # Belirli bir süre sonra ana pencereyi göster
         self.root.after(int(self.duration * 1000), self._close_splash)
 
+    def _process_app_info(self):
+        """Uygulama bilgilerini işle ve varsayılanları ayarla."""
+        # Varsayılan değerler
+        default_info = {
+            'name': 'GUARD AI',
+            'version': '2.0.0',
+            'description': 'YOLOv11 Pose Estimation | Akıllı Düşme Algılama',
+            'author': 'mehmetkaratslar',
+            'year': '2025',
+            'features': [
+                'YOLOv11 Pose Estimation',
+                'DeepSORT Multi-Object Tracking',
+                'Real-time Fall Detection',
+                'Firebase Cloud Integration',
+                'Advanced Analytics',
+                'Multi-Camera Support'
+            ],
+            'tech_stack': [
+                'Real-time AI Detection',
+                'DeepSORT Tracking', 
+                'Firebase Cloud'
+            ],
+            'loading_steps': [
+                {'text': 'Guard AI sistemi başlatılıyor...', 'duration': 0.8, 'progress': 10},
+                {'text': 'YOLOv11 Pose modeli yükleniyor...', 'duration': 1.2, 'progress': 25},
+                {'text': 'DeepSORT tracker başlatılıyor...', 'duration': 0.7, 'progress': 40},
+                {'text': 'Kamera sistemleri kontrol ediliyor...', 'duration': 0.9, 'progress': 55},
+                {'text': 'Düşme algılama algoritması hazırlanıyor...', 'duration': 0.8, 'progress': 70},
+                {'text': 'Firebase bağlantısı kuruluyor...', 'duration': 0.6, 'progress': 80},
+                {'text': 'Bildirim sistemi yapılandırılıyor...', 'duration': 0.5, 'progress': 90},
+                {'text': 'Son kontroller yapılıyor...', 'duration': 0.4, 'progress': 95},
+                {'text': 'Guard AI hazır! Giriş ekranına yönlendiriliyor...', 'duration': 0.5, 'progress': 100}
+            ]
+        }
+        
+        # App info ile varsayılanları birleştir
+        for key, value in default_info.items():
+            if key not in self.app_info:
+                self.app_info[key] = value
+
+    def _setup_initialization_steps(self):
+        """Başlatma adımlarını app_info'dan al."""
+        self.initialization_steps = self.app_info.get('loading_steps', [])
     
     def _show_splash(self):
-        """Ultra modern ve etkileyici splash ekranını gösterir."""
+        """Ultra modern ve etkileyici Guard AI splash ekranı."""
         # Yeni bir pencere oluştur
         self.splash_window = tk.Toplevel(self.root)
-        self.splash_window.title("Guard")
+        self.splash_window.title(f"{self.app_info['name']} - Loading...")
         
         # Ekran ölçüleri
         screen_width = self.splash_window.winfo_screenwidth()
         screen_height = self.splash_window.winfo_screenheight()
         
-        # Splash ekranı boyutu (ekranın %70'i)
-        width = int(screen_width * 0.8)
-        height = int(screen_height * 0.8)
+        # Splash ekranı boyutu (daha büyük ve etkileyici)
+        width = min(1200, int(screen_width * 0.85))
+        height = min(800, int(screen_height * 0.85))
         
         # Merkezi pozisyon
         x = (screen_width - width) // 2
@@ -51,522 +111,625 @@ class SplashScreen:
         # Pencere boyutunu ve konumunu ayarla
         self.splash_window.geometry(f"{width}x{height}+{x}+{y}")
         
-        # Pencere dekorasyonlarını kaldır ve borderless yap
+        # Pencere dekorasyonlarını kaldır
         self.splash_window.overrideredirect(True)
         
-        # Pencereyi yarı saydam ve yuvarlak köşeli yapmak için
-        self.splash_window.attributes("-alpha", 0.97)
+        # Yarı saydam ve modern görünüm
+        self.splash_window.attributes("-alpha", 0.98)
+        self.splash_window.attributes("-topmost", True)
         
         # Ana canvas 
-        self.canvas = tk.Canvas(self.splash_window, highlightthickness=0, bg="#121212")
+        self.canvas = tk.Canvas(self.splash_window, highlightthickness=0, bg="#0A0A0A")
         self.canvas.pack(fill="both", expand=True)
         
-        # Daha modern ve premium görünümlü gradient
+        # Guard AI teması - premium gradient
         gradient_colors = [
-            "#1A237E",  # Derin indigo (başlangıç)
-            "#303F9F",  # Koyu indigo (orta)
-            "#3949AB",  # İndigo (orta)
-            "#3F51B5",  # Orta indigo (bitiş)
+            "#0D1421",  # Derin lacivert (başlangıç)
+            "#1A237E",  # Guard primary
+            "#3420ED",  # Guard accent
+            "#6366F1",  # Modern indigo
+            "#8B5CF6",  # Premium purple
         ]
         
-        # Animasyonlu arkaplan için değişkenler
-        self.wave_offset = 0
+        # Gelişmiş gradient arka plan
+        self._create_premium_gradient(width, height, gradient_colors)
         
-        # Ana gradient arka plan
+        # Geometrik pattern overlay
+        self._create_geometric_pattern(width, height)
+        
+        # Parçacık sistemi
+        self._initialize_particles(width, height)
+        
+        # Dekoratif ışık efektleri
+        self._create_light_effects(width, height)
+        
+        # Logo bölümü
+        self._create_logo_section(width, height)
+        
+        # Marka ve başlık
+        self._create_branding_section(width, height)
+        
+        # İlerleme göstergesi
+        self._create_progress_section(width, height)
+        
+        # Alt bilgi
+        self._create_footer_section(width, height)
+        
+        # Animasyonları başlat
+        self._start_animations()
+
+    def _create_premium_gradient(self, width, height, colors):
+        """Premium gradient arka plan oluştur."""
         for i in range(height):
-            # Yüzde olarak geçerli pozisyon
-            percent = i / height
+            # Normalize pozisyon
+            pos = i / height
             
-            # Dalgalı gradient için pozisyonu modifiye et
-            wave_percent = percent + math.sin(i / 50) * 0.03
-            wave_percent = max(0, min(1, wave_percent))
+            # Dalgalı efekt
+            wave_offset = math.sin(i / 80) * 0.02
+            wave_pos = max(0, min(1, pos + wave_offset))
             
-            # Renk hesaplama
-            if wave_percent < 0.33:
-                t = wave_percent * 3  # 0 -> 1
-                r1, g1, b1 = int(gradient_colors[0][1:3], 16), int(gradient_colors[0][3:5], 16), int(gradient_colors[0][5:7], 16)
-                r2, g2, b2 = int(gradient_colors[1][1:3], 16), int(gradient_colors[1][3:5], 16), int(gradient_colors[1][5:7], 16)
-            elif wave_percent < 0.66:
-                t = (wave_percent - 0.33) * 3  # 0 -> 1
-                r1, g1, b1 = int(gradient_colors[1][1:3], 16), int(gradient_colors[1][3:5], 16), int(gradient_colors[1][5:7], 16)
-                r2, g2, b2 = int(gradient_colors[2][1:3], 16), int(gradient_colors[2][3:5], 16), int(gradient_colors[2][5:7], 16)
-            else:
-                t = (wave_percent - 0.66) * 3  # 0 -> 1
-                r1, g1, b1 = int(gradient_colors[2][1:3], 16), int(gradient_colors[2][3:5], 16), int(gradient_colors[2][5:7], 16)
-                r2, g2, b2 = int(gradient_colors[3][1:3], 16), int(gradient_colors[3][3:5], 16), int(gradient_colors[3][5:7], 16)
+            # Renk segmentlerini hesapla
+            segment_size = 1.0 / (len(colors) - 1)
+            segment_index = min(len(colors) - 2, int(wave_pos / segment_size))
+            local_t = (wave_pos - segment_index * segment_size) / segment_size
             
             # İki rengi karıştır
-            r = int(r1 * (1 - t) + r2 * t)
-            g = int(g1 * (1 - t) + g2 * t)
-            b = int(b1 * (1 - t) + b2 * t)
+            color1 = colors[segment_index]
+            color2 = colors[segment_index + 1]
             
-            # Ekstra ışıltı efekti
-            sparkle_effect = random.randint(0, 100) < 2  # %2 ihtimal
-            if sparkle_effect:
-                r = min(255, r + 30)
-                g = min(255, g + 30)
-                b = min(255, b + 30)
+            r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
+            r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
+            
+            r = int(r1 * (1 - local_t) + r2 * local_t)
+            g = int(g1 * (1 - local_t) + g2 * local_t)
+            b = int(b1 * (1 - local_t) + b2 * local_t)
+            
+            # Dinamik parlaklık
+            brightness = 1.0 + 0.1 * math.sin(i / 60 + time.time())
+            r = min(255, int(r * brightness))
+            g = min(255, int(g * brightness))
+            b = min(255, int(b * brightness))
             
             color = f'#{r:02x}{g:02x}{b:02x}'
-            self.canvas.create_line(0, i, width, i, fill=color, smooth=True)
+            self.canvas.create_line(0, i, width, i, fill=color)
+
+    def _create_geometric_pattern(self, width, height):
+        """Geometrik pattern overlay."""
+        # Hexagon pattern
+        for x in range(0, width, 100):
+            for y in range(0, height, 100):
+                if random.random() < 0.3:  # %30 ihtimal
+                    size = random.randint(20, 40)
+                    self._draw_hexagon(x, y, size, "#FFFFFF", alpha=0.02)
         
-        # Efekt parçacıkları (yıldız benzeri)
-        for _ in range(50):
+        # Circuit lines
+        for _ in range(15):
+            x1 = random.randint(0, width)
+            y1 = random.randint(0, height)
+            x2 = x1 + random.randint(-200, 200)
+            y2 = y1 + random.randint(-200, 200)
+            
+            self.canvas.create_line(x1, y1, x2, y2, 
+                                   fill="#6366F1", width=1, stipple="gray25")
+
+    def _draw_hexagon(self, x, y, size, color, alpha=1.0):
+        """Hexagon çiz."""
+        points = []
+        for i in range(6):
+            angle = i * math.pi / 3
+            px = x + size * math.cos(angle)
+            py = y + size * math.sin(angle)
+            points.extend([px, py])
+        
+        self.canvas.create_polygon(points, outline=color, fill="", width=1, stipple="gray12")
+
+    def _initialize_particles(self, width, height):
+        """Gelişmiş parçacık sistemi."""
+        self.particles = []
+        for _ in range(80):
             particle = {
                 'x': random.randint(0, width),
                 'y': random.randint(0, height),
-                'size': random.uniform(1, 3),
-                'speed': random.uniform(0.2, 1.5),
-                'alpha': random.uniform(0.3, 1.0),
+                'size': random.uniform(0.5, 2.5),
+                'speed': random.uniform(0.1, 0.8),
+                'direction': random.uniform(0, 2 * math.pi),
+                'alpha': random.uniform(0.2, 0.8),
+                'color': random.choice(['#FFFFFF', '#6366F1', '#8B5CF6', '#3420ED']),
+                'pulse': random.uniform(0, 2 * math.pi),
                 'id': None
             }
             self.particles.append(particle)
+
+    def _create_light_effects(self, width, height):
+        """Dekoratif ışık efektleri."""
+        # Ana ışık kaynağı (üst orta)
+        light_size = width // 4
+        self.canvas.create_oval(
+            width//2 - light_size//2, -light_size//2,
+            width//2 + light_size//2, light_size//2,
+            fill="#3420ED", outline="", stipple="gray12"
+        )
         
-        # Parçacık animasyonu
-        self._animate_particles()
-        
-        # Dekoratif ışık efektleri
-        # Üst sağ ışık dairesi
-        light_radius = width // 6
-        self.canvas.create_oval(width - light_radius * 1.5, -light_radius // 2, 
-                                width + light_radius // 2, light_radius, 
-                                fill="#7986CB", outline="", stipple="gray25")
-        
-        # Alt sol ışık dairesi
-        self.canvas.create_oval(-light_radius // 2, height - light_radius * 1.2, 
-                                light_radius, height + light_radius // 2, 
-                                fill="#9FA8DA", outline="", stipple="gray25")
-                                
-        # Arka plan animasyonu
-        self._animate_background()
-                                
-        # Logo ve marka bölümü
-        try:
-            logo_path = os.path.join(
-                os.path.dirname(__file__), 
-                "resources", 
-                "icons", 
-                "logo.png"
-            )
+        # Yan ışık efektleri
+        for i, (x_ratio, y_ratio, color) in enumerate([
+            (0.1, 0.2, "#6366F1"),
+            (0.9, 0.3, "#8B5CF6"),
+            (0.15, 0.8, "#3420ED"),
+            (0.85, 0.7, "#6366F1")
+        ]):
+            x = int(width * x_ratio)
+            y = int(height * y_ratio)
+            size = random.randint(80, 120)
             
-            if os.path.exists(logo_path):
-                # Logo'yu işle
-                orig_img = Image.open(logo_path)
-                
-                # Daha iyi görünüm için görüntü işleme
-                enhancer = ImageEnhance.Sharpness(orig_img)
-                img = enhancer.enhance(2.0)  # Keskinliği artır
-                enhancer = ImageEnhance.Brightness(img)
-                img = enhancer.enhance(1.3)  # Parlaklığı artır
-                enhancer = ImageEnhance.Contrast(img)
-                img = enhancer.enhance(1.2)  # Kontrastı artır
-                
-                # Logo boyutu - daha büyük
-                logo_size = int(min(width, height) * 0.45)
-                img = img.resize((logo_size, logo_size), Image.LANCZOS)
-                
-                # Etkileyici glow efekti
-                glow_img = img.filter(ImageFilter.GaussianBlur(radius=15))
-                glow_img = ImageEnhance.Brightness(glow_img).enhance(1.8)
-                
-                # Glow ve logo görüntüleri
-                self.glow_img = ImageTk.PhotoImage(glow_img)
-                self.logo_img = ImageTk.PhotoImage(img)
-                
-                # Glow efekti arka planda
-                self.glow_label = tk.Label(
-                    self.splash_window,
-                    image=self.glow_img,
-                    bg='#303F9F'  # Gradient ile uyumlu renk
-                )
-                self.glow_label.place(relx=0.5, rely=0.4, anchor="center")
-                
-                # Ana logo
-                self.logo_label = tk.Label(
-                    self.splash_window,
-                    image=self.logo_img,
-                    bg='#303F9F'  # Gradient ile uyumlu renk
-                )
-                self.logo_label.place(relx=0.5, rely=0.4, anchor="center")
-                
-                # Gelişmiş pulsing animasyonu
-                self._start_pulse_animation()
+            self.canvas.create_oval(
+                x - size//2, y - size//2,
+                x + size//2, y + size//2,
+                fill=color, outline="", stipple="gray25"
+            )
+
+    def _create_logo_section(self, width, height):
+        """Logo bölümü."""
+        try:
+            # Logo dosyası yolu
+            logo_paths = [
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "icons", "logo.png"),
+                os.path.join("resources", "icons", "logo.png"),
+                "logo.png"
+            ]
+            
+            logo_loaded = False
+            for logo_path in logo_paths:
+                if os.path.exists(logo_path):
+                    try:
+                        # Logo'yu yükle ve işle
+                        orig_img = Image.open(logo_path)
+                        
+                        # Görüntü iyileştirmeleri
+                        enhancer = ImageEnhance.Sharpness(orig_img)
+                        img = enhancer.enhance(2.2)
+                        enhancer = ImageEnhance.Brightness(img)
+                        img = enhancer.enhance(1.4)
+                        enhancer = ImageEnhance.Contrast(img)
+                        img = enhancer.enhance(1.3)
+                        
+                        # Logo boyutu
+                        logo_size = min(200, int(min(width, height) * 0.25))
+                        img = img.resize((logo_size, logo_size), Image.LANCZOS)
+                        
+                        # Glow efekti
+                        glow_img = img.filter(ImageFilter.GaussianBlur(radius=20))
+                        glow_img = ImageEnhance.Brightness(glow_img).enhance(2.5)
+                        
+                        # PhotoImage'leri oluştur
+                        self.glow_img = ImageTk.PhotoImage(glow_img)
+                        self.logo_img = ImageTk.PhotoImage(img)
+                        
+                        # Glow label
+                        self.glow_label = tk.Label(
+                            self.splash_window,
+                            image=self.glow_img,
+                            bg='#1A237E',
+                            bd=0
+                        )
+                        self.glow_label.place(relx=0.5, rely=0.3, anchor="center")
+                        
+                        # Ana logo
+                        self.logo_label = tk.Label(
+                            self.splash_window,
+                            image=self.logo_img,
+                            bg='#1A237E',
+                            bd=0
+                        )
+                        self.logo_label.place(relx=0.5, rely=0.3, anchor="center")
+                        
+                        logo_loaded = True
+                        break
+                        
+                    except Exception as e:
+                        logging.debug(f"Logo yükleme hatası ({logo_path}): {e}")
+                        continue
+            
+            if not logo_loaded:
+                # Logo yoksa alternatif ikon oluştur
+                self._create_alternative_logo(width, height)
                 
         except Exception as e:
-            print(f"Logo yüklenirken hata: {e}")
+            logging.warning(f"Logo bölümü oluşturulurken hata: {e}")
+            self._create_alternative_logo(width, height)
+
+    def _create_alternative_logo(self, width, height):
+        """Alternatif logo oluştur."""
+        # Canvas üzerinde alternatif logo
+        logo_x = width // 2
+        logo_y = int(height * 0.3)
+        logo_size = 100
         
-        # Markalama bölümü (daha etkileyici)
-        brand_frame = tk.Frame(self.splash_window, bg="#303F9F")
-        brand_frame.place(relx=0.5, rely=0.72, anchor="center")
-        
-        # GUARD yazısı - ultra modern ve bold
-        app_name = tk.Label(
-            brand_frame,
-            text="GUARD",
-            font=("Segoe UI", 58, "bold"),
-            fg="#FFFFFF",
-            bg="#303F9F"
+        # Dış çember
+        self.canvas.create_oval(
+            logo_x - logo_size, logo_y - logo_size,
+            logo_x + logo_size, logo_y + logo_size,
+            outline="#3420ED", width=4, fill="#1A237E"
         )
-        app_name.pack()
         
-        # Animasyonlu alt başlık
-        self.subtitle_var = tk.StringVar(value="Akıllı Düşme Algılama Sistemi")
-        app_desc = tk.Label(
+        # İç çember
+        self.canvas.create_oval(
+            logo_x - logo_size//2, logo_y - logo_size//2,
+            logo_x + logo_size//2, logo_y + logo_size//2,
+            outline="#6366F1", width=3, fill="#3420ED"
+        )
+        
+        # G harfi
+        self.canvas.create_text(
+            logo_x, logo_y,
+            text="G",
+            font=("Segoe UI", 48, "bold"),
+            fill="#FFFFFF"
+        )
+
+    def _create_branding_section(self, width, height):
+        """Marka ve başlık bölümü."""
+        brand_frame = tk.Frame(self.splash_window, bg="#1A237E", bd=0)
+        brand_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Ana başlık
+        title_label = tk.Label(
+            brand_frame,
+            text=self.app_info['name'],
+            font=("Segoe UI", 64, "bold"),
+            fg="#FFFFFF",
+            bg="#1A237E",
+            bd=0
+        )
+        title_label.pack()
+        
+        # Alt başlık
+        self.subtitle_var = tk.StringVar(value=self.app_info['description'])
+        subtitle_label = tk.Label(
             brand_frame,
             textvariable=self.subtitle_var,
-            font=("Segoe UI", 22, "italic"),
-            fg="#E8EAF6",  # Açık indigo
-            bg="#303F9F"
+            font=("Segoe UI", 18, "italic"),
+            fg="#A5B4FC",
+            bg="#1A237E",
+            bd=0
         )
-        app_desc.pack(pady=(10, 0))
+        subtitle_label.pack(pady=(10, 0))
         
-        # Alt başlık animasyonu
-        self._animate_subtitle()
+        # Teknoloji etiketi
+        tech_text = " • ".join(self.app_info['tech_stack'])
+        tech_label = tk.Label(
+            brand_frame,
+            text=f"• {tech_text} •",
+            font=("Segoe UI", 12),
+            fg="#6366F1",
+            bg="#1A237E",
+            bd=0
+        )
+        tech_label.pack(pady=(15, 0))
+
+    def _create_progress_section(self, width, height):
+        """İlerleme göstergesi bölümü."""
+        progress_frame = tk.Frame(self.splash_window, bg="#1A237E", bd=0)
+        progress_frame.place(relx=0.5, rely=0.72, anchor="center")
         
-        # Modern ilerleme göstergesi
-        progress_frame = tk.Frame(self.splash_window, bg="#303F9F", padx=width//5)
-        progress_frame.place(relx=0.5, rely=0.85, anchor="center")
+        # İlerleme çubuğu container
+        progress_container = tk.Frame(progress_frame, bg="#0D1421", bd=2, relief="flat")
+        progress_container.pack(fill="x", padx=50)
         
         # İlerleme çubuğu
-        progress_width = width * 0.6
-        progress_height = 8  # İnce ve şık
+        progress_width = int(width * 0.5)
+        progress_height = 12
         
-        # İlerleme çubuğu konteyneri
-        progress_container = tk.Frame(progress_frame, bg="#1A237E", padx=2, pady=2, bd=0)
-        progress_container.pack(fill="x")
-        
-        # İlerleme çubuğu
         self.progress_canvas = tk.Canvas(
             progress_container,
             width=progress_width,
             height=progress_height,
-            bg="#1A237E",
+            bg="#0D1421",
             highlightthickness=0,
             bd=0
         )
-        self.progress_canvas.pack(fill="x")
+        self.progress_canvas.pack(padx=4, pady=4)
         
         # İlerleme durumu
         self.progress_value = 0
         
-        # İlerleme metni
-        self.loading_var = tk.StringVar(value="Başlatılıyor...")
-        loading_label = tk.Label(
+        # Durum metni
+        self.status_var = tk.StringVar(value="Guard AI sistemi başlatılıyor...")
+        status_label = tk.Label(
             progress_frame,
-            textvariable=self.loading_var,
-            font=("Segoe UI", 11),
-            fg="#E8EAF6",
-            bg="#303F9F"
+            textvariable=self.status_var,
+            font=("Segoe UI", 13, "bold"),
+            fg="#FFFFFF",
+            bg="#1A237E",
+            bd=0
         )
-        loading_label.pack(pady=(10, 0))
+        status_label.pack(pady=(15, 5))
+        
+        # Detay metni
+        self.detail_var = tk.StringVar(value="Lütfen bekleyin...")
+        detail_label = tk.Label(
+            progress_frame,
+            textvariable=self.detail_var,
+            font=("Segoe UI", 10),
+            fg="#A5B4FC",
+            bg="#1A237E",
+            bd=0
+        )
+        detail_label.pack()
+
+    def _create_footer_section(self, width, height):
+        """Alt bilgi bölümü."""
+        footer_frame = tk.Frame(self.splash_window, bg="#1A237E", bd=0)
+        footer_frame.place(relx=0.5, rely=0.92, anchor="center")
+        
+        # Versiyon bilgisi
+        version_text = f"{self.app_info['name']} v{self.app_info['version']} | YOLOv11 Enhanced | © {self.app_info['year']} {self.app_info['author']}"
+        version_label = tk.Label(
+            footer_frame,
+            text=version_text,
+            font=("Segoe UI", 10),
+            fg="#6B7280",
+            bg="#1A237E",
+            bd=0
+        )
+        version_label.pack()
+        
+        # Sistem bilgisi
+        import platform
+        system_info = f"Python {platform.python_version()} | {platform.system()} {platform.release()}"
+        system_label = tk.Label(
+            footer_frame,
+            text=system_info,
+            font=("Consolas", 8),
+            fg="#4B5563",
+            bg="#1A237E",
+            bd=0
+        )
+        system_label.pack()
+
+    def _start_animations(self):
+        """Tüm animasyonları başlat."""
+        # Parçacık animasyonu
+        self._animate_particles()
+        
+        # Logo pulse animasyonu
+        if hasattr(self, 'logo_label'):
+            self._animate_logo_pulse()
         
         # İlerleme çubuğu animasyonu
         self._animate_progress_bar()
-        
-        # Yükleniyor metni animasyonu
-        self._animate_loading_text()
-        
-        # Versiyon ve telif bilgisi
-        version = tk.Label(
-            self.splash_window,
-            text="Versiyon 1.0.0 | © 2025 Guard Technologies",
-            font=("Segoe UI", 10),
-            fg="#E8EAF6",
-            bg="#303F9F"
-        )
-        version.place(relx=0.5, rely=0.95, anchor="center")
-        
-        # Ekstra görsellik: Gelişmiş ışıma efekti
-        light_beam = self.canvas.create_polygon(
-            width/2, height/2,
-            width/2-200, height,
-            width/2+200, height,
-            fill="#7986CB", stipple="gray12"
-        )
 
     def _animate_particles(self):
-        """Parçacık animasyonu."""
-        if not self.splash_window:
+        """Gelişmiş parçacık animasyonu."""
+        if not self.splash_window or not self.splash_window.winfo_exists():
             return
             
         try:
-            # Her parçacığı güncelle
+            width = self.splash_window.winfo_width()
+            height = self.splash_window.winfo_height()
+            
             for particle in self.particles:
                 # Eski parçacığı sil
                 if particle['id']:
                     self.canvas.delete(particle['id'])
                 
-                # Parçacığı yukarı hareket ettir
-                particle['y'] -= particle['speed']
+                # Parçacığı hareket ettir
+                particle['x'] += math.cos(particle['direction']) * particle['speed']
+                particle['y'] += math.sin(particle['direction']) * particle['speed']
                 
-                # Ekrandan çıkarsa yeniden konumlandır
-                if particle['y'] < 0:
-                    particle['y'] = self.splash_window.winfo_height() + 5
-                    particle['x'] = random.randint(0, self.splash_window.winfo_width())
-                    particle['alpha'] = random.uniform(0.3, 1.0)
-                    particle['size'] = random.uniform(1, 3)
+                # Pulse efekti
+                particle['pulse'] += 0.1
+                pulse_size = particle['size'] * (1 + 0.3 * math.sin(particle['pulse']))
+                
+                # Ekran sınırları kontrolü
+                if particle['x'] < 0 or particle['x'] > width:
+                    particle['direction'] = math.pi - particle['direction']
+                if particle['y'] < 0 or particle['y'] > height:
+                    particle['direction'] = -particle['direction']
+                
+                # Pozisyonu sınırla
+                particle['x'] = max(0, min(width, particle['x']))
+                particle['y'] = max(0, min(height, particle['y']))
                 
                 # Parçacığı çiz
-                size = particle['size']
-                alpha = int(particle['alpha'] * 255)
-                color = f"#{255:02x}{255:02x}{255:02x}{alpha:02x}"  # RGBA formatı
                 particle['id'] = self.canvas.create_oval(
-                    particle['x']-size, particle['y']-size,
-                    particle['x']+size, particle['y']+size,
-                    fill="white", outline=""
+                    particle['x'] - pulse_size, particle['y'] - pulse_size,
+                    particle['x'] + pulse_size, particle['y'] + pulse_size,
+                    fill=particle['color'], outline="", stipple="gray25"
                 )
             
             # Animasyonu devam ettir
             self.splash_window.after(50, self._animate_particles)
-        except:
-            # Pencere kapanmış olabilir
+            
+        except tk.TclError:
+            # Pencere kapanmış
             pass
-        
-    def _animate_background(self):
-        """Dalgalı arka plan animasyonu."""
-        if not self.splash_window:
+        except Exception as e:
+            logging.debug(f"Parçacık animasyon hatası: {e}")
+
+    def _animate_logo_pulse(self):
+        """Logo pulse animasyonu."""
+        if not self.splash_window or not self.splash_window.winfo_exists():
             return
             
         try:
-            # Animasyonu devam ettir
-            self.splash_window.after(100, self._animate_background)
-        except:
-            # Pencere kapanmış olabilir
-            pass
-        
-    def _start_pulse_animation(self):
-        """Logo için nabız animasyonu."""
-        if not self.splash_window:
-            return
-            
-        try:
-            # Nabız değişkenleri
             if not hasattr(self, 'pulse_scale'):
                 self.pulse_scale = 1.0
-                self.pulse_direction = -1
-                self.pulse_min = 0.95
-                self.pulse_max = 1.05
-                self.pulse_step = 0.005
-            
-            # Ölçeği güncelle
-            self.pulse_scale += self.pulse_step * self.pulse_direction
-            
-            # Yön değiştirme
-            if self.pulse_scale <= self.pulse_min:
                 self.pulse_direction = 1
-            elif self.pulse_scale >= self.pulse_max:
+            
+            # Pulse hesaplama
+            self.pulse_scale += 0.003 * self.pulse_direction
+            
+            if self.pulse_scale >= 1.08:
                 self.pulse_direction = -1
-            
-            # Glow etiketini güncelle
-            if hasattr(self, 'glow_label') and self.glow_label.winfo_exists():
-                # Glow için alfa değerini hesapla
-                alpha = 0.7 + 0.3 * ((self.pulse_scale - self.pulse_min) / (self.pulse_max - self.pulse_min))
-                
-                # Glow rengini güncelle
-                r, g, b = 121, 134, 203  # #7986CB
-                r = int(r * alpha)
-                g = int(g * alpha)
-                b = int(b * alpha)
-                self.glow_label.configure(bg=f"#{r:02x}{g:02x}{b:02x}")
+            elif self.pulse_scale <= 0.98:
+                self.pulse_direction = 1
             
             # Animasyonu devam ettir
-            self.splash_window.after(40, self._start_pulse_animation)
-        except:
-            # Pencere kapanmış olabilir
+            self.splash_window.after(30, self._animate_logo_pulse)
+            
+        except tk.TclError:
+            # Pencere kapanmış
             pass
-    
-    def _animate_subtitle(self):
-        """Alt başlık metni animasyonu."""
-        if not self.splash_window:
-            return
-            
-        try:
-            # Metin seçenekleri
-            subtitles = [
-                "Akıllı Düşme Algılama Sistemi",
-                "Güvenliğiniz İçin Geliştirildi",
-                "7/24 Kesintisiz Koruma",
-                "Hızlı & Anlık Bildirimler"
-            ]
-            
-            # Metin indeksini takip et
-            if not hasattr(self, 'subtitle_index'):
-                self.subtitle_index = 0
-                self.subtitle_delay = 0
-            
-            # Gecikme sayacını artır
-            self.subtitle_delay += 1
-            
-            # Metin değişimi
-            if self.subtitle_delay >= 30:  # ~3 saniye
-                self.subtitle_delay = 0
-                self.subtitle_index = (self.subtitle_index + 1) % len(subtitles)
-                self.subtitle_var.set(subtitles[self.subtitle_index])
-            
-            # Animasyonu devam ettir
-            self.splash_window.after(100, self._animate_subtitle)
-        except:
-            # Pencere kapanmış olabilir
-            pass
-    
+        except Exception as e:
+            logging.debug(f"Logo pulse hatası: {e}")
+
     def _animate_progress_bar(self):
         """İlerleme çubuğu animasyonu."""
-        if not self.splash_window:
+        if not self.splash_window or not self.splash_window.winfo_exists():
             return
             
         try:
-            # Mevcut ilerleme çubuğunu temizle
+            # Mevcut çubukları temizle
             self.progress_canvas.delete("progress")
             
-            # İlerleme değerini artır
-            if self.progress_value < 100:
-                # Gerçekçi ilerleme simülasyonu
-                if self.progress_value < 30:
-                    self.progress_value += random.uniform(1.5, 3)
-                elif self.progress_value < 60:
-                    self.progress_value += random.uniform(0.8, 1.8)
-                elif self.progress_value < 85:
-                    self.progress_value += random.uniform(0.5, 1.2)
-                else:
-                    self.progress_value += random.uniform(0.2, 0.5)
-                    
-                self.progress_value = min(100, self.progress_value)
-            
             # İlerleme çubuğu boyutları
-            progress_width = self.progress_canvas.winfo_width()
-            progress_height = self.progress_canvas.winfo_height()
+            canvas_width = self.progress_canvas.winfo_width()
+            canvas_height = self.progress_canvas.winfo_height()
+            
+            if canvas_width <= 1:  # Canvas henüz oluşturulmamış
+                self.splash_window.after(100, self._animate_progress_bar)
+                return
             
             # İlerleme çubuğunu çiz
-            bar_width = int(progress_width * (self.progress_value / 100))
-            
-            # Ana ilerleme çubuğu - parlak gradient
-            for i in range(bar_width):
-                # Pozisyon yüzdesi
-                pos = i / progress_width
+            if self.progress_value > 0:
+                bar_width = int(canvas_width * (self.progress_value / 100))
                 
-                # Renk gradyasyonu
-                if pos < 0.5:
-                    t = pos * 2
-                    r1, g1, b1 = 100, 181, 246  # #64B5F6 (açık mavi)
-                    r2, g2, b2 = 30, 136, 229   # #1E88E5 (orta mavi)
-                else:
-                    t = (pos - 0.5) * 2
-                    r1, g1, b1 = 30, 136, 229   # #1E88E5 (orta mavi)
-                    r2, g2, b2 = 21, 101, 192   # #1565C0 (koyu mavi)
-                
-                r = int(r1 * (1 - t) + r2 * t)
-                g = int(g1 * (1 - t) + g2 * t)
-                b = int(b1 * (1 - t) + b2 * t)
-                
-                self.progress_canvas.create_line(
-                    i, 0, i, progress_height,
-                    fill=f"#{r:02x}{g:02x}{b:02x}",
-                    tags="progress"
-                )
-            
-            # Parlama efekti
-            if bar_width > 0:
-                # Parlama genişliği
-                glow_width = 20
-                for i in range(min(glow_width, bar_width)):
-                    # Parlaklık yüzdesi (kenardan uzaklaştıkça azalır)
-                    alpha = 1 - (i / glow_width)
+                # Gradient ilerleme çubuğu
+                for i in range(bar_width):
+                    pos = i / canvas_width
                     
-                    # Parlak mavi ton
-                    r, g, b = 144, 202, 249  # #90CAF9
-                    
-                    # Parlaklık efekti için renk ayarı
-                    r = int(r * alpha + 255 * (1 - alpha))
-                    g = int(g * alpha + 255 * (1 - alpha))
-                    b = int(b * alpha + 255 * (1 - alpha))
+                    # Renk gradyasyonu
+                    if pos < 0.5:
+                        t = pos * 2
+                        r = int(52 * (1-t) + 99 * t)   # #3420ED -> #6366F1
+                        g = int(32 * (1-t) + 102 * t)
+                        b = int(237 * (1-t) + 241 * t)
+                    else:
+                        t = (pos - 0.5) * 2
+                        r = int(99 * (1-t) + 139 * t)   # #6366F1 -> #8B5CF6
+                        g = int(102 * (1-t) + 92 * t)
+                        b = int(241 * (1-t) + 246 * t)
                     
                     self.progress_canvas.create_line(
-                        bar_width - i, 0, bar_width - i, progress_height,
+                        i, 0, i, canvas_height,
                         fill=f"#{r:02x}{g:02x}{b:02x}",
-                        width=1,
                         tags="progress"
                     )
+                
+                # Parlama efekti
+                if bar_width > 10:
+                    glow_x = bar_width - 5
+                    for i in range(10):
+                        alpha = 1 - (i / 10)
+                        brightness = int(255 * alpha)
+                        
+                        self.progress_canvas.create_line(
+                            glow_x + i, 0, glow_x + i, canvas_height,
+                            fill=f"#{brightness:02x}{brightness:02x}{255:02x}",
+                            tags="progress"
+                        )
             
             # Animasyonu devam ettir
             self.splash_window.after(50, self._animate_progress_bar)
             
-            # İlerleme tamamlandığında yükleme mesajını değiştir
-            if self.progress_value >= 100:
-                self.loading_var.set("Hazır... Giriş ekranına yönlendiriliyor")
-        except:
-            # Pencere kapanmış olabilir
+        except tk.TclError:
+            # Pencere kapanmış
             pass
-    
-    def _animate_loading_text(self):
-        """Yükleniyor metni animasyonu."""
-        if not self.splash_window:
+        except Exception as e:
+            logging.debug(f"Progress bar hatası: {e}")
+
+    def _start_initialization_simulation(self):
+        """Gerçekçi başlatma simülasyonu başlat."""
+        self.current_step = 0
+        self._simulate_next_step()
+
+    def _simulate_next_step(self):
+        """Sonraki başlatma adımını simüle et."""
+        if (not self.splash_window or 
+            not self.splash_window.winfo_exists() or 
+            self.current_step >= len(self.initialization_steps)):
+            return
+        
+        try:
+            step = self.initialization_steps[self.current_step]
+            
+            # Durum metnini güncelle
+            self.status_var.set(step["text"])
+            
+            # Detay metni
+            details = [
+                "Modüller kontrol ediliyor...",
+                "Bağımlılıklar yükleniyor...",
+                "Yapılandırma dosyaları okunuyor...",
+                "Ağ bağlantıları test ediliyor...",
+                "Sistem kaynaklarını optimize ediyor..."
+            ]
+            self.detail_var.set(random.choice(details))
+            
+            # İlerleme değerini güncelle
+            target_progress = step["progress"]
+            self._animate_progress_to_target(target_progress)
+            
+            # Sonraki adıma geç
+            self.current_step += 1
+            next_delay = int(step["duration"] * 1000)
+            self.splash_window.after(next_delay, self._simulate_next_step)
+            
+        except Exception as e:
+            logging.debug(f"Initialization step hatası: {e}")
+
+    def _animate_progress_to_target(self, target):
+        """İlerleme değerini hedefe doğru yumuşak animasyon."""
+        if abs(self.progress_value - target) < 1:
+            self.progress_value = target
+            return
+        
+        # Yumuşak geçiş
+        diff = target - self.progress_value
+        self.progress_value += diff * 0.1
+        
+        if abs(diff) > 0.5:
+            self.splash_window.after(50, lambda: self._animate_progress_to_target(target))
+
+    def _close_splash(self):
+        """Yumuşak geçiş ile splash ekranını kapat."""
+        if not self.splash_window or not self.splash_window.winfo_exists():
+            self.root.deiconify()
             return
             
         try:
-            # Mevcut metni al
-            current_text = self.loading_var.get()
+            # Son durum
+            self.status_var.set("Guard AI hazır!")
+            self.detail_var.set("Ana ekrana yönlendiriliyor...")
+            self.progress_value = 100
             
-            # Animasyonu atla
-            if "Hazır" in current_text:
-                self.splash_window.after(100, self._animate_loading_text)
-                return
+            # Kısa bir bekleme
+            self.splash_window.update()
+            time.sleep(0.5)
             
-            # Mesaj listesi
-            loading_messages = [
-                "Başlatılıyor...",
-                "Modeller yükleniyor...",
-                "Algılama sistemi hazırlanıyor...",
-                "Yapay zeka modülü başlatılıyor...",
-                "Ağ bağlantıları kuruluyor...",
-                "Bildirim sistemi yapılandırılıyor...",
-                "Kullanıcı verileri yükleniyor..."
-            ]
+            # Yumuşak kapanış animasyonu
+            for alpha in range(10, -1, -1):
+                self.splash_window.attributes('-alpha', alpha / 10)
+                self.splash_window.update()
+                time.sleep(0.04)
             
-            # Mesaj indeksi takip
-            if not hasattr(self, 'message_index'):
-                self.message_index = 0
-                self.message_delay = 0
+            # Splash'ı kapat
+            self.splash_window.destroy()
+            self.splash_window = None
             
-            # Gecikme sayacını artır
-            self.message_delay += 1
+            # Ana pencereyi göster
+            self.root.deiconify()
+            self.root.update()
+            self.root.focus_force()
+            self.root.attributes('-topmost', True)
+            self.root.after(100, lambda: self.root.attributes('-topmost', False))
             
-            # Mesaj değişimi
-            if self.message_delay >= 20:  # ~2 saniye
-                self.message_delay = 0
-                self.message_index = (self.message_index + 1) % len(loading_messages)
-                self.loading_var.set(loading_messages[self.message_index])
-            
-            # Animasyonu devam ettir
-            self.splash_window.after(100, self._animate_loading_text)
-        except:
-            # Pencere kapanmış olabilir
-            pass
-    
-    
-    def _close_splash(self):
-        """Yumuşak geçiş ile splash ekranını kapatır."""
-        if self.splash_window:
+        except Exception as e:
+            logging.error(f"Splash kapatma hatası: {e}")
+            # Hata durumunda temiz kapatma
             try:
-                # Yumuşak kapanış animasyonu
-                for alpha in range(10, -1, -1):
-                    self.splash_window.attributes('-alpha', alpha/10)
-                    self.splash_window.update()
-                    time.sleep(0.03)
-                
-                self.splash_window.destroy()
-                self.splash_window = None
-                
-                # Root'u göster ve odakla
-                self.root.deiconify()
-                self.root.update()
-                self.root.focus_force()  # Pencereye odaklanmayı zorla
-                
-            except Exception as e:
-                # Hata durumunda temiz bir şekilde kapat
                 if self.splash_window:
                     self.splash_window.destroy()
                 self.root.deiconify()
-                logging.error(f"Splash ekranı kapatılırken hata: {str(e)}")
-        else:
-            # Splash penceresi yoksa doğrudan root'u göster
-            self.root.deiconify()
+            except:
+                pass
