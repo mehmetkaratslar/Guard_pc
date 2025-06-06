@@ -440,8 +440,10 @@ class DashboardFrame(tk.Frame):
         
         self._update_main_camera_display(placeholder)
 
+
+
     def _select_camera(self, camera_index):
-        """Kamera seçer."""
+        """Kamera seçer - GÜNCELLENMIŞ."""
         if 0 <= camera_index < len(self.cameras):
             self.selected_camera_index = camera_index
             camera = self.cameras[camera_index]
@@ -457,7 +459,15 @@ class DashboardFrame(tk.Frame):
                 else:
                     btn.config(bg=self.colors['bg_tertiary'], fg=self.colors['text_primary'])
             
+            # Kamera durumunu kontrol et
+            if hasattr(camera, 'is_running') and camera.is_running:
+                self.connection_status_var.set("🟢 Bağlı")
+            else:
+                self.connection_status_var.set("🔴 Bağlantı Yok")
+            
             logging.info(f"Kamera {camera_index} seçildi")
+
+
 
     def _previous_camera(self):
         """Önceki kameraya geç."""
@@ -471,18 +481,25 @@ class DashboardFrame(tk.Frame):
             new_index = (self.selected_camera_index + 1) % len(self.cameras)
             self._select_camera(new_index)
 
+
+
+
     def _start_processing_thread(self):
-        """Frame işleme thread'ini başlatır."""
+        """Frame işleme thread'ini başlatır - GÜNCELLENMIŞ."""
         self.processing_thread = threading.Thread(target=self._process_frames, daemon=True)
         self.processing_thread.start()
+        logging.info("Processing thread başlatıldı")
 
     def _process_frames(self):
-        """TEK KAMERA için optimize edilmiş frame işleme."""
+        """TEK KAMERA için optimize edilmiş frame işleme - GÜNCELLENMIŞ."""
         try:
             fall_detector = FallDetector.get_instance()
+            logging.info("FallDetector instance alındı")
         except Exception as e:
             logging.error(f"FallDetector başlatma hatası: {e}")
             return
+        
+        frame_count = 0
         
         while not self.is_destroyed:
             try:
@@ -494,10 +511,26 @@ class DashboardFrame(tk.Frame):
                 if self.selected_camera_index < len(self.cameras):
                     camera = self.cameras[self.selected_camera_index]
                     
-                    if not camera.is_running:
-                        time.sleep(0.1)
-                        continue
+                    # Kamera çalışıyor mu kontrol et
+                    if not hasattr(camera, 'is_running') or not camera.is_running:
+                        # Kamerayı başlatmaya çalış
+                        try:
+                            logging.info(f"Kamera {camera.camera_index} başlatılıyor...")
+                            if camera.start():
+                                logging.info(f"✅ Kamera {camera.camera_index} başarıyla başlatıldı")
+                                self.connection_status_var.set("🟢 Bağlı")
+                            else:
+                                logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
+                                self.connection_status_var.set("🔴 Başlatılamadı")
+                                time.sleep(1.0)
+                                continue
+                        except Exception as e:
+                            logging.error(f"Kamera başlatma hatası: {e}")
+                            self.connection_status_var.set("🔴 Hata")
+                            time.sleep(1.0)
+                            continue
                     
+                    # Frame al
                     frame = camera.get_frame()
                     if frame is None:
                         time.sleep(0.05)
@@ -507,30 +540,43 @@ class DashboardFrame(tk.Frame):
                     with self.frame_lock:
                         self.current_frame = frame.copy()
                     
-                    # YOLOv11 Pose Estimation
-                    annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+                    try:
+                        # YOLOv11 Pose Estimation - Güvenli çağrı
+                        annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+                        
+                        # İstatistikleri güncelle
+                        self.tracking_stats['active_tracks'] = len(tracks) if tracks else 0
+                        if tracks:
+                            self.tracking_stats['total_detections'] += len(tracks)
+                        
+                        # FPS hesapla
+                        current_time = time.time()
+                        if hasattr(self, 'last_fps_time'):
+                            fps = 1.0 / (current_time - self.last_fps_time)
+                            self.tracking_stats['current_fps'] = int(fps)
+                        self.last_fps_time = current_time
+                        
+                        # Düşme algılama
+                        is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
+                        
+                        if is_fall and confidence > 0.6:
+                            self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
+                        
+                        # İşlenmiş frame'i kaydet
+                        with self.frame_lock:
+                            self.processed_frame = annotated_frame
+                            
+                    except Exception as ai_error:
+                        logging.warning(f"AI işleme hatası: {ai_error}")
+                        # AI hatası durumunda ham frame'i kullan
+                        with self.frame_lock:
+                            self.processed_frame = frame
                     
-                    # İstatistikleri güncelle
-                    self.tracking_stats['active_tracks'] = len(tracks)
-                    if tracks:
-                        self.tracking_stats['total_detections'] += len(tracks)
+                    frame_count += 1
                     
-                    # FPS hesapla
-                    current_time = time.time()
-                    if hasattr(self, 'last_fps_time'):
-                        fps = 1.0 / (current_time - self.last_fps_time)
-                        self.tracking_stats['current_fps'] = int(fps)
-                    self.last_fps_time = current_time
-                    
-                    # Düşme algılama
-                    is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
-                    
-                    if is_fall and confidence > 0.6:
-                        self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
-                    
-                    # İşlenmiş frame'i kaydet
-                    with self.frame_lock:
-                        self.processed_frame = annotated_frame
+                    # Her 100 frame'de bir log
+                    if frame_count % 100 == 0:
+                        logging.info(f"İşlenen frame sayısı: {frame_count}")
                 
                 # CPU yükünü azalt
                 time.sleep(0.03)  # ~33 FPS
@@ -538,6 +584,11 @@ class DashboardFrame(tk.Frame):
             except Exception as e:
                 logging.error(f"Frame işleme hatası: {e}")
                 time.sleep(0.1)
+        
+        logging.info("Frame processing thread sonlandı")
+
+
+
 
     def _start_camera_updates(self):
         """Kamera güncellemelerini başlatır."""

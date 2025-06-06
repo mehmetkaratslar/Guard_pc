@@ -519,24 +519,61 @@ class GuardApp:
             
             # Kameraları başlat
             camera_start_count = 0
-            for camera in self.cameras:
+            failed_cameras = []
+            
+            for i, camera in enumerate(self.cameras):
                 try:
+                    logging.info(f"Kamera {camera.camera_index} başlatılıyor...")
+                    
+                    # Kamera doğrulaması
+                    if hasattr(camera, '_validate_camera_with_fallback'):
+                        if not camera._validate_camera_with_fallback():
+                            logging.error(f"❌ Kamera {camera.camera_index} doğrulanamadı")
+                            failed_cameras.append(camera.camera_index)
+                            continue
+                    
+                    # Kamerayı başlat
                     if camera.start():
                         camera_start_count += 1
                         logging.info(f"✅ Kamera {camera.camera_index} başlatıldı")
+                        
+                        # Kısa test
+                        time.sleep(0.5)
+                        test_frame = camera.get_frame()
+                        if test_frame is not None and test_frame.size > 0:
+                            logging.info(f"✅ Kamera {camera.camera_index} frame testi başarılı: {test_frame.shape}")
+                        else:
+                            logging.warning(f"⚠️ Kamera {camera.camera_index} frame testi başarısız")
                     else:
                         logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
-                        messagebox.showerror(
-                            f"Kamera {camera.camera_index} Hatası", 
-                            f"Kamera {camera.camera_index} başlatılamadı.\n"
-                            "Lütfen kamera bağlantısını kontrol edin."
-                        )
-                except Exception as e:
-                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(e)}")
+                        failed_cameras.append(camera.camera_index)
+                        
+                except Exception as camera_error:
+                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(camera_error)}")
+                    failed_cameras.append(camera.camera_index)
 
+            # Sonuçları değerlendir
             if camera_start_count == 0:
-                messagebox.showerror("Kamera Hatası", "Hiçbir kamera başlatılamadı!")
+                error_msg = "Hiçbir kamera başlatılamadı!\n\n"
+                error_msg += "Başarısız kameralar:\n"
+                for cam_id in failed_cameras:
+                    error_msg += f"• Kamera {cam_id}\n"
+                error_msg += "\nÖneriler:\n"
+                error_msg += "• Kamera bağlantılarını kontrol edin\n"
+                error_msg += "• Başka uygulamalar kamerayı kullanıyor olabilir\n"
+                error_msg += "• Kamera sürücülerini güncelleyin\n"
+                error_msg += "• Yönetici olarak çalıştırın"
+                
+                messagebox.showerror("Kamera Hatası", error_msg)
                 return
+            
+            # Başarılı kameralar varsa devam et
+            if failed_cameras:
+                warning_msg = f"{len(failed_cameras)} kamera başlatılamadı:\n"
+                for cam_id in failed_cameras:
+                    warning_msg += f"• Kamera {cam_id}\n"
+                warning_msg += f"\n{camera_start_count} kamera başarıyla başlatıldı."
+                messagebox.showwarning("Kamera Uyarısı", warning_msg)
 
             # AI Model kontrolü
             if not self.fall_detector or not self.system_state['ai_model_loaded']:
@@ -555,7 +592,7 @@ class GuardApp:
             
             # Detection thread'lerini başlat
             for camera in self.cameras:
-                if camera.is_running:
+                if hasattr(camera, 'is_running') and camera.is_running:
                     camera_id = f"camera_{camera.camera_index}"
                     
                     if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
@@ -613,7 +650,7 @@ class GuardApp:
             stopped_cameras = 0
             for camera in self.cameras:
                 try:
-                    if camera.is_running:
+                    if hasattr(camera, 'is_running') and camera.is_running:
                         camera.stop()
                         stopped_cameras += 1
                         logging.info(f"✅ Kamera {camera.camera_index} durduruldu")
@@ -634,7 +671,6 @@ class GuardApp:
 
 
 
-
     def _enhanced_detection_loop(self, camera):
         """
         Ultra Enhanced AI düşme algılama döngüsü.
@@ -650,8 +686,8 @@ class GuardApp:
             config = {
                 'target_fps': 30,
                 'max_errors': 15,
-                'min_detection_interval': 3,  # 3 saniye minimum
-                'performance_log_interval': 150,  # 150 frame'de bir
+                'min_detection_interval': 3,
+                'performance_log_interval': 150,
                 'ai_enabled': self.system_state['ai_model_loaded']
             }
             
@@ -677,7 +713,7 @@ class GuardApp:
                 
                 try:
                     # Camera status check
-                    if not camera or not camera.is_running:
+                    if not camera or not hasattr(camera, 'is_running') or not camera.is_running:
                         time.sleep(0.5)
                         continue
                     
@@ -694,7 +730,7 @@ class GuardApp:
                     processing_start = time.time()
                     
                     if config['ai_enabled'] and self.fall_detector:
-                        # Enhanced AI Detection - get_enhanced_detection_visualization metodu yoksa normal metodu kullan
+                        # Enhanced AI Detection
                         if hasattr(self.fall_detector, 'get_enhanced_detection_visualization'):
                             annotated_frame, tracks = self.fall_detector.get_enhanced_detection_visualization(frame)
                         else:
@@ -706,7 +742,7 @@ class GuardApp:
                             self.system_state['total_detections'] += len(tracks)
                             self.system_state['last_activity'] = time.time()
                         
-                        # Enhanced Fall Detection - detect_enhanced_fall metodu yoksa normal metodu kullan
+                        # Enhanced Fall Detection
                         if hasattr(self.fall_detector, 'detect_enhanced_fall'):
                             fall_result = self.fall_detector.detect_enhanced_fall(frame, tracks)
                             is_fall, confidence, track_id = fall_result[0], fall_result[1], fall_result[2]
@@ -758,9 +794,9 @@ class GuardApp:
                     # Reset error count on success
                     stats['error_count'] = 0
                     
-                except Exception as e:
+                except Exception as inner_e:
                     stats['error_count'] += 1
-                    logging.error(f"❌ {camera_id} detection loop hatası ({stats['error_count']}/{config['max_errors']}): {str(e)}")
+                    logging.error(f"❌ {camera_id} detection loop inner hatası ({stats['error_count']}/{config['max_errors']}): {str(inner_e)}")
                     
                     if stats['error_count'] >= config['max_errors']:
                         logging.error(f"💥 {camera_id} maksimum hata sayısına ulaştı. Loop sonlandırılıyor.")
@@ -774,7 +810,10 @@ class GuardApp:
             
         except Exception as e:
             logging.error(f"💥 {camera_id} Enhanced detection loop kritik hatası: {str(e)}")
-            self.root.after(0, self.stop_enhanced_detectio)
+            self.root.after(0, self.stop_enhanced_detection)
+        finally:
+            # Thread cleanup işlemleri
+            logging.info(f"🧹 {camera_id} detection thread temizlendi")
 
 
 

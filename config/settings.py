@@ -17,13 +17,14 @@ APP_DESCRIPTION = "YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş düşm
 
 # Kamera ayarları
 CAMERA_CONFIGS = [
-    {"index": 0, "backend": cv2.CAP_MSMF, "name": "Ana Kamera (MSMF)"},
-    {"index": 1, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera (DSHOW)"},
+    {"index": 0, "backend": cv2.CAP_DSHOW, "name": "Ana Kamera (DirectShow)"},
+    {"index": 1, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera 1 (DirectShow)"},
+    {"index": 2, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera 2 (DirectShow)"},
 ]
 
-FRAME_WIDTH = 640  # YOLOv11 için optimize edilmiş boyut
-FRAME_HEIGHT = 640
-FRAME_RATE = 30
+FRAME_WIDTH = 1280  
+FRAME_HEIGHT = 720
+FRAME_RATE = 30     
 
 # YOLOv11 Pose Estimation Ayarları
 MODEL_PATH = os.path.join(
@@ -181,12 +182,12 @@ STREAM_PORT = 5000
 
 # Performans Ayarları
 PERFORMANCE_CONFIG = {
-    "max_concurrent_detections": 2,      # Eşzamanlı maximum algılama sayısı
-    "frame_skip_ratio": 0,               # Frame atlama oranı (0=atla, 1=tümü)
-    "gpu_acceleration": True,            # GPU hızlandırması
-    "multi_threading": True,             # Çoklu thread desteği
+    "max_concurrent_detections": 3,      # 3 kamera için
+    "frame_skip_ratio": 0,               # Tüm frame'leri işle
+    "gpu_acceleration": True,            # GPU varsa kullan
+    "multi_threading": True,             # Çoklu thread aktif
     "memory_optimization": True,         # Bellek optimizasyonu
-    "detection_queue_size": 10,          # Algılama kuyruğu boyutu
+    "detection_queue_size": 15,          # 3 kamera x 5 queue
 }
 
 # Bildirim ayarları
@@ -347,28 +348,28 @@ MODEL_PROFILES = {
 # Kamera kalitesi ayarları
 CAMERA_QUALITY_PRESETS = {
     "low": {
-        "width": 480,
+        "width": 640,
         "height": 480,
         "fps": 15,
         "description": "Düşük kalite, hızlı işlem"
     },
     "medium": {
-        "width": 640,
-        "height": 640, 
+        "width": 1280,
+        "height": 720,
         "fps": 25,
-        "description": "Orta kalite, dengeli işlem"
+        "description": "Orta kalite, dengeli işlem (Önerilen)"
     },
     "high": {
-        "width": 800,
-        "height": 800,
+        "width": 1920,
+        "height": 1080,
         "fps": 30,
         "description": "Yüksek kalite, yavaş işlem"
     },
     "ultra": {
-        "width": 1024,
-        "height": 1024,
+        "width": 1920,
+        "height": 1080,
         "fps": 30,
-        "description": "Ultra kalite, çok yavaş işlem"
+        "description": "Ultra kalite"
     }
 }
 
