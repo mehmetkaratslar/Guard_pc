@@ -1,10 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: dashboard.py (ENHANCED VERSION)
+# 📄 Dosya Adı: dashboard.py (ULTRA ENHANCED VERSION)
 # 📁 Konum: guard_pc_app/ui/dashboard.py
 # 📌 Açıklama:
-# YOLOv11 Pose Estimation + DeepSORT tabanlı gelişmiş dashboard UI.
-# Real-time pose visualization, tracking ID'ler, düşme algılama göstergeleri.
-# Gelişmiş görselleştirme ve interaktif kontroller.
+# YOLOv11 Pose Estimation + DeepSORT tabanlı ultra gelişmiş dashboard UI.
+# Tam ekran desteği, çoklu kamera grid görünümü, performans optimizasyonları
 # =======================================================================================
 
 import tkinter as tk
@@ -21,10 +20,11 @@ import math
 import winsound
 from collections import deque
 from core.fall_detection import FallDetector
+import queue
 
 class DashboardFrame(tk.Frame):
     """
-    Gelişmiş YOLOv11 Pose Estimation + DeepSORT dashboard arayüzü.
+    Ultra gelişmiş YOLOv11 Pose Estimation + DeepSORT dashboard arayüzü.
     """
 
     def __init__(self, parent, user, cameras, start_fn, stop_fn, settings_fn, history_fn, logout_fn):
@@ -39,18 +39,39 @@ class DashboardFrame(tk.Frame):
 
         # Durumlar
         self.system_running = False
-        self.last_frames = {f"camera_{cam.camera_index}": None for cam in cameras}
+        self.is_fullscreen = False
+        self.current_view_mode = "grid"  # "grid" veya "single"
+        self.selected_camera_index = 0
+        self.frame_queue = queue.Queue(maxsize=2)  # Frame kuyruğu
+        self.processing_thread = None
+        
+        # Performans optimizasyonu için
+        self.frame_skip_counter = 0
+        self.frame_skip_rate = 2  # Her 2 frame'de 1 işle
+        self.last_update_time = time.time()
+        self.target_fps = 30
+        self.min_update_interval = 1.0 / self.target_fps
+        
+        # Frame buffer'ları
+        self.frame_buffers = {f"camera_{cam.camera_index}": None for cam in cameras}
+        self.processed_frames = {f"camera_{cam.camera_index}": None for cam in cameras}
+        self.frame_locks = {f"camera_{cam.camera_index}": threading.Lock() for cam in cameras}
+        
+        # UI elementleri için değişkenler
+        self.camera_frames = {}
+        self.camera_labels = {}
+        self.fps_labels = {}
+        self.status_labels = {}
+        
         self.last_detection_time = None
         self.last_detection_confidence = 0.0
         self.last_track_id = None
         self.update_id = None
-        self.animation_id = None
-        self.pulse_value = 0
         self.is_destroyed = False
         
-        # Yeni eklenen değişkenler
-        self.active_tracks = {}  # {track_id: track_info}
-        self.fall_events_history = deque(maxlen=50)  # Son 50 düşme olayı
+        # Tracking istatistikleri
+        self.active_tracks = {}
+        self.fall_events_history = deque(maxlen=50)
         self.pose_visualization_enabled = True
         self.tracking_stats = {
             'total_detections': 0,
@@ -71,14 +92,7 @@ class DashboardFrame(tk.Frame):
             'pose_point': "#FF4081", 'skeleton_line': "#4CAF50", 'tracking_box': "#2196F3"
         }
 
-        # Kamera durumları
-        self.current_camera_id = f"camera_{cameras[0].camera_index}" if cameras else None
-        self.frame_locks = {f"camera_{cam.camera_index}": threading.Lock() for cam in cameras}
-        self.camera_labels = {}
-        self.fps_vars = {f"camera_{cam.camera_index}": tk.StringVar(value="0 FPS") for cam in cameras}
-        self.live_indicators = {}
-
-        # Tracking ve pose bilgileri için değişkenler
+        # Tracking bilgileri için değişkenler
         self.tracking_info_vars = {
             'active_tracks': tk.StringVar(value="0"),
             'total_detections': tk.StringVar(value="0"),
@@ -94,21 +108,23 @@ class DashboardFrame(tk.Frame):
 
         # İkonları yükle
         self.load_icons()
+        
         # UI oluştur
         self._create_ui()
-        # Kamera güncellemeleri başlat
+        
+        # İşleme thread'ini başlat
+        self._start_processing_thread()
+        
+        # Kamera güncellemelerini başlat
         self._start_camera_updates()
-        # Animasyonları başlat
-        self._start_animations()
 
     def load_icons(self):
-        """Gerekli ikonları yükler veya eksikse yer tutucu ekler."""
+        """Gerekli ikonları yükler."""
         self.icons = {}
         icon_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "icons")
         icons_to_load = [
-            "settings", "history", "logout", "start", "stop", "user", "camera", "alert", "logo",
-            "dashboard", "notification", "eye", "refresh", "search", "export", "zoom", "info",
-            "camera_select", "pose_points", "tracking", "statistics"
+            "settings", "history", "logout", "start", "stop", "user", "camera", 
+            "alert", "logo", "fullscreen", "grid", "single", "exit_fullscreen"
         ]
         
         for name in icons_to_load:
@@ -124,971 +140,684 @@ class DashboardFrame(tk.Frame):
                 self._create_placeholder_icon(name)
 
     def _create_placeholder_icon(self, name):
-        """Eksik ikonlar için basit bir yer tutucu ikonu çizer."""
+        """Eksik ikonlar için yer tutucu oluşturur."""
         img = Image.new('RGBA', (24, 24), (255, 255, 255, 0))
         draw = ImageDraw.Draw(img)
-        color = self.colors['primary']
         
-        if name == "pose_points":
-            # Pose noktaları ikonu
-            for i, (x, y) in enumerate([(8, 6), (16, 6), (8, 12), (16, 12), (12, 18)]):
-                draw.ellipse([x-2, y-2, x+2, y+2], fill=color)
-        elif name == "tracking":
-            # Tracking ikonu
-            draw.rectangle([4, 4, 20, 20], outline=color, width=2)
-            draw.line([8, 8, 16, 16], fill=color, width=2)
-        elif name == "statistics":
-            # İstatistik ikonu
-            draw.rectangle([4, 16, 8, 20], fill=color)
-            draw.rectangle([10, 12, 14, 20], fill=color)
-            draw.rectangle([16, 8, 20, 20], fill=color)
+        if name == "fullscreen":
+            draw.rectangle([4, 4, 20, 20], outline=self.colors['primary'], width=2)
+            draw.rectangle([8, 8, 16, 16], outline=self.colors['primary'], width=1)
+        elif name == "grid":
+            for i in range(2):
+                for j in range(2):
+                    x, y = 4 + i * 9, 4 + j * 9
+                    draw.rectangle([x, y, x + 7, y + 7], outline=self.colors['primary'], width=1)
         else:
-            # Varsayılan ikon
-            draw.ellipse([2, 2, 22, 22], outline=color, width=2)
+            draw.ellipse([2, 2, 22, 22], outline=self.colors['primary'], width=2)
         
         self.icons[name] = ImageTk.PhotoImage(img)
 
     def _create_ui(self):
-        """Tüm ana UI bileşenlerini oluşturur."""
+        """Ana UI yapısını oluşturur."""
         self.configure(bg=self.colors['light'])
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=3)
-        self.rowconfigure(0, weight=0)
-        self.rowconfigure(1, weight=1)
         
+        # Ana container
+        self.main_container = tk.Frame(self, bg=self.colors['light'])
+        self.main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Grid layout
+        self.main_container.columnconfigure(0, weight=1)
+        self.main_container.columnconfigure(1, weight=4)
+        self.main_container.rowconfigure(0, weight=0)
+        self.main_container.rowconfigure(1, weight=1)
+        
+        # Header
         self._create_header()
+        
+        # Sol panel (kontroller)
         self._create_left_panel()
-        self._create_right_panel()
-
-
+        
+        # Sağ panel (kameralar)
+        self._create_camera_panel()
 
     def _create_header(self):
-        """Gradient uyumlu modern mavi-mor başlık çubuğu."""
-        gradient_bg = "#1B22FA"  # Gradientle uyumlu mor-mavi tonu
+        """Üst başlık çubuğunu oluşturur."""
+        header = tk.Canvas(self.main_container, height=60, highlightthickness=0)
+        self._draw_gradient(header, self.colors['gradient_start'], self.colors['gradient_end'])
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-        header = tk.Canvas(self, height=80, highlightthickness=0, bg=gradient_bg)
-        self._draw_gradient(header, self.colors['gradient_start'], self.colors['gradient_end'], width=2000, height=80)
-        header.grid(row=0, column=0, columnspan=2, sticky="new")
-        header.create_rectangle(0, 78, 2000, 80, fill="#1A1A1A", outline="")
-
-        # Sol: Logo ve Uygulama Adı
-        logo_frame = tk.Frame(header, bg=gradient_bg, bd=0, highlightthickness=0)
-        logo_frame.place(relx=0, rely=0.5, x=25, anchor="w")
-        if "logo" in self.icons:
-            tk.Label(logo_frame, image=self.icons["logo"], bg=gradient_bg).pack(side=tk.LEFT, padx=(0, 10))
-        tk.Label(
-            logo_frame, text="Guard AI",
-            font=("Poppins", 22, "bold"), fg="#BBFFFA", bg=gradient_bg
-        ).pack(side=tk.LEFT)
-
-        # Orta: Sistem Durumu
-        status_frame = tk.Frame(header, bg=gradient_bg)
-        status_frame.place(relx=0.5, rely=0.5, anchor="center")
-
-        tk.Label(
-            status_frame, text="YOLOv11 Pose + DeepSORT",
-            font=("Segoe UI", 13, "bold"), fg="#BBFFFA", bg=gradient_bg
-        ).pack()
-
-        tracks_info = tk.Frame(status_frame, bg=gradient_bg)
-        tracks_info.pack()
-        tk.Label(tracks_info, text="Aktif Takip: ", font=("Segoe UI", 11), fg="#FFD700", bg=gradient_bg).pack(side=tk.LEFT)
-        tk.Label(tracks_info, textvariable=self.tracking_info_vars['active_tracks'],
-                font=("Segoe UI", 11, "bold"), fg="#00FF7F", bg=gradient_bg).pack(side=tk.LEFT)
-
-        # Sağ: Ayarlar, Geçmiş, Kullanıcı, Çıkış
-        top_right_panel = tk.Frame(header, bg=gradient_bg)
-        top_right_panel.place(relx=1, rely=0.5, x=-25, anchor="e")
-
-        # Ayarlar Butonu
-        settings_btn = tk.Button(
-            top_right_panel, font=("Poppins", 12, "bold"),
-            bg="#74b9ff", fg="#000000", relief=tk.FLAT,
-            padx=10, pady=6, command=self.settings_fn,
-            activebackground="#0984e3", activeforeground="#ffffff", cursor="hand2"
-        )
-        if "settings" in self.icons:
-            settings_btn.config(image=self.icons["settings"], compound=tk.LEFT, padx=10)
-        settings_btn.pack(side=tk.LEFT, padx=5)
-
-        # Geçmiş Butonu
-        history_btn = tk.Button(
-            top_right_panel, image=self.icons.get("history", None),
-            bg=gradient_bg, relief=tk.FLAT,
-            activebackground="#6c5ce7", cursor="hand2",
-            command=self.history_fn
-        )
-        history_btn.pack(side=tk.LEFT, padx=5)
-
-        # Kullanıcı adı ve çıkış
-        user_frame = tk.Frame(top_right_panel, bg=gradient_bg)
-        user_frame.pack(side=tk.LEFT, padx=10)
-        if "user" in self.icons:
-            tk.Label(user_frame, image=self.icons["user"], bg=gradient_bg).pack(side=tk.LEFT, padx=8)
-        tk.Label(
-            user_frame, text=self.user.get('displayName', 'Kullanıcı'),
-            font=("Poppins", 14, "bold"), fg="#BBFFFA", bg=gradient_bg
-        ).pack(side=tk.LEFT, padx=10)
-
-        # Çıkış butonu
-        logout_btn = tk.Button(
-            top_right_panel, text="Çıkış Yap", font=("Poppins", 12, "bold"),
-            bg="#d63031", fg="#BBFFFA", relief=tk.FLAT,
-            padx=15, pady=6, command=self.logout_fn,
-            activebackground="#c0392b", activeforeground="#ffffff", cursor="hand2",
-            bd=0, highlightthickness=0, compound=tk.LEFT
-        )
-        if "logout" in self.icons:
-            logout_btn.config(image=self.icons["logout"], padx=10)
-
-        logout_btn.bind("<Enter>", lambda e: logout_btn.config(bg="#e74c3c"))
-        logout_btn.bind("<Leave>", lambda e: logout_btn.config(bg="#d63031"))
-        logout_btn.pack(side=tk.LEFT, padx=5)
-
-
-
-        # Logo çerçevesi
-        logo_frame = tk.Frame(header, bg=self.colors['light'], bd=0, highlightthickness=0)
-        logo_frame.place(relx=0, rely=0.5, x=25, anchor="w")
-        if "logo" in self.icons:
-            tk.Label(logo_frame, image=self.icons["logo"], bg=self.colors['light']).pack(side=tk.LEFT, padx=(0, 10))
-        tk.Label(
-            logo_frame, text="Guard AI",
-            font=("Poppins", 22, "bold"), fg="#645353", bg=self.colors['light']
-        ).pack(side=tk.LEFT)
-
-        # Orta panel - sistem durumu
-        status_frame = tk.Frame(header, bg=self.colors['light'])
-        status_frame.place(relx=0.5, rely=0.5, anchor="center")
+        # Logo ve başlık
+        logo_frame = tk.Frame(header, bg=self.colors['primary'])
+        logo_frame.place(x=20, y=10)
         
-        tk.Label(
-            status_frame, text="YOLOv11 Pose + DeepSORT",
-            font=("Segoe UI", 13, "bold"), fg="#000000", bg=self.colors['light']
-        ).pack()
+        if "logo" in self.icons:
+            tk.Label(logo_frame, image=self.icons["logo"], bg=self.colors['primary']).pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(logo_frame, text="Guard AI - YOLOv11", font=("Segoe UI", 18, "bold"), 
+                fg="white", bg=self.colors['primary']).pack(side=tk.LEFT)
 
-        tracks_info = tk.Frame(status_frame, bg=self.colors['light'])
-        tracks_info.pack()
-        tk.Label(tracks_info, text="Aktif Takip: ", 
-                font=("Segoe UI", 11), fg="#FFD700", bg=self.colors['light']).pack(side=tk.LEFT)
-        tk.Label(tracks_info, textvariable=self.tracking_info_vars['active_tracks'],
-                font=("Segoe UI", 11, "bold"), fg="#00FF7F", bg=self.colors['light']).pack(side=tk.LEFT)
-
-        # Sağ üst panel
-        top_right_panel = tk.Frame(header, bg=self.colors['light'])
-        top_right_panel.place(relx=1, rely=0.5, x=-25, anchor="e")
-
-        # Ayarlar Butonu
-        settings_btn = tk.Button(
-            top_right_panel, font=("Poppins", 12, "bold"),
-            bg=self.colors['info'], fg="#000000", relief=tk.FLAT,
-            padx=10, pady=6, command=self.settings_fn,
-            activebackground="#1E88E5", activeforeground="#3c4de6", cursor="hand2"
-        )
-        if "settings" in self.icons:
-            settings_btn.config(image=self.icons["settings"], compound=tk.LEFT, padx=10)
-        settings_btn.pack(side=tk.LEFT, padx=5)
-
-        # Geçmiş Butonu
-        history_btn = tk.Button(
-            top_right_panel, image=self.icons.get("history", None),
-            bg=self.colors['light'], relief=tk.FLAT,
-            activebackground=self.colors['secondary'], cursor="hand2",
-            command=self.history_fn
-        )
-        history_btn.pack(side=tk.LEFT, padx=5)
-
-        # Kullanıcı ve çıkış
-        user_frame = tk.Frame(top_right_panel, bg=self.colors['light'])
+        # Sağ üst kontroller
+        controls_frame = tk.Frame(header, bg=self.colors['primary'])
+        controls_frame.place(relx=1, x=-20, y=15, anchor="ne")
+        
+        # Görünüm modları
+        view_frame = tk.Frame(controls_frame, bg=self.colors['primary'])
+        view_frame.pack(side=tk.LEFT, padx=10)
+        
+        # Grid görünümü
+        self.grid_btn = tk.Button(view_frame, text="⊞ Grid", font=("Segoe UI", 10),
+                                 bg=self.colors['info'], fg="white", bd=0,
+                                 command=lambda: self._set_view_mode("grid"),
+                                 padx=10, pady=5, cursor="hand2")
+        self.grid_btn.pack(side=tk.LEFT, padx=2)
+        
+        # Tekli görünüm
+        self.single_btn = tk.Button(view_frame, text="◻ Tekli", font=("Segoe UI", 10),
+                                   bg=self.colors['secondary'], fg="white", bd=0,
+                                   command=lambda: self._set_view_mode("single"),
+                                   padx=10, pady=5, cursor="hand2")
+        self.single_btn.pack(side=tk.LEFT, padx=2)
+        
+        # Tam ekran butonu
+        self.fullscreen_btn = tk.Button(controls_frame, text="⛶ Tam Ekran", font=("Segoe UI", 10),
+                                       bg=self.colors['success'], fg="white", bd=0,
+                                       command=self._toggle_fullscreen,
+                                       padx=15, pady=5, cursor="hand2")
+        self.fullscreen_btn.pack(side=tk.LEFT, padx=10)
+        
+        # Kullanıcı bilgisi
+        user_frame = tk.Frame(controls_frame, bg=self.colors['primary'])
         user_frame.pack(side=tk.LEFT, padx=10)
-        if "user" in self.icons:
-            tk.Label(user_frame, image=self.icons["user"], bg=self.colors['light']).pack(side=tk.LEFT, padx=8)
-        tk.Label(
-            user_frame, text=self.user.get('displayName', 'Kullanıcı'),
-            font=("Poppins", 14, "bold"), fg="#061AEC", bg=self.colors['light']
-        ).pack(side=tk.LEFT, padx=10)
-
-        logout_btn = tk.Button(
-            top_right_panel, text="Çıkış Yap", font=("Poppins", 12, "bold"),
-            bg=self.colors['danger'], fg="#ffffff", relief=tk.FLAT,
-            padx=15, pady=6, command=self.logout_fn,
-            activebackground="#B71C1C", activeforeground="#fd0505", cursor="hand2",
-            bd=0, highlightthickness=0, compound=tk.LEFT
-        )
-        if "logout" in self.icons:
-            logout_btn.config(image=self.icons["logout"], padx=10)
-
-        logout_btn.bind("<Enter>", lambda e: logout_btn.config(bg="#E53935"))
-        logout_btn.bind("<Leave>", lambda e: logout_btn.config(bg=self.colors['danger']))
-        logout_btn.pack(side=tk.LEFT, padx=5)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        
+        tk.Label(user_frame, text=self.user.get('displayName', 'Kullanıcı'),
+                font=("Segoe UI", 12), fg="white", bg=self.colors['primary']).pack()
+        
+        # Çıkış
+        tk.Button(controls_frame, text="Çıkış", font=("Segoe UI", 10),
+                 bg=self.colors['danger'], fg="white", bd=0,
+                 command=self.logout_fn, padx=10, pady=5, cursor="hand2").pack(side=tk.LEFT)
 
     def _create_left_panel(self):
-        """Gelişmiş kontrol paneli."""
-        left_panel = tk.Frame(self, bg=self.colors['light'])
-        left_panel.grid(row=1, column=0, sticky="nsew", padx=25, pady=25)
-        left_panel.columnconfigure(0, weight=1)
-
-        # Sistem kontrol kartı
-        control_card = self._create_neuromorphic_card(left_panel, "AI Düşme Algılama Kontrolü")
-        control_card.pack(fill=tk.BOTH, pady=(0, 15))
-
-        # Model bilgileri
-        model_info_frame = tk.Frame(control_card, bg=self.colors['card'])
-        model_info_frame.pack(fill=tk.X, pady=8)
+        """Sol kontrol panelini oluşturur."""
+        left_panel = tk.Frame(self.main_container, bg=self.colors['light'], width=300)
+        left_panel.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        left_panel.grid_propagate(False)
         
-        tk.Label(model_info_frame, text="🧠 YOLOv11 Pose Estimation", 
-                font=("Helvetica", 11, "bold"), fg=self.colors['info'], 
-                bg=self.colors['card']).pack(anchor=tk.W)
-        tk.Label(model_info_frame, text="🎯 DeepSORT Multi-Object Tracking", 
-                font=("Helvetica", 11, "bold"), fg=self.colors['info'], 
-                bg=self.colors['card']).pack(anchor=tk.W)
-
-        # Kamera seçimi
-        camera_select_frame = tk.Frame(control_card, bg=self.colors['card'])
-        camera_select_frame.pack(fill=tk.X, pady=8)
-        tk.Label(
-            camera_select_frame, text="📹 Kamera:", font=("Helvetica", 12, "bold"),
-            fg=self.colors['text'], bg=self.colors['card']
-        ).pack(side=tk.LEFT, padx=12)
+        # Sistem kontrolü
+        control_card = self._create_card(left_panel, "Sistem Kontrolü")
+        control_card.pack(fill=tk.X, pady=(0, 10))
         
-        self.camera_var = tk.StringVar(value=self.current_camera_id or "Kamera Seç")
-        camera_menu = ttk.Combobox(
-            camera_select_frame, textvariable=self.camera_var,
-            values=[f"camera_{cam.camera_index}" for cam in self.cameras],
-            state="readonly", width=20, font=("Arial", 11)
-        )
-        camera_menu.pack(side=tk.LEFT, padx=12)
-        camera_menu.bind("<<ComboboxSelected>>", self._on_camera_select)
-
-        # Gelişmiş durum göstergesi
-        status_frame = tk.Frame(control_card, bg=self.colors['card'])
-        status_frame.pack(fill=tk.X, pady=12)
-        
-        self.status_var = tk.StringVar(value="Sistem Durduruldu")
-        status_container = tk.Frame(status_frame, bg=self.colors['card'])
-        status_container.pack(side=tk.LEFT, fill=tk.Y, padx=12)
-        
-        self.status_canvas = tk.Canvas(status_container, width=12, height=12, bg=self.colors['card'], highlightthickness=0)
-        self.status_canvas.pack(side=tk.LEFT)
-        self.status_indicator = self.status_canvas.create_oval(1, 1, 11, 11, fill=self.colors['danger'], outline="")
-        
-        tk.Label(
-            status_container, textvariable=self.status_var,
-            font=("Helvetica", 14, "bold"), fg=self.colors['danger'], bg=self.colors['card'], padx=8
-        ).pack(side=tk.LEFT)
-
         # Başlat/Durdur butonu
-        button_frame = tk.Frame(control_card, bg=self.colors['card'], padx=12, pady=12)
-        button_frame.pack(fill=tk.X)
+        self.control_var = tk.StringVar(value="Sistemi Başlat")
+        self.control_button = tk.Button(control_card, textvariable=self.control_var,
+                                       font=("Segoe UI", 14, "bold"),
+                                       bg=self.colors['success'], fg="white",
+                                       command=self._toggle_system,
+                                       relief=tk.FLAT, pady=10, cursor="hand2")
+        self.control_button.pack(fill=tk.X, padx=10, pady=10)
         
-        self.control_var = tk.StringVar(value="AI Sistemi Başlat")
-        self.control_button = tk.Button(
-            button_frame, textvariable=self.control_var, font=("Helvetica", 14, "bold"),
-            bg=self.colors['success'], fg="#ffffff", relief=tk.FLAT,
-            padx=20, pady=12, command=self._toggle_system,
-            activebackground="#2C7A7B", activeforeground="#ffffff", cursor="hand2"
-        )
-        if "start" in self.icons:
-            self.control_button.config(image=self.icons["start"], compound=tk.LEFT, padx=12)
-        self.control_button.pack(fill=tk.X)
-
-        # Tracking istatistikleri kartı
-        stats_card = self._create_neuromorphic_card(left_panel, "📊 Takip İstatistikleri")
-        stats_card.pack(fill=tk.BOTH, pady=(0, 15))
+        # Durum göstergesi
+        self.status_var = tk.StringVar(value="Sistem Kapalı")
+        status_label = tk.Label(control_card, textvariable=self.status_var,
+                               font=("Segoe UI", 12), bg=self.colors['card'])
+        status_label.pack(pady=5)
         
-        # İstatistik grid'i
+        # İstatistikler
+        stats_card = self._create_card(left_panel, "İstatistikler")
+        stats_card.pack(fill=tk.X, pady=(0, 10))
+        
         stats_grid = tk.Frame(stats_card, bg=self.colors['card'])
         stats_grid.pack(fill=tk.X, padx=10, pady=10)
         
-        # 2x2 grid
-        for i, (key, label, icon) in enumerate([
-            ('active_tracks', 'Aktif Takip', '🎯'),
-            ('total_detections', 'Toplam Tespit', '👥'),
-            ('fall_alerts', 'Düşme Uyarısı', '⚠️'),
-            ('pose_points', 'Pose Noktası', '🔘')
+        # İstatistik satırları
+        for i, (key, label) in enumerate([
+            ('active_tracks', 'Aktif Takip'),
+            ('total_detections', 'Toplam Tespit'),
+            ('fall_alerts', 'Düşme Uyarısı')
         ]):
-            row, col = i // 2, i % 2
+            row_frame = tk.Frame(stats_grid, bg=self.colors['card'])
+            row_frame.pack(fill=tk.X, pady=2)
             
-            stat_frame = tk.Frame(stats_grid, bg=self.colors['card'], padx=8, pady=8)
-            stat_frame.grid(row=row, column=col, sticky="ew", padx=5, pady=5)
-            stats_grid.columnconfigure(col, weight=1)
+            tk.Label(row_frame, text=f"{label}:", font=("Segoe UI", 11),
+                    bg=self.colors['card']).pack(side=tk.LEFT)
             
-            tk.Label(stat_frame, text=icon, font=("Helvetica", 14), 
-                    bg=self.colors['card']).pack()
-            tk.Label(stat_frame, textvariable=self.tracking_info_vars[key], 
-                    font=("Helvetica", 16, "bold"), fg=self.colors['primary'], 
-                    bg=self.colors['card']).pack()
-            tk.Label(stat_frame, text=label, font=("Helvetica", 9), 
-                    fg=self.colors['text_secondary'], bg=self.colors['card']).pack()
-
-        # Son Düşme Olayı kartı (geliştirilmiş)
-        event_card = self._create_neuromorphic_card(left_panel, "🚨 Son Düşme Olayı")
-        event_card.pack(fill=tk.BOTH, pady=(0, 15))
+            tk.Label(row_frame, textvariable=self.tracking_info_vars[key],
+                    font=("Segoe UI", 11, "bold"), fg=self.colors['primary'],
+                    bg=self.colors['card']).pack(side=tk.RIGHT)
         
-        for var, icon in [(self.event_time_var, "🕐"), (self.event_conf_var, "📊"), 
-                         (self.event_id_var, "🆔"), (self.event_pose_var, "🤸")]:
-            event_info_frame = tk.Frame(event_card, bg=self.colors['card'])
-            event_info_frame.pack(fill=tk.X, padx=12, pady=2)
-            tk.Label(event_info_frame, text=icon, font=("Helvetica", 12), 
-                    bg=self.colors['card']).pack(side=tk.LEFT, padx=(0, 8))
-            tk.Label(event_info_frame, textvariable=var, font=("Arial", 11),
-                    fg=self.colors['text'], bg=self.colors['card']).pack(side=tk.LEFT)
-
-        # Pose görselleştirme kontrolü
-        pose_control_frame = tk.Frame(event_card, bg=self.colors['card'])
-        pose_control_frame.pack(fill=tk.X, padx=12, pady=8)
+        # Son olay
+        event_card = self._create_card(left_panel, "Son Düşme Olayı")
+        event_card.pack(fill=tk.X, pady=(0, 10))
         
-        self.pose_viz_var = tk.BooleanVar(value=True)
-        pose_check = tk.Checkbutton(
-            pose_control_frame, text="Pose Noktalarını Göster",
-            variable=self.pose_viz_var, font=("Helvetica", 10),
-            bg=self.colors['card'], fg=self.colors['text'],
-            command=self._toggle_pose_visualization
-        )
-        pose_check.pack(anchor=tk.W)
-
-        # Menü kartı
-        menu_card = self._create_neuromorphic_card(left_panel, "📋 Menü")
-        menu_card.pack(fill=tk.BOTH)
+        event_info = tk.Frame(event_card, bg=self.colors['card'])
+        event_info.pack(fill=tk.X, padx=10, pady=10)
         
-        for text, cmd, icon_name, color in [
-            ("Ayarlar", self.settings_fn, "settings", self.colors['info']),
-            ("Olay Geçmişi", self.history_fn, "history", self.colors['info']),
-            ("İstatistikler", self._show_detailed_stats, "statistics", self.colors['info'])
-        ]:
-            btn_container = tk.Frame(menu_card, bg=self.colors['card'], pady=4)
-            btn_container.pack(fill=tk.X)
-            btn = tk.Button(
-                btn_container, text=text, font=("Helvetica", 11, "bold"),
-                bg=self.colors['card'], fg=color, relief=tk.FLAT,
-                padx=20, pady=8, command=cmd,
-                activebackground=self.colors['highlight'], activeforeground=color,
-                cursor="hand2", anchor="w"
-            )
-            if icon_name in self.icons:
-                btn.config(image=self.icons[icon_name], compound=tk.LEFT, padx=12)
-            btn.pack(fill=tk.X)
-
-    def _create_right_panel(self):
-        """Gelişmiş kamera görüntü paneli."""
-        right_panel = tk.Frame(self, bg=self.colors['light'])
-        right_panel.grid(row=1, column=1, sticky="nsew", padx=20, pady=25)
-        right_panel.columnconfigure(0, weight=1)
-        right_panel.rowconfigure(0, weight=1)
-
-        camera_card = self._create_neuromorphic_card(right_panel, "🎥 Canlı AI Görüntü Analizi")
-        camera_card.pack(fill=tk.BOTH, expand=True)
-
-        # Gelişmiş kontrol paneli
-        control_panel = tk.Frame(camera_card, bg=self.colors['card'])
-        control_panel.pack(fill=tk.X, padx=16, pady=(16, 8))
+        for var in [self.event_time_var, self.event_conf_var, self.event_id_var]:
+            tk.Label(event_info, textvariable=var, font=("Segoe UI", 10),
+                    bg=self.colors['card']).pack(anchor=tk.W, pady=2)
         
-        # Sol kontroller
-        left_controls = tk.Frame(control_panel, bg=self.colors['card'])
-        left_controls.pack(side=tk.LEFT, fill=tk.Y)
+        # Hızlı erişim
+        menu_card = self._create_card(left_panel, "Menü")
+        menu_card.pack(fill=tk.BOTH, expand=True)
         
-        tk.Label(left_controls, text="🤖 AI Modülleri:", font=("Helvetica", 11, "bold"),
-                fg=self.colors['text'], bg=self.colors['card']).pack(side=tk.LEFT, padx=(0, 10))
+        menu_buttons = [
+            ("Ayarlar", self.settings_fn, self.colors['info']),
+            ("Geçmiş", self.history_fn, self.colors['info'])
+        ]
         
-        self.ai_modules_var = tk.StringVar(value="YOLOv11 + DeepSORT Aktif")
-        tk.Label(left_controls, textvariable=self.ai_modules_var, font=("Helvetica", 10),
-                fg=self.colors['success'], bg=self.colors['card']).pack(side=tk.LEFT)
+        for text, cmd, color in menu_buttons:
+            btn = tk.Button(menu_card, text=text, font=("Segoe UI", 11),
+                           bg=self.colors['card'], fg=color,
+                           relief=tk.FLAT, command=cmd,
+                           cursor="hand2", anchor="w", padx=20, pady=8)
+            btn.pack(fill=tk.X, padx=10, pady=2)
 
-        # Sağ kontroller
-        right_controls = tk.Frame(control_panel, bg=self.colors['card'])
-        right_controls.pack(side=tk.RIGHT, fill=tk.Y)
+    def _create_camera_panel(self):
+        """Kamera görüntüleme panelini oluşturur."""
+        self.camera_panel = tk.Frame(self.main_container, bg=self.colors['dark'])
+        self.camera_panel.grid(row=1, column=1, sticky="nsew", padx=(0, 10), pady=10)
         
-        # Görüntü ayarları
-        tk.Button(right_controls, text="🎛️", font=("Helvetica", 12),
-                 bg=self.colors['card'], fg=self.colors['text'], relief=tk.FLAT,
-                 command=self._show_camera_settings, cursor="hand2").pack(side=tk.RIGHT, padx=2)
+        # Başlangıçta grid görünümü
+        self._create_grid_view()
+
+    def _create_grid_view(self):
+        """Grid görünümünü oluşturur."""
+        # Mevcut içeriği temizle
+        for widget in self.camera_panel.winfo_children():
+            widget.destroy()
         
-        tk.Button(right_controls, text="📸", font=("Helvetica", 12),
-                 bg=self.colors['card'], fg=self.colors['text'], relief=tk.FLAT,
-                 command=self._capture_screenshot, cursor="hand2").pack(side=tk.RIGHT, padx=2)
-
-        # Sekme paneli
-        notebook = ttk.Notebook(camera_card)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=16, pady=(8, 16))
-
-        # Her kamera için gelişmiş sekme
-        for camera in self.cameras:
+        # Kamera sayısına göre grid boyutunu belirle
+        num_cameras = len(self.cameras)
+        if num_cameras <= 1:
+            rows, cols = 1, 1
+        elif num_cameras <= 2:
+            rows, cols = 1, 2
+        elif num_cameras <= 4:
+            rows, cols = 2, 2
+        elif num_cameras <= 6:
+            rows, cols = 2, 3
+        else:
+            rows, cols = 3, 3
+        
+        # Grid konfigürasyonu
+        for i in range(rows):
+            self.camera_panel.rowconfigure(i, weight=1)
+        for j in range(cols):
+            self.camera_panel.columnconfigure(j, weight=1)
+        
+        # Her kamera için frame oluştur
+        for idx, camera in enumerate(self.cameras):
+            if idx >= rows * cols:
+                break
+                
+            row = idx // cols
+            col = idx % cols
             camera_id = f"camera_{camera.camera_index}"
-            tab = tk.Frame(notebook, bg=self.colors['card'])
-            notebook.add(tab, text=f"📹 Kamera {camera.camera_index}")
-            tab.columnconfigure(0, weight=1)
-            tab.rowconfigure(0, weight=0)
-            tab.rowconfigure(1, weight=1)
+            
+            # Kamera frame
+            cam_frame = tk.Frame(self.camera_panel, bg=self.colors['dark'], 
+                                highlightbackground=self.colors['border'],
+                                highlightthickness=2)
+            cam_frame.grid(row=row, column=col, sticky="nsew", padx=5, pady=5)
+            
+            # Başlık
+            header = tk.Frame(cam_frame, bg=self.colors['info'], height=30)
+            header.pack(fill=tk.X)
+            header.pack_propagate(False)
+            
+            # Kamera adı
+            cam_name = tk.Label(header, text=f"Kamera {camera.camera_index}",
+                               font=("Segoe UI", 10, "bold"), fg="white",
+                               bg=self.colors['info'])
+            cam_name.pack(side=tk.LEFT, padx=10)
+            
+            # FPS göstergesi
+            fps_label = tk.Label(header, text="0 FPS", font=("Segoe UI", 9),
+                                fg="white", bg=self.colors['info'])
+            fps_label.pack(side=tk.RIGHT, padx=10)
+            self.fps_labels[camera_id] = fps_label
+            
+            # Durum göstergesi
+            status_label = tk.Label(header, text="●", font=("Segoe UI", 12),
+                                   fg=self.colors['danger'], bg=self.colors['info'])
+            status_label.pack(side=tk.RIGHT, padx=5)
+            self.status_labels[camera_id] = status_label
+            
+            # Görüntü alanı
+            img_frame = tk.Frame(cam_frame, bg="#000000")
+            img_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Görüntü etiketi
+            img_label = tk.Label(img_frame, bg="#000000", cursor="hand2")
+            img_label.pack(fill=tk.BOTH, expand=True)
+            
+            # Tıklama ile tam ekrana geç
+            img_label.bind("<Double-Button-1>", lambda e, idx=idx: self._show_single_camera(idx))
+            
+            self.camera_labels[camera_id] = img_label
+            self.camera_frames[camera_id] = cam_frame
 
-            # Gelişmiş durum çubuğu
-            status_bar = tk.Frame(tab, bg=self.colors['card'], padx=12, pady=8)
-            status_bar.pack(fill=tk.X)
-            
-            # Sol durum bilgileri
-            left_status = tk.Frame(status_bar, bg=self.colors['card'])
-            left_status.pack(side=tk.LEFT, fill=tk.Y)
-            
-            live_frame = tk.Frame(left_status, bg=self.colors['card'])
-            live_frame.pack(side=tk.LEFT)
-            live_canvas = tk.Canvas(live_frame, width=10, height=10, bg=self.colors['card'], highlightthickness=0)
-            live_canvas.pack(side=tk.LEFT)
-            live_indicator = live_canvas.create_oval(1, 1, 9, 9, fill=self.colors['danger'], outline="")
-            tk.Label(
-                live_frame, text="🔴 CANLI", font=("Helvetica", 11, "bold"),
-                fg=self.colors['danger'], bg=self.colors['card']
-            ).pack(side=tk.LEFT, padx=5)
-            
-            # FPS ve model bilgisi
-            tk.Label(
-                left_status, textvariable=self.fps_vars[camera_id], font=("Helvetica", 11),
-                fg=self.colors['text_secondary'], bg=self.colors['card']
-            ).pack(side=tk.LEFT, padx=15)
-            
-            # Sağ durum bilgileri
-            right_status = tk.Frame(status_bar, bg=self.colors['card'])
-            right_status.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            tk.Label(right_status, text="🧠 AI: YOLOv11", font=("Helvetica", 9),
-                    fg=self.colors['info'], bg=self.colors['card']).pack(side=tk.RIGHT, padx=5)
+    def _create_single_view(self, camera_index):
+        """Tekli kamera görünümünü oluşturur."""
+        # Mevcut içeriği temizle
+        for widget in self.camera_panel.winfo_children():
+            widget.destroy()
+        
+        camera = self.cameras[camera_index]
+        camera_id = f"camera_{camera.camera_index}"
+        
+        # Ana frame
+        main_frame = tk.Frame(self.camera_panel, bg=self.colors['dark'])
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Üst kontrol çubuğu
+        control_bar = tk.Frame(main_frame, bg=self.colors['info'], height=40)
+        control_bar.pack(fill=tk.X)
+        control_bar.pack_propagate(False)
+        
+        # Geri butonu
+        back_btn = tk.Button(control_bar, text="◀ Geri", font=("Segoe UI", 10),
+                            bg=self.colors['secondary'], fg="white", bd=0,
+                            command=lambda: self._set_view_mode("grid"),
+                            padx=15, pady=5, cursor="hand2")
+        back_btn.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Kamera seçici
+        cam_select_frame = tk.Frame(control_bar, bg=self.colors['info'])
+        cam_select_frame.pack(side=tk.LEFT, padx=20)
+        
+        tk.Label(cam_select_frame, text="Kamera:", font=("Segoe UI", 11),
+                fg="white", bg=self.colors['info']).pack(side=tk.LEFT, padx=5)
+        
+        # Kamera listesi
+        cam_names = [f"Kamera {cam.camera_index}" for cam in self.cameras]
+        cam_var = tk.StringVar(value=cam_names[camera_index])
+        cam_menu = ttk.Combobox(cam_select_frame, textvariable=cam_var,
+                               values=cam_names, state="readonly", width=15)
+        cam_menu.pack(side=tk.LEFT)
+        cam_menu.bind("<<ComboboxSelected>>", 
+                     lambda e: self._show_single_camera(cam_menu.current()))
+        
+        # Bilgi göstergeleri
+        info_frame = tk.Frame(control_bar, bg=self.colors['info'])
+        info_frame.pack(side=tk.RIGHT, padx=20)
+        
+        # FPS
+        fps_label = tk.Label(info_frame, text="0 FPS", font=("Segoe UI", 11, "bold"),
+                            fg="white", bg=self.colors['info'])
+        fps_label.pack(side=tk.LEFT, padx=10)
+        self.fps_labels[camera_id] = fps_label
+        
+        # Durum
+        status_label = tk.Label(info_frame, text="● Bağlantı Yok", 
+                               font=("Segoe UI", 11), fg=self.colors['danger'],
+                               bg=self.colors['info'])
+        status_label.pack(side=tk.LEFT, padx=10)
+        self.status_labels[camera_id] = status_label
+        
+        # Görüntü alanı
+        img_frame = tk.Frame(main_frame, bg="#000000")
+        img_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Görüntü etiketi
+        img_label = tk.Label(img_frame, bg="#000000")
+        img_label.pack(fill=tk.BOTH, expand=True)
+        
+        self.camera_labels[camera_id] = img_label
+        self.camera_frames[camera_id] = main_frame
 
-            # Kamera ekranı
-            camera_display = tk.Frame(tab, bg="#000000", width=820, height=600)
-            camera_display.pack(padx=16, pady=16, expand=True)
-            camera_display.pack_propagate(False)
-            
-            # Overlay frame (pose points ve tracking info için)
-            overlay_frame = tk.Frame(camera_display, bg="#000000")
-            overlay_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
-            
-            camera_label = tk.Label(overlay_frame, bg="#000000")
-            camera_label.pack(expand=True, fill=tk.BOTH)
-            
-            self.camera_labels[camera_id] = camera_label
-            self.live_indicators[camera_id] = (live_canvas, live_indicator)
+    def _set_view_mode(self, mode):
+        """Görünüm modunu değiştirir."""
+        self.current_view_mode = mode
+        
+        if mode == "grid":
+            self._create_grid_view()
+            self.grid_btn.config(bg=self.colors['primary'])
+            self.single_btn.config(bg=self.colors['secondary'])
+        else:  # single
+            self._create_single_view(self.selected_camera_index)
+            self.grid_btn.config(bg=self.colors['secondary'])
+            self.single_btn.config(bg=self.colors['primary'])
 
-    def _draw_gradient(self, canvas, start_color, end_color, width=800, height=70):
-        """Yatay gradient arka plan çizer."""
+    def _show_single_camera(self, index):
+        """Belirli bir kamerayı tekli görünümde gösterir."""
+        self.selected_camera_index = index
+        self._set_view_mode("single")
+
+    def _toggle_fullscreen(self):
+        """Tam ekran modunu açar/kapatır."""
+        root = self.winfo_toplevel()
+        
+        if not self.is_fullscreen:
+            # Tam ekrana geç
+            self.is_fullscreen = True
+            root.attributes('-fullscreen', True)
+            self.fullscreen_btn.config(text="◱ Normal")
+            
+            # Sol paneli gizle
+            for widget in self.main_container.grid_slaves():
+                if int(widget.grid_info()["column"]) == 0 and int(widget.grid_info()["row"]) == 1:
+                    widget.grid_remove()
+            
+            # Kamera panelini genişlet
+            self.camera_panel.grid(column=0, columnspan=2)
+            
+        else:
+            # Normal moda dön
+            self.is_fullscreen = False
+            root.attributes('-fullscreen', False)
+            self.fullscreen_btn.config(text="⛶ Tam Ekran")
+            
+            # Sol paneli göster
+            for widget in self.main_container.grid_slaves():
+                widget.grid()
+            
+            # Grid düzenini düzelt
+            self._create_ui()
+
+    def _create_card(self, parent, title):
+        """Kart bileşeni oluşturur."""
+        card = tk.Frame(parent, bg=self.colors['card'], 
+                       highlightbackground=self.colors['border'],
+                       highlightthickness=1)
+        
+        # Başlık
+        title_label = tk.Label(card, text=title, font=("Segoe UI", 12, "bold"),
+                              bg=self.colors['card'], fg=self.colors['text'])
+        title_label.pack(anchor=tk.W, padx=10, pady=(10, 5))
+        
+        return card
+
+    def _draw_gradient(self, canvas, start_color, end_color):
+        """Gradient arka plan çizer."""
+        width = 1920  # Maksimum genişlik
+        height = 60
+        
         r1, g1, b1 = self._hex_to_rgb(start_color)
         r2, g2, b2 = self._hex_to_rgb(end_color)
-        steps = 150
-        for i in range(steps):
-            ratio = i / (steps - 1)
+        
+        for i in range(width):
+            ratio = i / width
             r = int(r1 + (r2 - r1) * ratio)
             g = int(g1 + (g2 - g1) * ratio)
             b = int(b1 + (b2 - b1) * ratio)
             color = f'#{r:02x}{g:02x}{b:02x}'
-            canvas.create_rectangle(i * width / steps, 0, (i + 1) * width / steps, height, fill=color, outline="")
-        canvas.config(width=width, height=height)
+            canvas.create_line(i, 0, i, height, fill=color)
 
     def _hex_to_rgb(self, hex_color):
-        """#RRGGBB renk kodunu (R, G, B) tuple'a çevirir."""
+        """Hex renk kodunu RGB'ye çevirir."""
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-    def _create_neuromorphic_card(self, parent, title):
-        """Modern nöromorfik kart oluşturur."""
-        card = tk.Frame(parent, bg=self.colors['card'], padx=16, pady=16)
-        card.configure(
-            highlightbackground=self.colors['border'], highlightthickness=1,
-            borderwidth=0, relief="flat"
-        )
+    def _start_processing_thread(self):
+        """Frame işleme thread'ini başlatır."""
+        self.processing_thread = threading.Thread(target=self._process_frames, daemon=True)
+        self.processing_thread.start()
+
+    def _process_frames(self):
+        """Arka planda frame işleme - optimize edilmiş."""
+        fall_detector = FallDetector.get_instance()
         
-        title_frame = tk.Frame(card, bg=self.colors['card'])
-        title_frame.pack(fill=tk.X, pady=(0, 14))
-        
-        tk.Label(
-            title_frame, text=title, font=("Helvetica", 16, "bold"),
-            fg=self.colors['primary'], bg=self.colors['card']
-        ).pack(side=tk.LEFT)
-        
-        return card
+        while not self.is_destroyed:
+            try:
+                if not self.system_running:
+                    time.sleep(0.1)
+                    continue
+                
+                # Frame skip kontrolü
+                self.frame_skip_counter += 1
+                if self.frame_skip_counter % self.frame_skip_rate != 0:
+                    continue
+                
+                # Her kamera için işlem
+                for camera in self.cameras:
+                    if not camera.is_running:
+                        continue
+                        
+                    camera_id = f"camera_{camera.camera_index}"
+                    
+                    # Frame al
+                    frame = camera.get_frame()
+                    if frame is None:
+                        continue
+                    
+                    # Frame'i buffer'a kaydet
+                    with self.frame_locks[camera_id]:
+                        self.frame_buffers[camera_id] = frame.copy()
+                    
+                    # Sadece seçili kamera için YOLOv11 işleme
+                    if (self.current_view_mode == "single" and 
+                        camera.camera_index == self.cameras[self.selected_camera_index].camera_index):
+                        
+                        # YOLOv11 Pose Estimation
+                        annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+                        
+                        # Tracking istatistiklerini güncelle
+                        self.tracking_stats['active_tracks'] = len(tracks)
+                        if tracks:
+                            self.tracking_stats['total_detections'] += len(tracks)
+                        
+                        # Düşme algılama
+                        is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
+                        
+                        if is_fall and confidence > 0.6:
+                            self._handle_fall_detection(camera_id, confidence, track_id)
+                        
+                        # İşlenmiş frame'i kaydet
+                        with self.frame_locks[camera_id]:
+                            self.processed_frames[camera_id] = annotated_frame
+                    
+                    # Grid modunda basit tespit
+                    elif self.current_view_mode == "grid":
+                        # Sadece bounding box tespiti (daha hızlı)
+                        results = fall_detector.model.predict(frame, conf=0.5, classes=[0], verbose=False)
+                        
+                        simple_frame = frame.copy()
+                        if results and len(results) > 0 and results[0].boxes is not None:
+                            boxes = results[0].boxes.xyxy.cpu().numpy()
+                            for box in boxes:
+                                x1, y1, x2, y2 = map(int, box)
+                                cv2.rectangle(simple_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        
+                        with self.frame_locks[camera_id]:
+                            self.processed_frames[camera_id] = simple_frame
+                
+                # FPS kontrolü
+                time.sleep(0.01)  # CPU yükünü azalt
+                
+            except Exception as e:
+                logging.error(f"Frame işleme hatası: {e}")
+                time.sleep(0.1)
 
     def _start_camera_updates(self):
-        """Gelişmiş kamera güncelleyici başlatır."""
-        if self.update_id is not None:
-            self.after_cancel(self.update_id)
-        self._update_camera_frame()
+        """Kamera güncellemelerini başlatır."""
+        self._update_camera_displays()
 
-    def _update_camera_frame(self):
-        """Gelişmiş YOLOv11 Pose + DeepSORT kamera güncellemesi."""
-        def safe_update():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-
-                fall_detector = FallDetector.get_instance()
-                total_pose_points = 0
-                active_tracks_count = 0
-                
-                for camera in self.cameras:
-                    camera_id = f"camera_{camera.camera_index}"
-                    if self.system_running and camera.is_running:
-                        frame = camera.get_frame()
-                        if frame is not None and frame.size > 0:
-                            with self.frame_locks[camera_id]:
-                                self.last_frames[camera_id] = frame.copy()
-
-                            # YOLOv11 Pose Estimation + DeepSORT tracking
-                            annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
-                            
-                            # Tracking istatistiklerini güncelle
-                            active_tracks_count += len(tracks)
-                            self.tracking_stats['active_tracks'] = active_tracks_count
-                            self.tracking_stats['total_detections'] += len(tracks)
-                            
-                            # Pose noktalarını say
-                            for track in tracks:
-                                track_id = track.get('track_id')
-                                if track_id in fall_detector.person_tracks:
-                                    person_track = fall_detector.person_tracks[track_id]
-                                    if person_track.has_valid_pose():
-                                        valid_keypoints = np.sum(
-                                            person_track.latest_keypoint_confs > 0.3
-                                        ) if person_track.latest_keypoint_confs is not None else 0
-                                        total_pose_points += valid_keypoints
-
-                            # Düşme algılama kontrolü
-                            is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
-                            if is_fall and confidence > 0.5:
-                                now = datetime.datetime.now()
-                                self.last_detection_time = now
-                                self.last_detection_confidence = confidence
-                                self.last_track_id = track_id
-                                
-                                # UI değişkenlerini güncelle
-                                self.event_time_var.set(f"🕐 {now.strftime('%H:%M:%S')}")
-                                self.event_conf_var.set(f"📊 {confidence:.3f}")
-                                self.event_id_var.set(f"🆔 {track_id}")
-                                
-                                # Pose analizi bilgisi
-                                if track_id in fall_detector.person_tracks:
-                                    person_track = fall_detector.person_tracks[track_id]
-                                    if person_track.has_valid_pose():
-                                        valid_poses = np.sum(person_track.latest_keypoint_confs > 0.3)
-                                        self.event_pose_var.set(f"🤸 {valid_poses}/17 nokta")
-                                
-                                self.tracking_stats['fall_alerts'] += 1
-                                
-                                # Fall event history'e ekle
-                                self.fall_events_history.append({
-                                    'time': now,
-                                    'confidence': confidence,
-                                    'track_id': track_id,
-                                    'pose_points': total_pose_points
-                                })
-                                
-                                logging.info(f"🚨 YOLOv11 DÜŞME ALGILANDI: ID={track_id}, Güven={confidence:.3f}")
-                                self._show_fall_alert()
-
-                            # Görüntüyü güncelle - Enhanced visualization
-                            if self.pose_visualization_enabled:
-                                # Pose noktaları ve skeleton çizimini içeren frame kullan
-                                display_frame = annotated_frame
-                            else:
-                                # Sadece bounding box'ları olan frame kullan
-                                display_frame = self._draw_simple_boxes(frame, tracks)
-                            
-                            frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-                            pil_img = Image.fromarray(frame_rgb)
-                            pil_img = ImageEnhance.Brightness(pil_img).enhance(1.09)
-                            pil_img = pil_img.resize((820, 600), Image.LANCZOS)
-                            tk_img = ImageTk.PhotoImage(pil_img)
-
-                            if not self.is_destroyed and self.winfo_exists():
-                                self.camera_labels[camera_id].configure(image=tk_img)
-                                self.camera_labels[camera_id].image = tk_img
-                                self.fps_vars[camera_id].set(f"{int(camera.fps)} FPS")
-                    else:
-                        # Kamera çalışmıyorsa siyah ekran göster
-                        if camera_id in self.camera_labels:
-                            black_frame = np.zeros((600, 820, 3), dtype=np.uint8)
-                            if not self.system_running:
-                                cv2.putText(black_frame, "Sistem Durduruldu", (200, 300),
-                                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                            else:
-                                cv2.putText(black_frame, "Kamera Bağlanıyor...", (200, 300),
-                                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                            
-                            pil_img = Image.fromarray(black_frame)
-                            tk_img = ImageTk.PhotoImage(pil_img)
-                            self.camera_labels[camera_id].configure(image=tk_img)
-                            self.camera_labels[camera_id].image = tk_img
-
-                # İstatistikleri güncelle
-                self._update_tracking_stats(active_tracks_count, total_pose_points)
-                
-            except tk.TclError as e:
-                if "invalid command name" in str(e):
-                    self.is_destroyed = True
-                    return
-                logging.error(f"Kamera güncelleme hatası: {e}")
-            except Exception as e:
-                logging.error(f"Kamera güncelleme hatası: {e}")
-
-        self._safe_widget_operation(safe_update)
-        if not self.is_destroyed:
-            self.update_id = self.after(33, self._update_camera_frame)  # ~30 FPS
-
-    def _draw_simple_boxes(self, frame, tracks):
-        """Sadece bounding box'ları çizer (pose points olmadan)."""
-        annotated_frame = frame.copy()
-        for track in tracks:
-            track_id = track.get('track_id')
-            bbox = track.get('bbox', [0, 0, 100, 100])
-            confidence = track.get('confidence', 0.0)
-            
-            x1, y1, x2, y2 = bbox
-            color = (0, 255, 0)  # Yeşil
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
-            
-            label = f"ID: {track_id}"
-            if confidence > 0:
-                label += f" ({confidence:.2f})"
-            
-            cv2.putText(annotated_frame, label, (x1, y1-10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    def _update_camera_displays(self):
+        """Kamera görüntülerini günceller - optimize edilmiş."""
+        if self.is_destroyed:
+            return
         
-        return annotated_frame
-
-    def _update_tracking_stats(self, active_tracks, pose_points):
-        """Tracking istatistiklerini günceller."""
+        current_time = time.time()
+        
+        # Minimum güncelleme aralığı kontrolü
+        if current_time - self.last_update_time < self.min_update_interval:
+            self.update_id = self.after(10, self._update_camera_displays)
+            return
+        
+        self.last_update_time = current_time
+        
         try:
-            self.tracking_info_vars['active_tracks'].set(str(active_tracks))
+            # Her kamera için görüntüyü güncelle
+            for camera_id, label in self.camera_labels.items():
+                if camera_id not in self.frame_locks:
+                    continue
+                
+                # İşlenmiş frame varsa onu kullan, yoksa ham frame
+                frame = None
+                with self.frame_locks[camera_id]:
+                    if camera_id in self.processed_frames and self.processed_frames[camera_id] is not None:
+                        frame = self.processed_frames[camera_id]
+                    elif camera_id in self.frame_buffers and self.frame_buffers[camera_id] is not None:
+                        frame = self.frame_buffers[camera_id]
+                
+                if frame is None:
+                    continue
+                
+                # Frame boyutlandırma
+                if self.current_view_mode == "grid":
+                    # Grid modunda daha küçük
+                    display_width = label.winfo_width() or 400
+                    display_height = label.winfo_height() or 300
+                else:
+                    # Tekli modda büyük
+                    display_width = label.winfo_width() or 1200
+                    display_height = label.winfo_height() or 800
+                
+                if display_width > 1 and display_height > 1:
+                    # Aspect ratio'yu koru
+                    h, w = frame.shape[:2]
+                    aspect = w / h
+                    
+                    if display_width / display_height > aspect:
+                        new_height = display_height
+                        new_width = int(new_height * aspect)
+                    else:
+                        new_width = display_width
+                        new_height = int(new_width / aspect)
+                    
+                    # Resize
+                    resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+                    
+                    # PIL Image'e çevir
+                    frame_rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(frame_rgb)
+                    
+                    # Parlaklık ayarı
+                    enhancer = ImageEnhance.Brightness(pil_img)
+                    pil_img = enhancer.enhance(1.1)
+                    
+                    # Tkinter PhotoImage
+                    tk_img = ImageTk.PhotoImage(pil_img)
+                    
+                    # Label'ı güncelle
+                    label.configure(image=tk_img)
+                    label.image = tk_img
+                
+                # FPS ve durum güncellemeleri
+                camera_index = int(camera_id.split('_')[1])
+                if camera_index < len(self.cameras):
+                    camera = self.cameras[camera_index]
+                    
+                    # FPS
+                    if camera_id in self.fps_labels:
+                        self.fps_labels[camera_id].config(text=f"{int(camera.fps)} FPS")
+                    
+                    # Durum
+                    if camera_id in self.status_labels:
+                        if self.system_running and camera.is_running:
+                            self.status_labels[camera_id].config(text="● Aktif", fg=self.colors['success'])
+                        else:
+                            self.status_labels[camera_id].config(text="● Kapalı", fg=self.colors['danger'])
+            
+            # İstatistikleri güncelle
+            self._update_stats()
+            
+        except Exception as e:
+            logging.error(f"Görüntü güncelleme hatası: {e}")
+        
+        # Sonraki güncelleme
+        self.update_id = self.after(33, self._update_camera_displays)  # ~30 FPS
+
+    def _update_stats(self):
+        """İstatistikleri günceller."""
+        try:
+            self.tracking_info_vars['active_tracks'].set(str(self.tracking_stats['active_tracks']))
             self.tracking_info_vars['total_detections'].set(str(self.tracking_stats['total_detections']))
             self.tracking_info_vars['fall_alerts'].set(str(self.tracking_stats['fall_alerts']))
-            self.tracking_info_vars['pose_points'].set(str(pose_points))
         except Exception as e:
             logging.error(f"İstatistik güncelleme hatası: {e}")
 
-    def _toggle_pose_visualization(self):
-        """Pose görselleştirmesini açar/kapatır."""
-        self.pose_visualization_enabled = self.pose_viz_var.get()
-        logging.info(f"Pose görselleştirme: {'Açık' if self.pose_visualization_enabled else 'Kapalı'}")
-
-    def _show_camera_settings(self):
-        """Kamera ayarları dialogunu gösterir."""
-        settings_window = tk.Toplevel(self)
-        settings_window.title("Kamera Ayarları")
-        settings_window.geometry("400x300")
-        settings_window.configure(bg=self.colors['card'])
-        
-        tk.Label(settings_window, text="🎥 Kamera Ayarları", 
-                font=("Helvetica", 16, "bold"), bg=self.colors['card']).pack(pady=20)
-        
-        # Pose detection threshold
-        threshold_frame = tk.Frame(settings_window, bg=self.colors['card'])
-        threshold_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        tk.Label(threshold_frame, text="Pose Güven Eşiği:", 
-                font=("Helvetica", 12), bg=self.colors['card']).pack(anchor=tk.W)
-        
-        threshold_var = tk.DoubleVar(value=0.3)
-        threshold_scale = tk.Scale(threshold_frame, from_=0.1, to=0.9, resolution=0.1,
-                                  variable=threshold_var, orient=tk.HORIZONTAL,
-                                  bg=self.colors['card'])
-        threshold_scale.pack(fill=tk.X, pady=5)
-        
-        # Fall detection sensitivity
-        sensitivity_frame = tk.Frame(settings_window, bg=self.colors['card'])
-        sensitivity_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        tk.Label(sensitivity_frame, text="Düşme Hassaslığı:", 
-                font=("Helvetica", 12), bg=self.colors['card']).pack(anchor=tk.W)
-        
-        sensitivity_var = tk.DoubleVar(value=0.6)
-        sensitivity_scale = tk.Scale(sensitivity_frame, from_=0.3, to=0.9, resolution=0.1,
-                                    variable=sensitivity_var, orient=tk.HORIZONTAL,
-                                    bg=self.colors['card'])
-        sensitivity_scale.pack(fill=tk.X, pady=5)
-        
-        def apply_settings():
-            try:
-                fall_detector = FallDetector.get_instance()
-                fall_detector.fall_detection_params['confidence_threshold'] = threshold_var.get()
-                # Hassaslık ayarını uygula (örnek)
-                messagebox.showinfo("Başarılı", "Ayarlar uygulandı!")
-                settings_window.destroy()
-            except Exception as e:
-                messagebox.showerror("Hata", f"Ayarlar uygulanırken hata: {str(e)}")
-        
-        tk.Button(settings_window, text="Uygula", command=apply_settings,
-                 bg=self.colors['primary'], fg="white", font=("Helvetica", 12),
-                 pady=8).pack(pady=20)
-
-    def _capture_screenshot(self):
-        """Ekran görüntüsü alır."""
+    def _handle_fall_detection(self, camera_id, confidence, track_id):
+        """Düşme algılandığında çağrılır."""
         try:
-            if self.current_camera_id and self.current_camera_id in self.last_frames:
-                frame = self.last_frames[self.current_camera_id]
-                if frame is not None:
-                    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"guard_screenshot_{now}.jpg"
-                    path = os.path.join(os.path.expanduser("~"), "Desktop", filename)
-                    cv2.imwrite(path, frame)
-                    messagebox.showinfo("Başarılı", f"Ekran görüntüsü kaydedildi:\n{path}")
-                else:
-                    messagebox.showwarning("Uyarı", "Kaydedilecek görüntü bulunamadı!")
-            else:
-                messagebox.showwarning("Uyarı", "Aktif kamera bulunamadı!")
+            now = datetime.datetime.now()
+            self.last_detection_time = now
+            self.last_detection_confidence = confidence
+            self.last_track_id = track_id
+            
+            # İstatistikleri güncelle
+            self.tracking_stats['fall_alerts'] += 1
+            
+            # UI güncellemeleri
+            self.event_time_var.set(f"Zaman: {now.strftime('%H:%M:%S')}")
+            self.event_conf_var.set(f"Güven: {confidence:.3f}")
+            self.event_id_var.set(f"ID: {track_id}")
+            
+            # Sesli uyarı
+            threading.Thread(target=lambda: winsound.PlaySound("SystemExclamation", 
+                                                              winsound.SND_ALIAS), 
+                           daemon=True).start()
+            
+            logging.info(f"Düşme algılandı! Kamera: {camera_id}, ID: {track_id}, Güven: {confidence:.3f}")
+            
         except Exception as e:
-            messagebox.showerror("Hata", f"Ekran görüntüsü alınırken hata: {str(e)}")
+            logging.error(f"Düşme algılama işleme hatası: {e}")
 
-    def _show_detailed_stats(self):
-        """Detaylı istatistikleri gösterir."""
-        stats_window = tk.Toplevel(self)
-        stats_window.title("Detaylı İstatistikler")
-        stats_window.geometry("500x400")
-        stats_window.configure(bg=self.colors['card'])
-        
-        tk.Label(stats_window, text="📊 Sistem İstatistikleri", 
-                font=("Helvetica", 16, "bold"), bg=self.colors['card']).pack(pady=20)
-        
-        # Temel istatistikler
-        basic_frame = tk.LabelFrame(stats_window, text="Temel İstatistikler", 
-                                   font=("Helvetica", 12, "bold"), bg=self.colors['card'])
-        basic_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        session_time = time.time() - self.tracking_stats['session_start']
-        stats_text = [
-            f"Oturum Süresi: {int(session_time//3600):02d}:{int((session_time%3600)//60):02d}:{int(session_time%60):02d}",
-            f"Toplam Tespit: {self.tracking_stats['total_detections']}",
-            f"Düşme Uyarısı: {self.tracking_stats['fall_alerts']}",
-            f"Aktif Takip: {self.tracking_stats['active_tracks']}"
-        ]
-        
-        for stat in stats_text:
-            tk.Label(basic_frame, text=stat, font=("Helvetica", 11), 
-                    bg=self.colors['card']).pack(anchor=tk.W, padx=10, pady=2)
-        
-        # Model bilgileri
-        model_frame = tk.LabelFrame(stats_window, text="Model Bilgileri", 
-                                   font=("Helvetica", 12, "bold"), bg=self.colors['card'])
-        model_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        try:
-            fall_detector = FallDetector.get_instance()
-            model_info = fall_detector.get_model_info()
-            
-            model_stats = [
-                f"Model: {model_info.get('model_name', 'N/A')}",
-                f"Cihaz: {model_info.get('device', 'N/A')}",
-                f"Güven Eşiği: {model_info.get('confidence_threshold', 'N/A')}",
-                f"Keypoint Sayısı: {model_info.get('keypoints_count', 'N/A')}"
-            ]
-            
-            for stat in model_stats:
-                tk.Label(model_frame, text=stat, font=("Helvetica", 11), 
-                        bg=self.colors['card']).pack(anchor=tk.W, padx=10, pady=2)
-        except:
-            tk.Label(model_frame, text="Model bilgisi alınamadı", 
-                    font=("Helvetica", 11), bg=self.colors['card']).pack(padx=10, pady=10)
-
-    def _show_fall_alert(self):
-        """Düşme uyarısını gösterir."""
-        def safe_alert():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-                
-                # Görsel uyarı
-                messagebox.showwarning(
-                    "🚨 DÜŞME ALGILANDI!",
-                    f"YOLOv11 Pose Estimation ile düşme tespit edildi!\n\n"
-                    f"📍 Takip ID: {self.last_track_id}\n"
-                    f"📊 Güven Skoru: {self.last_detection_confidence:.3f}\n"
-                    f"🕐 Zaman: {self.last_detection_time.strftime('%Y-%m-%d %H:%M:%S') if self.last_detection_time else 'N/A'}\n\n"
-                    f"Lütfen durumu kontrol edin!"
-                )
-                
-                # Sesli uyarı
-                try:
-                    winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS | winsound.SND_ASYNC)
-                except Exception as e:
-                    logging.warning(f"Sesli uyarı hatası: {e}")
-                    
-            except tk.TclError as e:
-                if "invalid command name" in str(e):
-                    self.is_destroyed = True
-                logging.error(f"Uyarı gösterim hatası: {e}")
-            except Exception as e:
-                logging.error(f"Uyarı gösterim hatası: {e}")
-
-        self._safe_widget_operation(safe_alert)
+    def _toggle_system(self):
+        """Sistemi başlatır/durdurur."""
+        if not self.system_running:
+            self.start_fn()
+        else:
+            self.stop_fn()
 
     def update_system_status(self, running):
         """Sistem durumunu günceller."""
-        def safe_status_update():
-            self.system_running = running
-            if running:
-                self.status_var.set("🤖 AI Sistem Aktif")
-                self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['success'])
-                self.control_var.set("AI Sistemi Durdur")
-                self.control_button.config(bg=self.colors['danger'])
-                self.ai_modules_var.set("YOLOv11 + DeepSORT Aktif")
-                if "stop" in self.icons:
-                    self.control_button.config(image=self.icons["stop"])
-            else:
-                self.status_var.set("Sistem Durduruldu")
-                self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
-                self.control_var.set("AI Sistemi Başlat")
-                self.control_button.config(bg=self.colors['success'])
-                self.ai_modules_var.set("Sistem Kapalı")
-                if "start" in self.icons:
-                    self.control_button.config(image=self.icons["start"])
-
-        self._safe_widget_operation(safe_status_update)
+        self.system_running = running
+        
+        if running:
+            self.status_var.set("🟢 Sistem Aktif")
+            self.control_var.set("Sistemi Durdur")
+            self.control_button.config(bg=self.colors['danger'])
+        else:
+            self.status_var.set("🔴 Sistem Kapalı")
+            self.control_var.set("Sistemi Başlat")
+            self.control_button.config(bg=self.colors['success'])
 
     def update_fall_detection(self, screenshot, confidence, event_data):
-        """Düşme algılama sonucunu UI'da günceller."""
-        def safe_update():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-                
-                # Son düşme olayı bilgilerini güncelle
-                now = datetime.datetime.now()
-                self.event_time_var.set(f"🕐 {now.strftime('%H:%M:%S')}")
-                self.event_conf_var.set(f"📊 {confidence:.3f}")
-                self.event_id_var.set(f"🆔 {event_data.get('id', 'N/A')}")
-                
-                # Pose analizi varsa ekle
-                if 'pose_analysis' in event_data:
-                    pose_info = event_data['pose_analysis']
-                    self.event_pose_var.set(f"🤸 {pose_info.get('valid_points', 0)}/17 nokta")
-                
-                # İstatistikleri güncelle
-                self.tracking_stats['fall_alerts'] += 1
-                self.tracking_info_vars['fall_alerts'].set(str(self.tracking_stats['fall_alerts']))
-                
-                logging.info("Dashboard düşme algılama bilgileri güncellendi")
-                
-            except Exception as e:
-                logging.error(f"Fall detection UI güncellemesi hatası: {e}")
-
-        self._safe_widget_operation(safe_update)
-
-    def _toggle_system(self):
-        """Sistemi başlat/durdur."""
-        try:
-            if not self.system_running:
-                self.start_fn()
-            else:
-                self.stop_fn()
-        except Exception as e:
-            logging.error(f"Sistem toggle hatası: {str(e)}")
-            messagebox.showerror("Hata", "Sistem başlatılamadı veya durdurulamadı.")
-
-    def _on_camera_select(self, event=None):
-        """Kamera seçildiğinde çağrılır."""
-        selected_id = self.camera_var.get()
-        if selected_id in [f"camera_{cam.camera_index}" for cam in self.cameras]:
-            self.current_camera_id = selected_id
-            logging.info(f"Kamera seçildi: {selected_id}")
-
-    def _start_animations(self):
-        """Animasyonları başlatır."""
-        self._animate_live_indicator()
-        self._pulse_status_indicator()
-
-    def _animate_live_indicator(self):
-        """Canlı indikatör animasyonu."""
-        def safe_animate():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-                for camera_id in self.fps_vars:
-                    if camera_id in self.live_indicators:
-                        canvas, indicator = self.live_indicators[camera_id]
-                        if self.system_running:
-                            color = self.colors['success'] if time.time() % 1.2 < 0.6 else self.colors['primary']
-                            canvas.itemconfig(indicator, fill=color)
-                        else:
-                            canvas.itemconfig(indicator, fill=self.colors['border'])
-            except Exception as e:
-                logging.error(f"Live indicator animasyon hatası: {e}")
-
-        self._safe_widget_operation(safe_animate)
-        if not self.is_destroyed:
-            self.after(350, self._animate_live_indicator)
-
-    def _pulse_status_indicator(self):
-        """Durum göstergesi nabız animasyonu."""
-        def safe_pulse():
-            try:
-                if self.is_destroyed or not self.winfo_exists():
-                    return
-                if self.system_running:
-                    self.pulse_value = (self.pulse_value + 1) % 20
-                    alpha = 0.7 + 0.3 * math.sin(self.pulse_value / 3.14)
-                    # Renk değişimi efekti
-                    base_color = self.colors['success']
-                    # RGB değerlerini al ve alpha uygula
-                    r, g, b = self._hex_to_rgb(base_color)
-                    r, g, b = int(r*alpha), int(g*alpha), int(b*alpha)
-                    pulse_color = f'#{r:02x}{g:02x}{b:02x}'
-                    self.status_canvas.itemconfig(self.status_indicator, fill=pulse_color)
-                else:
-                    self.status_canvas.itemconfig(self.status_indicator, fill=self.colors['danger'])
-            except Exception as e:
-                logging.error(f"Pulse animasyon hatası: {e}")
-
-        self._safe_widget_operation(safe_pulse)
-        if not self.is_destroyed:
-            self.after(120, self._pulse_status_indicator)
-
-    def _safe_widget_operation(self, operation, *args, **kwargs):
-        """Widget operasyonlarını güvenli şekilde yapar."""
-        try:
-            if self.is_destroyed or not self.winfo_exists():
-                return False
-            return operation(*args, **kwargs)
-        except tk.TclError as e:
-            if "invalid command name" in str(e):
-                logging.warning("Widget artık mevcut değil, operasyon iptal edildi")
-                self.is_destroyed = True
-                return False
-            raise
+        """Düşme algılama sonucunu günceller."""
+        # Ana thread'de güncelleme yap
+        self.after(0, lambda: self._handle_fall_detection(
+            event_data.get('camera_id', 'unknown'),
+            confidence,
+            event_data.get('track_id', 'N/A')
+        ))
 
     def _on_widget_destroy(self, event):
-        """Widget yok edildiğinde çağrılır."""
+        """Widget yok edildiğinde."""
         if event.widget == self:
-            logging.info("Enhanced Dashboard widget yok ediliyor...")
             self.is_destroyed = True
             self._cleanup_resources()
 
     def _cleanup_resources(self):
         """Kaynakları temizler."""
         try:
+            # Update timer'ı durdur
             if hasattr(self, 'update_id') and self.update_id:
                 self.after_cancel(self.update_id)
                 self.update_id = None
-            if hasattr(self, 'animation_id') and self.animation_id:
-                self.after_cancel(self.animation_id)
-                self.animation_id = None
-            logging.info("Enhanced Dashboard kaynakları temizlendi")
+            
+            # Processing thread'i durdur
+            self.is_destroyed = True
+            
+            logging.info("Dashboard kaynakları temizlendi")
         except Exception as e:
-            logging.error(f"Dashboard kaynak temizleme hatası: {e}")
+            logging.error(f"Kaynak temizleme hatası: {e}")
 
     def on_destroy(self):
         """Frame yok edilirken çağrılır."""
-        try:
-            self.is_destroyed = True
-            self._cleanup_resources()
-        except Exception as e:
-            logging.error(f"Dashboard destroy hatası: {e}")
+        self.is_destroyed = True
+        self._cleanup_resources()
 
     def destroy(self):
         """Widget'ı güvenli şekilde yok eder."""
