@@ -28,8 +28,8 @@ from ui.history import HistoryFrame
 
 # Configuration
 from config.firebase_config import FIREBASE_CONFIG
-from config.settings import THEME_LIGHT, THEME_DARK, DEFAULT_THEME, CAMERA_CONFIGS
 
+from config.settings import THEME_LIGHT, THEME_DARK, DEFAULT_THEME, CAMERA_CONFIGS
 # Services
 from utils.auth import FirebaseAuth
 from data.database import FirestoreManager
@@ -222,7 +222,7 @@ class GuardApp:
                     logging.info("✅ AI Model başarıyla yüklendi ve hazır!")
                 
             except Exception as e:
-                logging.error(f"❌ AdvancedFallDetector başlatma hatası: {str(e)}")
+                logging.error(f"❌ FallDetector başlatma hatası: {str(e)}")
                 self.fall_detector = None
                 self.system_state['ai_model_loaded'] = False
                 
@@ -236,7 +236,7 @@ class GuardApp:
             logging.info(f"🤖 AI Model durumu: {'Aktif' if self.system_state['ai_model_loaded'] else 'Deaktif'}")
             
         except Exception as e:
-            logging.error(f"❌ Advanced fall detection setup hatası: {str(e)}")
+            logging.error(f"❌ fall detection setup hatası: {str(e)}")
             self.fall_detector = None
             self.cameras = []
             self.system_state['ai_model_loaded'] = False
@@ -632,10 +632,12 @@ class GuardApp:
         except Exception as e:
             logging.error(f"❌ Enhanced detection durdurma hatası: {str(e)}")
 
+
+
+
     def _enhanced_detection_loop(self, camera):
         """
         Ultra Enhanced AI düşme algılama döngüsü.
-        AdvancedFallDetector ile tam entegrasyon.
         
         Args:
             camera: İşlenecek kamera nesnesi
@@ -692,8 +694,11 @@ class GuardApp:
                     processing_start = time.time()
                     
                     if config['ai_enabled'] and self.fall_detector:
-                        # Enhanced AI Detection
-                        annotated_frame, tracks = self.fall_detector.get_enhanced_detection_visualization(frame)
+                        # Enhanced AI Detection - get_enhanced_detection_visualization metodu yoksa normal metodu kullan
+                        if hasattr(self.fall_detector, 'get_enhanced_detection_visualization'):
+                            annotated_frame, tracks = self.fall_detector.get_enhanced_detection_visualization(frame)
+                        else:
+                            annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
                         
                         # Update detection count
                         if tracks:
@@ -701,8 +706,14 @@ class GuardApp:
                             self.system_state['total_detections'] += len(tracks)
                             self.system_state['last_activity'] = time.time()
                         
-                        # Enhanced Fall Detection
-                        is_fall, confidence, track_id, analysis_result = self.fall_detector.detect_enhanced_fall(frame, tracks)
+                        # Enhanced Fall Detection - detect_enhanced_fall metodu yoksa normal metodu kullan
+                        if hasattr(self.fall_detector, 'detect_enhanced_fall'):
+                            fall_result = self.fall_detector.detect_enhanced_fall(frame, tracks)
+                            is_fall, confidence, track_id = fall_result[0], fall_result[1], fall_result[2]
+                            analysis_result = fall_result[3] if len(fall_result) > 3 else None
+                        else:
+                            is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
+                            analysis_result = None
                         
                         # Fall event processing
                         current_time = time.time()
@@ -715,7 +726,7 @@ class GuardApp:
                             
                             # Enhanced fall event processing
                             self.root.after(0, self._handle_enhanced_fall_detection, 
-                                          annotated_frame, confidence, camera_id, track_id, analysis_result)
+                                        annotated_frame, confidence, camera_id, track_id, analysis_result)
                             
                             logging.warning(f"🚨 {camera_id} ENHANCED FALL DETECTED!")
                             logging.info(f"   📍 Track ID: {track_id}")
@@ -763,7 +774,10 @@ class GuardApp:
             
         except Exception as e:
             logging.error(f"💥 {camera_id} Enhanced detection loop kritik hatası: {str(e)}")
-            self.root.after(0, self.stop_enhanced_detection)
+            self.root.after(0, self.stop_enhanced_detectio)
+
+
+
 
     def _log_enhanced_performance_stats(self, camera_id: str, stats: Dict, config: Dict):
         """Enhanced performans istatistiklerini logla."""
@@ -1155,28 +1169,71 @@ class GuardApp:
         except Exception as e:
             logging.error(f"❌ Enhanced logout hatası: {str(e)}")
 
+
+
+
+
+
     def switch_ai_model(self, model_name: str) -> bool:
-        """AI modelini değiştir (UI'dan çağrılır)."""
+        """AI modelini değiştir (SettingsFrame'den çağrılır)."""
         try:
             if not self.fall_detector:
                 messagebox.showerror("Hata", "Fall detector başlatılmamış!")
                 return False
             
-            success, message = self.fall_detector.switch_model(model_name)
+            # Basit model switch - mevcut model path'i güncelle
+            from config.settings import AVAILABLE_MODELS
+            import os
             
-            if success:
+            if model_name not in AVAILABLE_MODELS:
+                messagebox.showerror("Hata", f"Geçersiz model: {model_name}")
+                return False
+            
+            # Model dosyası var mı kontrol et
+            model_dir = os.path.dirname(self.fall_detector.model_path)
+            new_model_path = os.path.join(model_dir, f"{model_name}.pt")
+            
+            if not os.path.exists(new_model_path):
+                messagebox.showerror("Hata", f"Model dosyası bulunamadı: {new_model_path}")
+                return False
+            
+            # Sistemi durdur
+            was_running = self.system_state['running']
+            if was_running:
+                self.stop_enhanced_detection()
+            
+            try:
+                # Yeni model yükle
+                from ultralytics import YOLO
+                new_model = YOLO(new_model_path)
+                
+                # Eski modeli güncelle
+                self.fall_detector.model = new_model
+                self.fall_detector.model_path = new_model_path
+                self.fall_detector.is_model_loaded = True
+                
+                # Sistem durumunu güncelle
                 self.system_state['current_model'] = model_name
+                self.system_state['ai_model_loaded'] = True
+                
+                # Sistemi tekrar başlat
+                if was_running:
+                    self.start_enhanced_detection()
+                
                 messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {model_name}")
                 logging.info(f"🔄 AI Model değiştirildi: {model_name}")
                 return True
-            else:
-                messagebox.showerror("Hata", f"Model değiştirilemedi: {message}")
+                
+            except Exception as e:
+                logging.error(f"Model yükleme hatası: {str(e)}")
+                messagebox.showerror("Hata", f"Model yüklenemedi: {str(e)}")
                 return False
                 
         except Exception as e:
             logging.error(f"❌ Model switch hatası: {str(e)}")
             messagebox.showerror("Hata", f"Model değiştirme hatası: {str(e)}")
             return False
+
 
     def get_system_status(self) -> Dict[str, Any]:
         """Enhanced sistem durumunu döndür."""
@@ -1207,6 +1264,18 @@ class GuardApp:
         except Exception as e:
             logging.error(f"System status hatası: {e}")
             return {'error': str(e)}
+
+
+
+
+
+
+
+
+
+
+
+
 
     def _on_enhanced_close(self):
         """Enhanced uygulama kapatma."""

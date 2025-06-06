@@ -1,5 +1,5 @@
 # 📄 Dosya: api/server.py
-# 📁 Konum: guard_pc_app/api/
+# 📁 Konum: pc/api/
 # 📌 Açıklama: Guard PC uygulaması için HTTP tabanlı API sunucusu.
 # 🔗 Bağlantılı: core/camera.py, mobil istemci canlı görüntü, bildirim sistemi, olay gönderme
 # 📡 Canlı kamera stream /api/stream endpoint'i üzerinden MJPEG olarak erişilebilir.

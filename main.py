@@ -1,6 +1,6 @@
 # =======================================================================================
 # 📄 Dosya Adı: main.py (ULTRA ENHANCED VERSION V3)
-# 📁 Konum: guard_pc_app/main.py
+# 📁 Konum: pc/main.py
 # 📌 Açıklama:
 # Guard AI Ultra - FallDetector ve UltraGuardApp ile tam entegre ana giriş noktası
 # Enhanced AI model management, robust error handling, performance monitoring
@@ -639,7 +639,7 @@ def enhanced_main():
         logging.info("🎬 Ultra Enhanced splash screen gösteriliyor...")
         
         # ===== ULTRA GUARDAPP BAŞLATMA =====
-        logging.info("🔍 Phase 7: UltraGuardApp initialization")
+        logging.info("🔍 Phase 7: GuardApp initialization")
         
         try:
             # UltraGuardApp sınıfından ultra enhanced uygulama nesnesini oluştur
@@ -657,10 +657,10 @@ def enhanced_main():
                 }
             })
             
-            logging.info("✅ UltraGuardApp başarıyla başlatıldı")
+            logging.info("✅ GuardApp başarıyla başlatıldı")
             
         except Exception as e:
-            logging.error(f"❌ UltraGuardApp başlatma hatası: {str(e)}")
+            logging.error(f"❌ GuardApp başlatma hatası: {str(e)}")
             
             try:
                 import tkinter.messagebox as messagebox
@@ -670,7 +670,7 @@ def enhanced_main():
                     "Lütfen log dosyasını kontrol edin ve tekrar deneyin."
                 )
             except:
-                print(f"❌ UltraGuardApp başlatma hatası: {str(e)}")
+                print(f"❌ GuardApp başlatma hatası: {str(e)}")
             
             return False
         
@@ -781,7 +781,7 @@ def enhanced_main():
             # UltraGuardApp cleanup
             if 'app' in locals() and hasattr(app, '_on_enhanced_close'):
                 app._on_enhanced_close()
-                cleanup_tasks.append("✅ UltraGuardApp")
+                cleanup_tasks.append("✅ GuardApp")
         except Exception as e:
             cleanup_tasks.append(f"⚠️ UltraGuardApp: {str(e)[:50]}")
         

@@ -9,7 +9,7 @@ import time
 class SettingsFrame(tk.Frame):
     """Sadeleştirilmiş ayarlar ekranı sınıfı"""
 
-    def __init__(self, parent, user, db_manager, back_fn):
+    def __init__(self, parent, user, db_manager, back_fn, fall_detector=None):
         """
         SettingsFrame sınıfını başlatır ve gerekli parametreleri ayarlar.
 
@@ -18,16 +18,23 @@ class SettingsFrame(tk.Frame):
             user (dict): Kullanıcı bilgileri
             db_manager: Veritabanı yönetici nesnesi
             back_fn (function): Geri dönüş fonksiyonu
+            fall_detector: FallDetector instance (isteğe bağlı)
         """
         super().__init__(parent)
         
         self.user = user
         self.db_manager = db_manager
         self.back_fn = back_fn
+        self.fall_detector = fall_detector
         
         # Kullanıcı ayarlarını yükle
-        self.user_data = self.db_manager.get_user_data(user["localId"])
-        self.settings = self.user_data.get("settings", {}) if self.user_data else {}
+        try:
+            self.user_data = self.db_manager.get_user_data(user["localId"])
+            self.settings = self.user_data.get("settings", {}) if self.user_data else {}
+        except Exception as e:
+            logging.error(f"Kullanıcı ayarları yüklenirken hata: {e}")
+            self.user_data = {}
+            self.settings = {}
         
         # Dark mode algılama
         self.dark_mode = self.settings.get("dark_mode", False)
@@ -202,6 +209,10 @@ class SettingsFrame(tk.Frame):
         # Kullanıcı bilgileri kartı
         self._create_user_card(content_frame)
         
+        # AI Model kartı (eğer fall_detector mevcutsa)
+        if self.fall_detector:
+            self._create_ai_model_card(content_frame)
+        
         # Bildirim ayarları kartı
         self._create_notification_card(content_frame)
         
@@ -261,6 +272,107 @@ class SettingsFrame(tk.Frame):
             state="readonly"
         )
         email_entry.pack(fill=tk.X, ipady=3)
+    
+    def _create_ai_model_card(self, parent):
+        """AI Model ayarları kartını oluşturur."""
+        # AI Model kartı çerçevesi
+        ai_card = tk.Frame(parent, bg=self.card_bg, padx=15, pady=15)
+        ai_card.pack(fill=tk.X, pady=(0, 15))
+        ai_card.configure(highlightbackground="#d0d0d0", highlightthickness=1)
+        
+        # Başlık
+        ai_title = ttk.Label(
+            ai_card,
+            text="AI Model Ayarları",
+            style="Section.TLabel"
+        )
+        ai_title.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Mevcut model bilgisi
+        try:
+            model_info = self.fall_detector.get_model_info()
+            current_model = model_info.get('model_name', 'Bilinmiyor')
+            model_loaded = model_info.get('model_loaded', False)
+        except Exception as e:
+            logging.error(f"Model bilgisi alınamadı: {e}")
+            current_model = 'Hata'
+            model_loaded = False
+        
+        current_frame = ttk.Frame(ai_card, style="Card.TFrame")
+        current_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        current_label = ttk.Label(
+            current_frame,
+            text=f"Mevcut Model: {current_model}",
+            style="TLabel"
+        )
+        current_label.pack(anchor=tk.W)
+        
+        status_text = "🟢 Yüklü" if model_loaded else "🔴 Yüklenmedi"
+        status_label = ttk.Label(
+            current_frame,
+            text=f"Durum: {status_text}",
+            style="Info.TLabel"
+        )
+        status_label.pack(anchor=tk.W, pady=(5, 0))
+        
+        # Model seçimi
+        model_frame = ttk.Frame(ai_card, style="Card.TFrame")
+        model_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        model_label = ttk.Label(
+            model_frame,
+            text="Model Seçimi:",
+            style="TLabel"
+        )
+        model_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Model listesi
+        try:
+            available_models = list(self.fall_detector.available_models.keys())
+        except:
+            available_models = ["yolo11n-pose", "yolo11s-pose", "yolo11m-pose", "yolo11l-pose", "yolo11x-pose"]
+        
+        self.model_var = tk.StringVar()
+        
+        for model in available_models:
+            model_info_text = ""
+            try:
+                model_details = self.fall_detector.available_models.get(model, {})
+                model_info_text = f" - {model_details.get('description', '')}"
+            except:
+                pass
+            
+            model_radio = ttk.Radiobutton(
+                model_frame,
+                text=f"{model}{model_info_text}",
+                variable=self.model_var,
+                value=model,
+                style="TCheckbutton",
+                command=lambda: self._set_modified()
+            )
+            model_radio.pack(anchor=tk.W, pady=2)
+        
+        # Varsayılan değer ayarla
+        try:
+            current_model_file = os.path.basename(self.fall_detector.model_path).replace('.pt', '')
+            if current_model_file in available_models:
+                self.model_var.set(current_model_file)
+            else:
+                self.model_var.set(available_models[0])
+        except:
+            if available_models:
+                self.model_var.set(available_models[0])
+        
+        # Model değiştirme butonu
+        change_model_button = ttk.Button(
+            ai_card,
+            text="🔄 Modeli Değiştir",
+            style="TButton",
+            command=self._change_ai_model,
+            cursor="hand2"
+        )
+        change_model_button.pack(anchor=tk.W, pady=(10, 0))
     
     def _create_notification_card(self, parent):
         """Bildirim ayarları kartını oluşturur."""
@@ -359,6 +471,52 @@ class SettingsFrame(tk.Frame):
         )
         preview_button.pack(anchor=tk.W)
     
+    def _change_ai_model(self):
+        """AI modelini değiştirir."""
+        selected_model = self.model_var.get()
+        if not selected_model:
+            messagebox.showwarning("Uyarı", "Lütfen bir model seçin.")
+            return
+        
+        # Onay iste
+        result = messagebox.askyesno(
+            "Model Değiştir",
+            f"AI modelini '{selected_model}' olarak değiştirmek istiyor musunuz?\n\n"
+            "Bu işlem sistemin yeniden başlatılmasını gerektirebilir."
+        )
+        
+        if not result:
+            return
+        
+        try:
+            # Ana uygulamadaki switch_ai_model metodunu çağır
+            app_instance = self._get_app_instance()
+            if app_instance and hasattr(app_instance, 'switch_ai_model'):
+                success = app_instance.switch_ai_model(selected_model)
+                if success:
+                    self._set_modified()
+                    # UI'yi yenile
+                    self._refresh_ui()
+            else:
+                messagebox.showerror("Hata", "Ana uygulama referansı bulunamadı.")
+                
+        except Exception as e:
+            logging.error(f"Model değiştirme hatası: {e}")
+            messagebox.showerror("Hata", f"Model değiştirilemedi: {str(e)}")
+    
+    def _get_app_instance(self):
+        """Ana uygulama instance'ını bul."""
+        try:
+            # Widget hiyerarşisinde yukarı çık
+            widget = self.master
+            while widget:
+                if hasattr(widget, 'switch_ai_model'):
+                    return widget
+                widget = widget.master
+            return None
+        except:
+            return None
+    
     def _toggle_sms(self):
         """SMS bildirim durumunu değiştirir ve ilgili alanları aktif/pasif yapar."""
         if self.sms_notification_var.get():
@@ -421,21 +579,30 @@ class SettingsFrame(tk.Frame):
             }
             
             # Veritabanında güncelle
-            self.db_manager.update_user_data(self.user["localId"], user_data)
-            self.db_manager.save_user_settings(self.user["localId"], settings)
-            
-            # Kullanıcı nesnesini güncelle
-            self.user["displayName"] = user_data["displayName"]
-            
-            messagebox.showinfo(
-                "Başarılı",
-                "Ayarlarınız başarıyla kaydedildi."
-            )
-            
-            # Geri dön
-            self._on_back()
+            try:
+                self.db_manager.update_user_data(self.user["localId"], user_data)
+                self.db_manager.save_user_settings(self.user["localId"], settings)
+                
+                # Kullanıcı nesnesini güncelle
+                self.user["displayName"] = user_data["displayName"]
+                
+                messagebox.showinfo(
+                    "Başarılı",
+                    "Ayarlarınız başarıyla kaydedildi."
+                )
+                
+                # Geri dön
+                self._on_back()
+                
+            except Exception as db_error:
+                logging.error(f"Veritabanı güncelleme hatası: {db_error}")
+                messagebox.showerror(
+                    "Veritabanı Hatası",
+                    f"Ayarlar kaydedilirken veritabanı hatası oluştu: {str(db_error)}"
+                )
             
         except Exception as e:
+            logging.error(f"Ayarlar kaydetme hatası: {e}")
             messagebox.showerror(
                 "Hata",
                 f"Ayarlar kaydedilirken bir hata oluştu: {str(e)}"

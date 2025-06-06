@@ -16,7 +16,7 @@ import datetime
 from collections import defaultdict, deque
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
-from config.settings import MODEL_PATH, CONFIDENCE_THRESHOLD, FRAME_WIDTH
+from config.settings import MODEL_PATH, CONFIDENCE_THRESHOLD, FRAME_WIDTH, AVAILABLE_MODELS
 import winsound
 
 class FallDetector:
@@ -80,6 +80,9 @@ class FallDetector:
         self.detector_version = "3.0"
         self.initialization_time = time.time()
         
+        # Mevcut modeller listesi - config/settings.py'dan al
+        self.available_models = AVAILABLE_MODELS.copy()
+        
         # YOLO modelini yükle (pose estimation modeli)
         try:
             self.model = YOLO(self.model_path)
@@ -136,6 +139,9 @@ class FallDetector:
             'session_start': time.time()
         }
         
+        # Analytics sistemi (ui/app.py uyumluluğu için)
+        self.analytics = AnalyticsManager()
+        
         # Thread güvenliği için lock
         self.detection_lock = threading.Lock()
 
@@ -156,12 +162,13 @@ class FallDetector:
             "frame_size": self.frame_size,
             "device": device_type,
             "keypoints_count": len(self.keypoint_names),
-            "tracker_available": self.tracker is not None
+            "tracker_available": self.tracker is not None,
+            "available_models": self.available_models  # Eksik olan bu satır eklendi
         }
 
     def get_enhanced_model_info(self):
         """
-        Gelişmiş model bilgilerini döndürür (FallDetector uyumluluğu için).
+        Gelişmiş model bilgilerini döndürür (app.py uyumluluğu için).
         
         Returns:
             dict: Detaylı model ve sistem bilgileri
@@ -197,6 +204,48 @@ class FallDetector:
         }
         
         return enhanced_info
+
+    def get_enhanced_detection_visualization(self, frame):
+        """
+        Enhanced detection visualization method (app.py uyumluluğu için).
+        
+        Args:
+            frame (np.ndarray): Giriş görüntüsü
+            
+        Returns:
+            tuple: (görselleştirilmiş_frame, track_listesi)
+        """
+        return self.get_detection_visualization(frame)
+
+    def detect_enhanced_fall(self, frame, tracks=None):
+        """
+        Enhanced fall detection method (app.py uyumluluğu için).
+        
+        Args:
+            frame (np.ndarray): Giriş görüntüsü
+            tracks (list, optional): Tracking bilgileri
+            
+        Returns:
+            tuple: (düşme_durumu, güven_skoru, track_id, analysis_result)
+        """
+        # Standart detect_fall metodunu çağır ve sonuca None ekle
+        is_fall, confidence, track_id = self.detect_fall(frame, tracks)
+        
+        # Analysis result için basit bir mock object
+        analysis_result = None
+        if is_fall:
+            analysis_result = AnalysisResult(
+                is_fall=is_fall,
+                confidence=confidence,
+                fall_score=confidence,
+                keypoint_quality=0.8,
+                pose_stability=0.7,
+                risk_factors=["tilt_angle", "head_pelvis_ratio"],
+                timestamp=time.time(),
+                analysis_details={}
+            )
+        
+        return is_fall, confidence, track_id, analysis_result
 
     def _get_performance_metrics(self):
         """Performans metriklerini hesapla."""
@@ -824,3 +873,33 @@ class PersonTrack:
         except Exception as e:
             logging.error(f"Pose stability hesaplama hatası: {str(e)}")
             return 0.0
+
+
+class AnalyticsManager:
+    """Analytics yönetimi için basit sınıf (app.py uyumluluğu için)."""
+    
+    def __init__(self):
+        self.stats = {
+            'total_detections': 0,
+            'fall_events': 0,
+            'session_start': time.time()
+        }
+    
+    def get_summary(self):
+        """Analytics özetini döndürür."""
+        return self.stats.copy()
+
+
+class AnalysisResult:
+    """Analysis result container (app.py uyumluluğu için)."""
+    
+    def __init__(self, is_fall, confidence, fall_score, keypoint_quality, 
+                 pose_stability, risk_factors, timestamp, analysis_details):
+        self.is_fall = is_fall
+        self.confidence = confidence
+        self.fall_score = fall_score
+        self.keypoint_quality = keypoint_quality
+        self.pose_stability = pose_stability
+        self.risk_factors = risk_factors
+        self.timestamp = timestamp
+        self.analysis_details = analysis_details

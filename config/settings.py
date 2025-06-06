@@ -8,6 +8,7 @@
 
 import os
 import cv2
+import numpy as np
 
 # Uygulama ayarları
 APP_NAME = "Guard AI - YOLOv11 Pose Düşme Algılama Sistemi"
@@ -37,35 +38,35 @@ NMS_THRESHOLD = 0.45  # Non-Maximum Suppression eşiği
 
 # YOLOv11 Model Seçenekleri
 AVAILABLE_MODELS = {
-    "yolo11n-pose.pt": {
+    "yolo11n-pose": {
         "name": "YOLOv11 Nano Pose",
         "description": "En hızlı, düşük doğruluk",
         "size": "~10MB",
         "speed": "Çok Hızlı",
         "accuracy": "Düşük"
     },
-    "yolo11s-pose.pt": {
+    "yolo11s-pose": {
         "name": "YOLOv11 Small Pose", 
         "description": "Hızlı, orta doğruluk",
         "size": "~20MB",
         "speed": "Hızlı",
         "accuracy": "Orta"
     },
-    "yolo11m-pose.pt": {
+    "yolo11m-pose": {
         "name": "YOLOv11 Medium Pose",
         "description": "Dengeli hız ve doğruluk",
         "size": "~50MB", 
         "speed": "Orta",
         "accuracy": "İyi"
     },
-    "yolo11l-pose.pt": {
+    "yolo11l-pose": {
         "name": "YOLOv11 Large Pose",
         "description": "Yavaş, yüksek doğruluk (Önerilen)",
         "size": "~100MB",
         "speed": "Yavaş",
         "accuracy": "Yüksek"
     },
-    "yolo11x-pose.pt": {
+    "yolo11x-pose": {
         "name": "YOLOv11 Extra Large Pose",
         "description": "En yavaş, en yüksek doğruluk",
         "size": "~200MB",
