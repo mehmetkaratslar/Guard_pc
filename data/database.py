@@ -101,448 +101,438 @@
 # - Yerel depolama sadece geçici çözümler içindir
 # =======================================================================================
 
-
+import logging
+from google.cloud import firestore
+import firebase_admin
+from firebase_admin import credentials, firestore
+from datetime import datetime
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-import firebase_admin
-from firebase_admin import credentials, firestore, storage
-from google.cloud.firestore_v1.base_query import FieldFilter
-from google.cloud.firestore_v1 import types
+import os
+import json
 
 class FirestoreManager:
-    """🔥 Gelişmiş Firestore Veritabanı Yöneticisi - Tam Özellikli"""
+    """Firestore veritabanı işlemlerini yöneten sınıf."""
+    
+    def __init__(self, db=None):
+        """
+        Args:
+            db (google.cloud.firestore.Client, optional): Firestore client nesnesi
+        """
+        # _memory_storage'ı her durumda başlat
+        self._memory_storage = {
+            "users": {}
+        }
+        self._load_local_data()
 
-    def __init__(self):
-        """Firestore bağlantısını başlatır."""
-        self.db = None
-        self.bucket = None
-        
-        # 🆕 MEMORY STORAGE - Kullanıcı verisi kalıcılığı için
-        self._memory_storage = {}
-        self._user_cache = {}
-        self._settings_cache = {}
-        
-        self._initialize_firebase()
-
-    def _initialize_firebase(self):
-        """Firebase'i başlatır."""
         try:
-            if not firebase_admin._apps:
-                # Firebase config - gerçek config ile değiştirin
-                cred = credentials.Certificate({
-                    "type": "service_account",
-                    "project_id": "guard-12345",
-                    "private_key_id": "your_private_key_id",
-                    "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
-                    "client_email": "firebase-adminsdk-xyz@guard-12345.iam.gserviceaccount.com",
-                    "client_id": "your_client_id",
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-xyz%40guard-12345.iam.gserviceaccount.com"
-                })
-                
-                firebase_admin.initialize_app(cred, {
-                    'storageBucket': 'guard-12345.firebasestorage.app'
-                })
-            
-            self.db = firestore.client()
-            self.bucket = storage.bucket()
-            logging.info("✅ Firebase başlatıldı")
-            
+            self.db = db or firestore.client()
+            self.is_available = True
+            logging.info("Firestore bağlantısı başarılı.")
         except Exception as e:
-            logging.error(f"❌ Firebase başlatma hatası: {e}")
-            self.db = None
-            self.bucket = None
+            logging.warning(f"Firestore başlatılamadı: {str(e)}")
+            logging.info("Yerel dosya tabanlı veri saklama kullanılacak.")
+            self.is_available = False
 
-    # 🔧 SAFE CONVERSION METHODS
-    def _safe_timestamp_convert(self, timestamp_value):
-        """🔧 Güvenli timestamp dönüştürme"""
+    def _get_local_data_path(self):
+        """Yerel veri dosyasının yolunu döndürür."""
+        data_dir = os.path.join(os.path.dirname(__file__), "local_data")
+        os.makedirs(data_dir, exist_ok=True)
+        return os.path.join(data_dir, "local_db.json")
+    
+    def _load_local_data(self):
+        """Yerel veri dosyasından verileri yükler."""
         try:
-            if timestamp_value is None:
-                return time.time()
-            
-            if hasattr(timestamp_value, 'timestamp'):
-                return timestamp_value.timestamp()
-            elif isinstance(timestamp_value, datetime):
-                return timestamp_value.timestamp()
-            elif hasattr(timestamp_value, 'seconds'):
-                return float(timestamp_value.seconds) + float(timestamp_value.nanoseconds) / 1e9
-            elif isinstance(timestamp_value, str):
-                try:
-                    dt = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
-                    return dt.timestamp()
-                except:
-                    return float(timestamp_value)
-            elif isinstance(timestamp_value, (int, float)):
-                return float(timestamp_value)
+            file_path = self._get_local_data_path()
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self._memory_storage = data
+                    logging.info(f"Yerel veri dosyası yüklendi: {file_path}")
             else:
-                logging.warning(f"⚠️ Bilinmeyen timestamp formatı: {type(timestamp_value)}")
-                return time.time()
-                
+                logging.info("Yerel veri dosyası bulunamadı, yeni dosya oluşturulacak.")
+                self._save_local_data()
         except Exception as e:
-            logging.error(f"❌ Timestamp dönüştürme hatası: {e}")
-            return time.time()
-
-    # 🆕 NEW USER METHODS
-    def create_new_user(self, user_id: str, user_data: Dict[str, Any]) -> bool:
-        """🆕 Yeni kullanıcı oluşturur"""
+            logging.error(f"Yerel veri yüklenirken hata: {str(e)}")
+            # Boş veri ile devam et
+            self._memory_storage = {"users": {}}
+    
+    def _save_local_data(self):
+        """Verileri yerel dosyaya kaydeder."""
         try:
-            if not user_id:
-                logging.error("❌ User ID boş olamaz")
-                return False
+            file_path = self._get_local_data_path()
+            # Geçici dosyaya yaz, sonra taşı (atomic operation)
+            temp_path = file_path + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(self._memory_storage, f, indent=2, ensure_ascii=False)
             
-            default_user_data = {
-                'user_id': user_id,
-                'email': user_data.get('email', ''),
-                'displayName': user_data.get('displayName', user_data.get('email', '').split('@')[0]),
-                'photoURL': user_data.get('photoURL', ''),
-                'emailVerified': user_data.get('emailVerified', False),
-                'phoneNumber': user_data.get('phoneNumber', ''),
-                'created_at': firestore.SERVER_TIMESTAMP,
-                'updated_at': firestore.SERVER_TIMESTAMP,
-                'last_login': firestore.SERVER_TIMESTAMP,
-                'login_count': 1,
-                'provider': user_data.get('provider', 'email'),
+            # Geçici dosyayı asıl dosyaya taşı
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            os.rename(temp_path, file_path)
+            
+            logging.info(f"Veriler yerel dosyaya kaydedildi: {file_path}")
+        except Exception as e:
+            logging.error(f"Veriler yerel dosyaya kaydedilirken hata: {str(e)}")
+
+    def get_user_data(self, user_id):
+        """Kullanıcı verilerini getirir."""
+        if not user_id:
+            logging.warning("get_user_data: user_id boş")
+            return None
+            
+        if not self.is_available:
+            user_data = self._memory_storage["users"].get(user_id, None)
+            logging.info(f"Yerel depodan kullanıcı verisi alındı: {user_id}")
+            return user_data
+        
+        try:
+            user_ref = self.db.collection("users").document(user_id)
+            user_doc = user_ref.get()
+            if user_doc.exists:
+                data = user_doc.to_dict()
+                logging.info(f"Firestore'dan kullanıcı verisi alındı: {user_id}")
+                return data
+            else:
+                logging.warning(f"Kullanıcı bulunamadı: {user_id}")
+                return None
+        except Exception as e:
+            logging.error(f"Kullanıcı verileri getirilirken hata: {str(e)}")
+            # Firestore hatası durumunda yerel depolamayı dene
+            if hasattr(self, '_memory_storage'):
+                return self._memory_storage["users"].get(user_id, None)
+            return None
+
+    def save_user_settings(self, user_id, settings):
+        """Kullanıcı ayarlarını kaydeder."""
+        if not user_id:
+            logging.error("save_user_settings: user_id boş")
+            return False
+            
+        if not settings:
+            logging.error("save_user_settings: settings boş")
+            return False
+        
+        # Yerel depolamaya her durumda kaydet (backup)
+        try:
+            if user_id not in self._memory_storage["users"]:
+                self._memory_storage["users"][user_id] = {"id": user_id}
+            if "settings" not in self._memory_storage["users"][user_id]:
+                self._memory_storage["users"][user_id]["settings"] = {}
+            
+            self._memory_storage["users"][user_id]["settings"].update(settings)
+            self._memory_storage["users"][user_id]["updated_at"] = time.time()
+            self._save_local_data()
+            logging.info(f"Kullanıcı ayarları yerel depoya kaydedildi: {user_id}")
+        except Exception as e:
+            logging.error(f"Yerel ayar kaydetme hatası: {e}")
+        
+        if not self.is_available:
+            return True  # Yerel kayıt başarılı
+        
+        try:
+            user_ref = self.db.collection("users").document(user_id)
+            
+            # Mevcut kullanıcı verisini al
+            user_doc = user_ref.get()
+            if user_doc.exists:
+                # Mevcut ayarları güncelle
+                current_data = user_doc.to_dict()
+                current_settings = current_data.get("settings", {})
+                current_settings.update(settings)
                 
-                'settings': {
-                    'email_notification': True,
-                    'fcm_notification': True,
-                    'sms_notification': False,
-                    'phone_number': '',
-                    'dark_mode': True,
-                    'auto_brightness': True,
-                    'brightness_adjustment': 0,
-                    'contrast_adjustment': 1.0,
-                    'fall_sensitivity': 'medium',
-                    'selected_ai_model': 'yolo11n-pose',
-                    'language': 'tr',
-                    'timezone': 'Europe/Istanbul'
-                },
-                
-                'profile': {
-                    'age': user_data.get('age'),
-                    'gender': user_data.get('gender'),
-                    'emergency_contacts': [],
-                    'medical_conditions': [],
-                    'preferences': {}
-                },
-                
-                'system': {
-                    'app_version': '1.0.0',
-                    'platform': 'Windows',
-                    'device_info': {},
-                    'last_sync': firestore.SERVER_TIMESTAMP
+                update_data = {
+                    "settings": current_settings,
+                    "updated_at": firestore.SERVER_TIMESTAMP
                 }
-            }
-            
-            final_user_data = {**default_user_data, **user_data}
-            
-            # Memory cache'e kaydet
-            self._user_cache[user_id] = final_user_data.copy()
-            self._settings_cache[user_id] = final_user_data['settings'].copy()
-            self._memory_storage[f"user_{user_id}"] = final_user_data.copy()
-            self._memory_storage[f"settings_{user_id}"] = final_user_data['settings'].copy()
-            
-            if not self.db:
-                logging.warning("⚠️ Firestore bağlantısı yok, sadece yerel cache'e kaydedildi")
-                return True
-            
-            user_ref = self.db.collection('users').document(user_id)
-            user_ref.set(final_user_data)
-            
-            logging.info(f"✅ Yeni kullanıcı oluşturuldu: {user_id} - {final_user_data.get('email', '')}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"❌ Yeni kullanıcı oluşturma hatası: {e}")
-            return False
-
-    def check_user_exists(self, user_id: str) -> bool:
-        """🔍 Kullanıcının var olup olmadığını kontrol eder"""
-        try:
-            if user_id in self._user_cache:
-                return True
-            
-            if not self.db:
-                return f"user_{user_id}" in self._memory_storage
-            
-            user_ref = self.db.collection('users').document(user_id)
-            doc = user_ref.get()
-            
-            exists = doc.exists
-            logging.info(f"🔍 Kullanıcı kontrol: {user_id} - {'Var' if exists else 'Yok'}")
-            return exists
-            
-        except Exception as e:
-            logging.error(f"❌ Kullanıcı kontrol hatası: {e}")
-            return False
-
-    def update_login_count(self, user_id: str) -> bool:
-        """📊 Kullanıcı giriş sayısını günceller"""
-        try:
-            if not self.db:
-                if user_id in self._user_cache:
-                    current_count = self._user_cache[user_id].get('login_count', 0)
-                    self._user_cache[user_id]['login_count'] = current_count + 1
-                    self._memory_storage[f"user_{user_id}"] = self._user_cache[user_id].copy()
-                return True
-            
-            user_ref = self.db.collection('users').document(user_id)
-            user_ref.update({
-                'login_count': firestore.Increment(1),
-                'last_login': firestore.SERVER_TIMESTAMP,
-                'last_login_timestamp': time.time()
-            })
-            
-            logging.info(f"✅ Giriş sayısı güncellendi: {user_id}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"❌ Giriş sayısı güncelleme hatası: {e}")
-            return False
-
-    # 🔧 EXISTING METHODS - UPDATED
-    def update_user_data(self, user_id: str, user_data: Dict[str, Any]) -> bool:
-        """🔧 Kullanıcı verilerini günceller"""
-        try:
-            if user_id not in self._user_cache:
-                self._user_cache[user_id] = {}
-            
-            self._user_cache[user_id].update(user_data)
-            self._memory_storage[f"user_{user_id}"] = self._user_cache[user_id].copy()
-            
-            if not self.db:
-                logging.warning("⚠️ Firestore bağlantısı yok, sadece yerel cache güncellendi")
-                return True
-            
-            user_ref = self.db.collection('users').document(user_id)
-            user_ref.update({
-                **user_data,
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
-            
-            logging.info(f"✅ Kullanıcı verileri güncellendi: {user_id}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"❌ Kullanıcı güncelleme hatası: {e}")
-            return False
-
-    def save_user_settings(self, user_id: str, settings: Dict[str, Any]) -> bool:
-        """🔧 Kullanıcı ayarlarını kaydeder"""
-        try:
-            self._settings_cache[user_id] = settings.copy()
-            self._memory_storage[f"settings_{user_id}"] = settings.copy()
-            
-            if not self.db:
-                logging.warning("⚠️ Firestore bağlantısı yok, sadece yerel cache güncellendi")
-                return True
-            
-            user_ref = self.db.collection('users').document(user_id)
-            user_ref.update({
-                'settings': settings,
-                'settings_updated_at': firestore.SERVER_TIMESTAMP
-            })
-            
-            logging.info(f"✅ Kullanıcı ayarları güncellendi: {user_id}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"❌ Ayar kaydetme hatası: {e}")
-            return False
-
-    def get_user_data(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """🔧 Kullanıcı verilerini alır"""
-        try:
-            if user_id in self._user_cache:
-                cached_data = self._user_cache[user_id].copy()
-                if user_id in self._settings_cache:
-                    cached_data['settings'] = self._settings_cache[user_id]
-                return cached_data
-            
-            if not self.db:
-                user_data = self._memory_storage.get(f"user_{user_id}")
-                settings_data = self._memory_storage.get(f"settings_{user_id}")
-                
-                if user_data:
-                    if settings_data:
-                        user_data['settings'] = settings_data
-                    return user_data
-                return None
-            
-            user_ref = self.db.collection('users').document(user_id)
-            doc = user_ref.get()
-            
-            if doc.exists:
-                user_data = doc.to_dict()
-                
-                self._user_cache[user_id] = user_data.copy()
-                if 'settings' in user_data:
-                    self._settings_cache[user_id] = user_data['settings']
-                
-                logging.info(f"✅ Firestore'dan kullanıcı verisi alındı: {user_id}")
-                return user_data
+                user_ref.update(update_data)
             else:
-                logging.warning(f"⚠️ Kullanıcı verisi bulunamadı: {user_id}")
-                return None
-                
+                # Yeni kullanıcı oluştur
+                new_data = {
+                    "id": user_id,
+                    "settings": settings,
+                    "created_at": firestore.SERVER_TIMESTAMP,
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                }
+                user_ref.set(new_data)
+            
+            logging.info(f"Kullanıcı ayarları Firestore'a güncellendi: {user_id}")
+            return True
         except Exception as e:
-            logging.error(f"❌ Kullanıcı verisi alma hatası: {e}")
-            return self._user_cache.get(user_id)
+            logging.error(f"Kullanıcı ayarları Firestore'a kaydedilirken hata: {str(e)}")
+            return True  # Yerel kayıt başarılı olduğu için True döndür
+    
+    def save_fall_event(self, event_data):
+        """
+        Düşme olayını /fall_events/{eventId} yoluna kaydeder.
 
-    def get_fall_events(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """🔧 Düşme olaylarını alır"""
+        Args:
+            event_data (dict): Kaydedilecek olay verileri (id, user_id, image_url, vb.)
+
+        Returns:
+            bool: Başarılı ise True, değilse False
+        """
         try:
-            if not self.db:
-                logging.warning("⚠️ Firestore bağlantısı yok, boş liste döndürülüyor")
+            # ID'nin olduğundan emin ol
+            if "id" not in event_data:
+                event_data["id"] = str(uuid.uuid4())
+            
+            # Zaman damgasının olduğundan emin ol
+            if "timestamp" not in event_data:
+                event_data["timestamp"] = time.time()
+            
+            # Oluşturulma zamanını ekle
+            if "created_at" not in event_data:
+                event_data["created_at"] = time.time()
+            
+            event_id = event_data["id"]
+            user_id = event_data.get("user_id", "unknown")
+            logging.info(f"Düşme olayı kaydediliyor: {event_id} - Kullanıcı: {user_id}")
+            
+            # Firestore uyumlu veri oluştur
+            cleaned_data = {}
+            for key, value in event_data.items():
+                if key == "model_info":
+                    # model_info'yu string'e çevir
+                    cleaned_data[key] = str(value)
+                elif isinstance(value, (str, int, float, bool)) or value is None:
+                    cleaned_data[key] = value
+                else:
+                    # Diğer karmaşık nesneleri string'e çevir
+                    cleaned_data[key] = str(value)
+            
+            if not self.is_available:
+                # Yerel depolamada /users/{user_id}/events ve /users/{user_id}/fall_events'e kaydet
+                if user_id not in self._memory_storage["users"]:
+                    self._memory_storage["users"][user_id] = {"id": user_id}
+                
+                for collection_name in ["events", "fall_events"]:
+                    if collection_name not in self._memory_storage["users"][user_id]:
+                        self._memory_storage["users"][user_id][collection_name] = []
+                    self._memory_storage["users"][user_id][collection_name].append(cleaned_data)
+                
+                self._save_local_data()
+                logging.info(f"Düşme olayı yerel depoya kaydedildi: {event_id}")
+                return True
+            
+            # Firestore'a /fall_events/{eventId} yoluna kaydet
+            doc_ref = self.db.collection("fall_events").document(event_id)
+            doc_ref.set(cleaned_data)
+            logging.info(f"Düşme olayı Firestore'a kaydedildi: /fall_events/{event_id}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Düşme olayı kaydedilirken hata: {str(e)}")
+            return False
+
+
+
+    def get_fall_events(self, user_id, limit=50):
+        """
+        Kullanıcının düşme olaylarını getirir.
+        Firestore'da /fall_events/'ten, yerel depoda /users/{user_id}/events ve /users/{user_id}/fall_events'ten çeker.
+        """
+        if not user_id:
+            logging.warning("get_fall_events: user_id boş")
+            return []
+            
+        logging.info(f"Düşme olayları getiriliyor - Kullanıcı: {user_id}, Limit: {limit}")
+        
+        if not self.is_available:
+            if user_id not in self._memory_storage["users"]:
+                logging.warning(f"Kullanıcı bellekte bulunamadı: {user_id}")
                 return []
             
-            events_ref = self.db.collection('fall_events').where('user_id', '==', user_id)
-            events_query = events_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit)
+            events = self._memory_storage["users"][user_id].get("events", [])
+            if not events:
+                events = self._memory_storage["users"][user_id].get("fall_events", [])
+            
+            sorted_events = sorted(
+                events, 
+                key=lambda e: e.get("timestamp", e.get("created_at", 0)), 
+                reverse=True
+            )
+            logging.info(f"Yerel depodan {len(sorted_events[:limit])} düşme olayı getirildi")
+            return sorted_events[:limit]
+            
+        try:
+            query = self.db.collection("fall_events")\
+                .where(filter=firestore.FieldFilter("user_id", "==", user_id))\
+                .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                .limit(limit)
             
             events = []
-            docs = events_query.stream()
+            for doc in query.stream():
+                event_data = doc.to_dict()
+                if "id" not in event_data:
+                    event_data["id"] = doc.id
+                events.append(event_data)
             
-            for doc in docs:
-                try:
-                    event_data = doc.to_dict()
-                    event_data['id'] = doc.id
-                    
-                    if 'timestamp' in event_data:
-                        event_data['timestamp'] = self._safe_timestamp_convert(event_data['timestamp'])
-                    
-                    if 'confidence' in event_data:
-                        try:
-                            event_data['confidence'] = float(event_data['confidence'])
-                        except (ValueError, TypeError):
-                            event_data['confidence'] = 0.0
-                    
-                    for field in ['track_id']:
-                        if field in event_data and event_data[field] is not None:
-                            try:
-                                event_data[field] = int(event_data[field])
-                            except (ValueError, TypeError):
-                                event_data[field] = 0
-                    
-                    events.append(event_data)
-                    
-                except Exception as e:
-                    logging.error(f"❌ Event parsing hatası: {e} - Event: {doc.id}")
-                    continue
-            
-            logging.info(f"✅ Firestore'dan {len(events)} düşme olayı getirildi")
+            logging.info(f"Firestore'dan {len(events)} düşme olayı getirildi")
             return events
             
         except Exception as e:
-            logging.error(f"❌ Düşme olayları alma hatası: {e}")
+            logging.error(f"Düşme olayları getirilirken hata: {str(e)}")
             return []
+    
 
-    def delete_fall_event(self, user_id: str, event_id: str) -> bool:
-        """🗑️ Düşme olayını siler"""
+
+
+
+    def create_new_user(self, user_id, user_data):
+        """Yeni kullanıcı oluşturur."""
+        if not user_id:
+            logging.error("create_new_user: user_id boş")
+            return False
+            
+        base_data = {
+            "id": user_id,
+            "created_at": time.time(),
+            "last_login": time.time(),
+            "settings": {
+                "email_notification": True,
+                "sms_notification": False,
+                "fcm_notification": True,
+                "phone_number": "",
+                "dark_mode": False,
+                "auto_brightness": True,
+                "brightness_adjustment": 0,
+                "contrast_adjustment": 1.0,
+                "fall_sensitivity": "medium",
+                "selected_ai_model": "yolo11l-pose"
+            }
+        }
+        final_data = {**base_data, **user_data}
+        
+        # Yerel depolamaya kaydet
         try:
-            if not self.db:
-                return False
-            
-            event_ref = self.db.collection('fall_events').document(event_id)
-            event_doc = event_ref.get()
-            
-            if not event_doc.exists:
-                logging.warning(f"⚠️ Silinecek event bulunamadı: {event_id}")
-                return False
-            
-            event_data = event_doc.to_dict()
-            if event_data.get('user_id') != user_id:
-                logging.warning(f"⚠️ Event kullanıcıya ait değil: {event_id}")
-                return False
-            
-            event_ref.delete()
-            
-            if 'image_url' in event_data:
-                try:
-                    self._delete_image_from_storage(event_data['image_url'])
-                except Exception as e:
-                    logging.warning(f"⚠️ Resim silme hatası: {e}")
-            
-            logging.info(f"✅ Event silindi: {event_id}")
+            self._memory_storage["users"][user_id] = final_data
+            self._save_local_data()
+            logging.info(f"Yeni kullanıcı yerel depoya kaydedildi: {user_id}")
+        except Exception as e:
+            logging.error(f"Yerel kullanıcı kaydetme hatası: {e}")
+        
+        if not self.is_available:
             return True
             
-        except Exception as e:
-            logging.error(f"❌ Event silme hatası: {e}")
-            return False
-
-    def update_last_login(self, user_id: str) -> bool:
-        """⏰ Son giriş zamanını günceller"""
         try:
-            login_time = time.time()
-            self._memory_storage[f"last_login_{user_id}"] = login_time
+            user_ref = self.db.collection("users").document(user_id)
+            final_data["created_at"] = firestore.SERVER_TIMESTAMP
+            final_data["last_login"] = firestore.SERVER_TIMESTAMP
+            user_ref.set(final_data)
+            logging.info(f"Yeni kullanıcı Firestore'a oluşturuldu: {user_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Kullanıcı Firestore'a oluşturulurken hata: {str(e)}")
+            return True  # Yerel kayıt başarılı
+    
+    def update_last_login(self, user_id):
+        """Kullanıcının son giriş zamanını günceller."""
+        if not user_id:
+            logging.error("update_last_login: user_id boş")
+            return False
             
-            if not self.db:
-                logging.warning("⚠️ Firestore bağlantısı yok, sadece yerel cache güncellendi")
-                return True
-            
-            user_ref = self.db.collection('users').document(user_id)
-            user_ref.update({
-                'last_login': firestore.SERVER_TIMESTAMP,
-                'last_login_timestamp': login_time
-            })
-            
-            logging.info(f"✅ Son giriş zamanı Firestore'da güncellendi: {user_id}")
+        # Yerel depolamayı güncelle
+        try:
+            if user_id not in self._memory_storage["users"]:
+                self._memory_storage["users"][user_id] = {"id": user_id}
+            self._memory_storage["users"][user_id]["last_login"] = time.time()
+            self._save_local_data()
+            logging.info(f"Son giriş zamanı yerel depoda güncellendi: {user_id}")
+        except Exception as e:
+            logging.error(f"Yerel son giriş güncelleme hatası: {e}")
+        
+        if not self.is_available:
             return True
             
+        try:
+            user_ref = self.db.collection("users").document(user_id)
+            user_ref.update({"last_login": firestore.SERVER_TIMESTAMP})
+            logging.info(f"Son giriş zamanı Firestore'da güncellendi: {user_id}")
+            return True
         except Exception as e:
-            logging.error(f"❌ Son giriş güncelleme hatası: {e}")
+            logging.error(f"Son giriş zamanı güncellenirken hata: {str(e)}")
+            return True  # Yerel güncelleme başarılı
+    
+    def update_user_data(self, user_id, user_data):
+        """Kullanıcı bilgilerini günceller."""
+        if not user_id:
+            logging.error("update_user_data: user_id boş")
             return False
-
-    def clear_user_cache(self, user_id: str = None):
-        """🧹 Kullanıcı cache'ini temizler"""
-        try:
-            if user_id:
-                self._user_cache.pop(user_id, None)
-                self._settings_cache.pop(user_id, None)
-                
-                keys_to_remove = [key for key in self._memory_storage.keys() if user_id in key]
-                for key in keys_to_remove:
-                    self._memory_storage.pop(key, None)
-                    
-                logging.info(f"✅ Kullanıcı cache temizlendi: {user_id}")
-            else:
-                self._user_cache.clear()
-                self._settings_cache.clear()
-                self._memory_storage.clear()
-                logging.info("✅ Tüm cache temizlendi")
-                
-        except Exception as e:
-            logging.error(f"❌ Cache temizleme hatası: {e}")
-
-    def _delete_image_from_storage(self, image_url: str):
-        """🗑️ Storage'dan resmi siler"""
-        try:
-            if not self.bucket or not image_url:
-                return
             
-            if 'firebasestorage.googleapis.com' in image_url:
-                import urllib.parse
-                parsed = urllib.parse.urlparse(image_url)
-                path_parts = parsed.path.split('/')
-                
-                if len(path_parts) >= 4 and path_parts[2] == 'o':
-                    blob_path = urllib.parse.unquote(path_parts[3])
-                    blob = self.bucket.blob(blob_path)
-                    blob.delete()
-                    logging.info(f"✅ Storage'dan resim silindi: {blob_path}")
-            
+        if not user_data:
+            logging.error("update_user_data: user_data boş")
+            return False
+        
+        # Yerel depolamayı güncelle
+        try:
+            if user_id not in self._memory_storage["users"]:
+                self._memory_storage["users"][user_id] = {"id": user_id}
+            self._memory_storage["users"][user_id].update(user_data)
+            self._memory_storage["users"][user_id]["updated_at"] = time.time()
+            self._save_local_data()
+            logging.info(f"Kullanıcı verileri yerel depoda güncellendi: {user_id}")
         except Exception as e:
-            logging.error(f"❌ Storage resim silme hatası: {e}")
+            logging.error(f"Yerel kullanıcı güncelleme hatası: {e}")
+        
+        if not self.is_available:
+            return True
+            
+        try:
+            user_ref = self.db.collection("users").document(user_id)
+            update_data = user_data.copy()
+            update_data["updated_at"] = firestore.SERVER_TIMESTAMP
+            user_ref.update(update_data)
+            logging.info(f"Kullanıcı verileri Firestore'da güncellendi: {user_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Kullanıcı verileri güncellenirken hata: {str(e)}")
+            return True  # Yerel güncelleme başarılı
+    
+    def delete_fall_event(self, user_id, event_id):
+        """Düşme olayını siler."""
+        if not user_id or not event_id:
+            logging.error("delete_fall_event: user_id veya event_id boş")
+            return False
+            
+        # Yerel depolamadan sil
+        try:
+            if user_id in self._memory_storage["users"]:
+                for collection_name in ["events", "fall_events"]:
+                    if collection_name in self._memory_storage["users"][user_id]:
+                        events = self._memory_storage["users"][user_id][collection_name]
+                        self._memory_storage["users"][user_id][collection_name] = [
+                            e for e in events if e.get("id") != event_id
+                        ]
+                self._save_local_data()
+                logging.info(f"Düşme olayı yerel depodan silindi: {event_id}")
+        except Exception as e:
+            logging.error(f"Yerel olay silme hatası: {e}")
+        
+        if not self.is_available:
+            return True
+            
+        try:
+            doc_ref = self.db.collection("fall_events").document(event_id)
+            doc_ref.delete()
+            logging.info(f"Düşme olayı Firestore'dan silindi: /fall_events/{event_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Düşme olayı silinirken hata: {str(e)}")
+            return True  # Yerel silme başarılı
 
-# Singleton instance
-_firestore_manager_instance = None
-
-def get_firestore_manager():
-    """Singleton FirestoreManager instance döndürür."""
-    global _firestore_manager_instance
-    if _firestore_manager_instance is None:
-        _firestore_manager_instance = FirestoreManager()
-    return _firestore_manager_instance
+    def test_connection(self):
+        """Veritabanı bağlantısını test eder."""
+        if not self.is_available:
+            return {"status": "local", "message": "Yerel depolama aktif"}
+        
+        try:
+            # Test collection'a basit bir yazma işlemi yap
+            test_ref = self.db.collection("test").document("connection_test")
+            test_ref.set({"timestamp": firestore.SERVER_TIMESTAMP, "test": True})
+            test_ref.delete()  # Test verisini sil
+            
+            return {"status": "connected", "message": "Firestore bağlantısı başarılı"}
+        except Exception as e:
+            logging.error(f"Bağlantı testi hatası: {e}")
+            return {"status": "error", "message": f"Bağlantı hatası: {str(e)}"}

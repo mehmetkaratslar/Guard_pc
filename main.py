@@ -1,10 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: main.py (ULTRA ENHANCED VERSION V4)
+# 📄 Dosya Adı: main.py (ULTRA ENHANCED VERSION V3)
 # 📁 Konum: pc/main.py
 # 📌 Açıklama:
 # Guard AI Ultra - FallDetector ve UltraGuardApp ile tam entegre ana giriş noktası
 # Enhanced AI model management, robust error handling, performance monitoring
-# Database ve Storage bağlantı testleri eklendi
 # =======================================================================================
 
 import tkinter as tk               # GUI bileşenleri için temel kütüphane
@@ -28,19 +27,15 @@ from ui.app import GuardApp
 from core.stream_server import run_api_server_in_thread  # Enhanced Stream Server
 from config.settings import APP_NAME, APP_VERSION, MODEL_PATH, validate_config  # Enhanced settings
 
-# Database ve Storage modülleri
-from data.database import FirestoreManager
-from data.storage import StorageManager
-
 # Uygulama meta verileri
 APP_METADATA = {
     "name": "Guard AI Ultra",
-    "version": "4.0.0",
-    "build_date": "2025-06-07",
-    "build_time": "16:28:40",
-    "developer": "mehmetkaratslar",
+    "version": "3.0.0",
+    "build_date": "2025-06-06",
+    "build_time": "15:38:40",
+    "developer": "mehmetkarataslar",
     "description": "Ultra Enhanced AI Fall Detection System",
-    "ai_engine": "FallDetector v4.0",
+    "ai_engine": "FallDetector v3.0",
     "supported_models": ["yolo11n-pose", "yolo11s-pose", "yolo11m-pose", "yolo11l-pose", "yolo11x-pose"]
 }
 
@@ -60,90 +55,6 @@ def print_startup_banner():
 """
     print(banner)
     logging.info("🎉 Guard AI Ultra başlatılıyor...")
-
-def check_database_storage_connectivity():
-    """Database ve Storage bağlantısını test eder."""
-    logging.info("🔍 Database ve Storage bağlantı testi...")
-    
-    connectivity_status = {
-        'database': {'status': 'unknown', 'message': '', 'available': False},
-        'storage': {'status': 'unknown', 'message': '', 'available': False},
-        'overall_status': 'unknown'
-    }
-    
-    # Database bağlantı testi
-    try:
-        logging.info("🗄️ Firestore Database bağlantısı test ediliyor...")
-        db_manager = FirestoreManager()
-        db_test = db_manager.test_connection()
-        
-        connectivity_status['database'] = {
-            'status': db_test['status'],
-            'message': db_test['message'],
-            'available': db_manager.is_available
-        }
-        
-        if db_test['status'] == 'connected':
-            logging.info("✅ Firestore Database: Bağlantı başarılı")
-        elif db_test['status'] == 'local':
-            logging.warning("⚠️ Firestore Database: Yerel mod - Firebase bağlantısı yok")
-        else:
-            logging.error(f"❌ Firestore Database: {db_test['message']}")
-            
-    except Exception as e:
-        logging.error(f"❌ Database bağlantı test hatası: {str(e)}")
-        connectivity_status['database'] = {
-            'status': 'error',
-            'message': f"Bağlantı hatası: {str(e)}",
-            'available': False
-        }
-    
-    # Storage bağlantı testi
-    try:
-        logging.info("💾 Firebase Storage bağlantısı test ediliyor...")
-        storage_manager = StorageManager()
-        storage_test = storage_manager.test_connection()
-        
-        connectivity_status['storage'] = {
-            'status': storage_test['status'],
-            'message': storage_test['message'],
-            'available': storage_manager.is_available
-        }
-        
-        if storage_test['status'] == 'connected':
-            logging.info("✅ Firebase Storage: Bağlantı başarılı")
-        elif storage_test['status'] == 'local':
-            logging.warning("⚠️ Firebase Storage: Yerel mod - Firebase bağlantısı yok")
-        else:
-            logging.error(f"❌ Firebase Storage: {storage_test['message']}")
-            
-    except Exception as e:
-        logging.error(f"❌ Storage bağlantı test hatası: {str(e)}")
-        connectivity_status['storage'] = {
-            'status': 'error',
-            'message': f"Bağlantı hatası: {str(e)}",
-            'available': False
-        }
-    
-    # Genel durum belirleme
-    db_ok = connectivity_status['database']['status'] in ['connected', 'local']
-    storage_ok = connectivity_status['storage']['status'] in ['connected', 'local']
-    
-    if db_ok and storage_ok:
-        if connectivity_status['database']['available'] and connectivity_status['storage']['available']:
-            connectivity_status['overall_status'] = 'full_cloud'
-            logging.info("🌐 Tam bulut bağlantısı: Database ✅ + Storage ✅")
-        else:
-            connectivity_status['overall_status'] = 'hybrid'
-            logging.info("🔄 Hibrit mod: Bulut + Yerel karışık")
-    elif db_ok or storage_ok:
-        connectivity_status['overall_status'] = 'partial'
-        logging.warning("⚠️ Kısmi bağlantı: Bazı servisler yerel modda")
-    else:
-        connectivity_status['overall_status'] = 'local_only'
-        logging.warning("💻 Tamamen yerel mod: Tüm veriler yerel depolanacak")
-    
-    return connectivity_status
 
 def check_enhanced_system_requirements():
     """Ultra gelişmiş sistem gereksinimlerini kontrol eder."""
@@ -212,12 +123,6 @@ def check_enhanced_system_requirements():
             return False, f"Eksik dizin: {dir_name}"
     
     logging.info(f"✅ Proje yapısı doğrulandı: {len(required_dirs)} dizin")
-    
-    # Database ve Storage bağlantı testi
-    connectivity = check_database_storage_connectivity()
-    
-    # Bağlantı durumunu sisteme ekle
-    system_info['connectivity'] = connectivity
     
     return True, "Sistem gereksinimleri karşılandı"
 
@@ -548,15 +453,14 @@ def enhanced_main():
     
     Enhanced İşlemler:
     1. Ultra gelişmiş sistem gereksinimlerini kontrol eder
-    2. Database ve Storage bağlantı testleri yapar
-    3. AI model dosyalarını doğrular ve optimize eder  
-    4. GPU/CPU capability detection yapar
-    5. Enhanced stream server'ı başlatır
-    6. Ultra gelişmiş dependency check yapar
-    7. Enhanced Tkinter ana penceresini oluşturur
-    8. Ultra enhanced açılış ekranını gösterir
-    9. UltraGuardApp'i başlatır ve yaşam döngüsünü yönetir
-    10. Enhanced cleanup ve recovery işlemlerini gerçekleştirir
+    2. AI model dosyalarını doğrular ve optimize eder  
+    3. GPU/CPU capability detection yapar
+    4. Enhanced stream server'ı başlatır
+    5. Ultra gelişmiş dependency check yapar
+    6. Enhanced Tkinter ana penceresini oluşturur
+    7. Ultra enhanced açılış ekranını gösterir
+    8. UltraGuardApp'i başlatır ve yaşam döngüsünü yönetir
+    9. Enhanced cleanup ve recovery işlemlerini gerçekleştirir
     """
     
     # Enhanced loglama sistemini başlat
@@ -607,22 +511,8 @@ def enhanced_main():
         
         logging.info(f"✅ Bağımlılıklar: %{deps_results['success_rate']:.1f} başarı oranı")
         
-        # ===== DATABASE VE STORAGE BAĞLANTI TESTİ =====
-        logging.info("🔍 Phase 4: Database ve Storage bağlantı testi")
-        connectivity = check_database_storage_connectivity()
-        
-        # Bağlantı durumu raporu
-        if connectivity['overall_status'] == 'full_cloud':
-            logging.info("🌐 Tam bulut bağlantısı aktif")
-        elif connectivity['overall_status'] == 'hybrid':
-            logging.info("🔄 Hibrit mod: Karışık bulut/yerel")
-        elif connectivity['overall_status'] == 'partial':
-            logging.warning("⚠️ Kısmi bağlantı: Bazı servisler yerel")
-        else:
-            logging.warning("💻 Tamamen yerel mod aktif")
-        
         # ===== AI MODEL VE ENHANCED STREAM SERVER =====
-        logging.info("🔍 Phase 5: AI model validation ve Enhanced Stream Server")
+        logging.info("🔍 Phase 4: AI model validation ve Enhanced Stream Server")
         
         # AI modelleri kontrol et
         model_status = check_ai_models()
@@ -672,7 +562,7 @@ def enhanced_main():
             logging.error(f"❌ Enhanced Stream Server başlatma hatası: {str(e)}")
 
         # ===== ULTRA ENHANCED ANA PENCERE OLUŞTURMA =====
-        logging.info("🔍 Phase 6: Ultra Enhanced UI initialization")
+        logging.info("🔍 Phase 5: Ultra Enhanced UI initialization")
         
         root = tk.Tk()
         root.title(f"{APP_METADATA['name']} v{APP_METADATA['version']}")
@@ -732,7 +622,7 @@ def enhanced_main():
             logging.warning(f"⚠️ İkon yükleme hatası: {str(e)}")
         
         # ===== ULTRA ENHANCED AÇILIŞ EKRANI =====
-        logging.info("🔍 Phase 7: Ultra Enhanced splash screen")
+        logging.info("🔍 Phase 6: Ultra Enhanced splash screen")
         
         # Enhanced splash screen - AI model durumu ile
         splash_info = {
@@ -742,15 +632,14 @@ def enhanced_main():
             'models_count': len(model_status['available_models']),
             'gpu_available': gpu_info['available'],
             'gpu_recommended': gpu_info['recommended_for_ai'],
-            'developer': APP_METADATA['developer'],
-            'connectivity': connectivity
+            'developer': APP_METADATA['developer']
         }
         
         splash = SplashScreen(root, duration=10, app_info=splash_info)
         logging.info("🎬 Enhanced splash screen gösteriliyor...")
         
         # ===== GUARDAPP BAŞLATMA =====
-        logging.info("🔍 Phase 8: GuardApp initialization")
+        logging.info("🔍 Phase 7: GuardApp initialization")
         
         try:
             #GuardApp sınıfından ultra enhanced uygulama nesnesini oluştur
@@ -761,7 +650,6 @@ def enhanced_main():
                 'gpu_info': gpu_info,
                 'model_status': model_status,
                 'dependency_results': deps_results,
-                'connectivity': connectivity,
                 'screen_info': {
                     'width': screen_width,
                     'height': screen_height,
@@ -792,14 +680,12 @@ def enhanced_main():
         logging.info(f"   🚀 GPU Durumu: {'✅ Optimize' if gpu_info['recommended_for_ai'] else '⚠️ CPU/Basic GPU'}")
         logging.info(f"   🌐 Stream Server: {'✅ Aktif' if flask_thread and flask_thread.is_alive() else '❌ Pasif'}")
         logging.info(f"   📦 Bağımlılık: %{deps_results['success_rate']:.1f} ({len(deps_results['all_available'])}/{deps_results['total_checked']})")
-        logging.info(f"   🗄️ Database: {connectivity['database']['status']} ({'✅' if connectivity['database']['available'] else '⚠️'})")
-        logging.info(f"   💾 Storage: {connectivity['storage']['status']} ({'✅' if connectivity['storage']['available'] else '⚠️'})")
         logging.info(f"   💻 Platform: {platform.system()} {platform.architecture()[0]}")
         logging.info(f"   🖥️ Ekran: {screen_width}x{screen_height} @ {screen_dpi:.0f} DPI")
-        logging.info(f"   📊 AI Models: {model_status['total_size_mb']:.1f} MB")
+        logging.info(f"   💾 AI Models: {model_status['total_size_mb']:.1f} MB")
         
         # ===== ULTRA ENHANCED TKINTER ANA DÖNGÜSÜ =====
-        logging.info("🔍 Phase 9: Ultra Enhanced main loop")
+        logging.info("🔍 Phase 8: Ultra Enhanced main loop")
         logging.info("=" * 100)
         logging.info("🎉 Guard AI Ultra sistemi hazır! Ultra Enhanced UI aktif.")
         logging.info("=" * 100)
@@ -869,8 +755,7 @@ def enhanced_main():
                 f"• Uygulamayı yeniden başlatın\n"
                 f"• Sistem gereksinimlerini kontrol edin\n"
                 f"• AI model dosyalarını doğrulayın\n"
-                f"• Bağımlılıkları güncelleyin\n"
-                f"• Firebase bağlantısını kontrol edin\n\n"
+                f"• Bağımlılıkları güncelleyin\n\n"
                 f"Uygulama kapatılacak."
             )
         except:
@@ -901,15 +786,6 @@ def enhanced_main():
             cleanup_tasks.append(f"⚠️ UltraGuardApp: {str(e)[:50]}")
         
         try:
-            # Database ve Storage cleanup
-            if 'db_manager' in locals():
-                cleanup_tasks.append("✅ Database Manager")
-            if 'storage_manager' in locals():
-                cleanup_tasks.append("✅ Storage Manager")
-        except Exception as e:
-            cleanup_tasks.append(f"⚠️ DB/Storage: {str(e)[:50]}")
-        
-        try:
             # Thread cleanup
             active_threads = threading.active_count()
             if active_threads > 1:
@@ -926,7 +802,7 @@ def enhanced_main():
         
         logging.info("=" * 100)
         logging.info("👋 Guard AI Ultra uygulaması güvenli şekilde kapatıldı.")
-        logging.info(f"🕐 Session Duration: {(time.time() - start_time):.1f}s")
+        logging.info(f"🕐 Session Duration: {(time.time() - logging.getLogger().handlers[0].stream.buffer.fileno() if hasattr(logging.getLogger().handlers[0].stream, 'buffer') else 0):.1f}s")
         logging.info("=" * 100)
         
         return True

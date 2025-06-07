@@ -81,19 +81,6 @@
 # =======================================================================================
 
 
-# =======================================================================================
-# === PROGRAM AÇIKLAMASI ===
-# Bu program: AI destekli bir güvenlik/gözlem uygulamasında bulunan "Gelişmiş Ayarlar" ekranını tanımlar.
-# Ana işlevleri arasında:
-# - Kullanıcı ayarlarının yönetimi
-# - AI model seçimi ve indirme desteği (YOLO modelleri)
-# - Kamera ayarları (parlaklık, kontrast, otomatik aydınlatma)
-# - Düşme algılama hassasiyeti ayarları
-# - Bildirim tercihlerinin düzenlenmesi (E-posta, SMS, Mobil Bildirim)
-# - Tema (koyu/açık mod) özelleştirmesi
-# - ANLıK BİLDİRİM TEST ÖZELLİĞİ (YENİ!)
-# =======================================================================================
-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os

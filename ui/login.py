@@ -737,33 +737,21 @@ class LoginFrame(tk.Frame):
             pass
     
     def _handle_login_success(self, user):
-        """Giriş başarılı olduğunda - güvenli callback"""
-        try:
-            logging.info(f"Giriş başarılı: {user.get('email', '')}")
-            
-            # Durum güncelle
-            self._show_status("Giriş başarılı! Yönlendiriliyorsunuz...", "success")
-            
-            # Başarı animasyonu
-            self._show_success_animation()
-            
-            # Google butonunu tekrar etkinleştir
-            self._enable_google_button()
-            
-            # 🔧 Güvenli callback çağırma
-            def safe_callback():
-                """Güvenli callback wrapper"""
-                try:
-                    if self.on_login_success and callable(self.on_login_success):
-                        self.on_login_success(user)
-                except Exception as e:
-                    logging.error(f"Login callback hatası: {e}")
-            
-            # Callback'i güvenli şekilde çağır
-            self.after(1500, safe_callback)
-            
-        except Exception as e:
-            logging.error(f"Handle login success hatası: {e}")
+        """Giriş başarılı olduğunda"""
+        logging.info(f"Giriş başarılı: {user.get('email', '')}")
+        
+        # Durum güncelle
+        self._show_status("Giriş başarılı! Yönlendiriliyorsunuz...", "success")
+        
+        # Başarı animasyonu
+        self._show_success_animation()
+        
+        # Google butonunu tekrar etkinleştir
+        self._enable_google_button()
+        
+        # Callback çağır
+        if self.on_login_success:
+            self.after(1500, lambda: self.on_login_success(user))
     
     def _on_register_click(self, event=None):
         """Kayıt ol bağlantısına tıklandığında"""
@@ -916,60 +904,32 @@ class LoginFrame(tk.Frame):
     
     def _show_status(self, message, status_type="info"):
         """Durum mesajını gösterir"""
-        try:
-            # Renk belirle
-            if status_type == "success":
-                color = self.colors['success']
-            elif status_type == "error":
-                color = self.colors['danger']
-            elif status_type == "warning":
-                color = self.colors['warning']
-            else:  # info
-                color = self.colors['primary']
-            
-            # Durum etiketini güncelle
-            if hasattr(self, 'status_label') and self.status_label.winfo_exists():
-                self.status_label.config(text=message, fg=color)
-                
-                # Status frame'i göster
-                if hasattr(self, 'status_frame'):
-                    self.status_frame.pack(fill=tk.X, pady=(15, 0))
-            
-            # 🔧 Lambda scope düzeltmesi - değişkeni yakala
-            def clear_status_safe():
-                """Güvenli status temizleme"""
-                try:
-                    if (hasattr(self, 'status_label') and 
-                        self.status_label and 
-                        self.status_label.winfo_exists()):
-                        self.status_label.config(text="")
-                except Exception as e:
-                    logging.warning(f"Status temizleme hatası: {e}")
-            
-            # Otomatik temizlik zamanlayıcısı - düzeltilmiş
-            if hasattr(self, 'status_timer_id') and self.status_timer_id:
-                try:
-                    self.after_cancel(self.status_timer_id)
-                except Exception:
-                    pass
-            
-            self.status_timer_id = self.after(5000, clear_status_safe)
-            
-        except Exception as e:
-            logging.error(f"Status gösterim hatası: {e}")
-
-    def _clear_status(self):
-        """Durum mesajını temizler - güvenli versiyon"""
-        try:
-            if (hasattr(self, 'status_label') and 
-                self.status_label and 
-                self.status_label.winfo_exists()):
-                self.status_label.config(text="")
-        except Exception as e:
-            logging.warning(f"Status temizleme hatası: {e}")
+        # Renk belirle
+        if status_type == "success":
+            color = self.colors['success']
+        elif status_type == "error":
+            color = self.colors['danger']
+        elif status_type == "warning":
+            color = self.colors['warning']
+        else:  # info
+            color = self.colors['primary']
+        
+        # Durum etiketini güncelle
+        self.status_label.config(text=message, fg=color)
+        
+        # Status frame'i göster
+        self.status_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # Otomatik temizlik zamanlayıcısı
+        if hasattr(self, 'status_timer_id'):
+            self.after_cancel(self.status_timer_id)
+        
+        self.status_timer_id = self.after(5000, lambda: self._clear_status())
     
-
-
+    def _clear_status(self):
+        """Durum mesajını temizler"""
+        self.status_label.config(text="")
+    
     def _show_progress(self, show=True, message=None):
         """İlerleme çubuğunu gösterir/gizler"""
         if show:
@@ -998,28 +958,13 @@ class LoginFrame(tk.Frame):
         self.pack(fill=tk.BOTH, expand=True)
     
     def destroy(self):
-        """Widget'ı yok eder - gelişmiş temizlik"""
-        try:
-            # Timer'ları temizle
-            if hasattr(self, 'status_timer_id') and self.status_timer_id:
-                try:
-                    self.after_cancel(self.status_timer_id)
-                except Exception:
-                    pass
-            
-            # Animasyonları durdur
-            if hasattr(self, 'anim_ids'):
-                for anim_id in self.anim_ids:
-                    try:
-                        self.after_cancel(anim_id)
-                    except Exception:
-                        pass
-            
-            # Google login durumunu sıfırla
-            self.google_login_in_progress = False
-            
-            # Widget'ı yok et
-            super().destroy()
-            
-        except Exception as e:
-            logging.error(f"Login destroy hatası: {e}")
+        """Widget'ı yok eder ve tüm animasyonları durdurur"""
+        # Animasyonları durdur
+        for anim_id in self.anim_ids:
+            try:
+                self.after_cancel(anim_id)
+            except Exception:
+                pass
+        
+        # Temizlik
+        super().destroy()

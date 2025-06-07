@@ -1,105 +1,3 @@
-# =======================================================================================
-# === PROGRAM AÇIKLAMASI ===
-# Dosya Adı: dashboard.py 
-# Konum: pc/ui/dashboard.py
-# Açıklama:
-# Guard AI uygulamasının ana kontrol paneli olan DashboardFrame sınıfını içerir.
-# Gerçek zamanlı kamera görüntüsünü gösterir, sistem durumunu takip eder,
-# düşme algılandığında kullanıcıyı bilgilendirir ve temel ayarları sağlar.
-#
-# Bu dosya, AI destekli güvenlik sisteminin en kritik UI bileşenlerinden biridir.
-
-# === ÖZELLİKLER ===
-# - Gerçek zamanlı kamera görüntüsü
-# - Düşme algılama bildirimleri
-# - Sistem durumu göstergeleri (FPS, bağlantı durumu)
-# - Kamera seçimi ve tam ekran mod desteği
-# - Performans izleme (uptime, bellek kullanımı)
-# - Ayarlar ve çıkış butonları
-
-# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
-# - tkinter: Arayüz oluşturma (kamera görüntüleri, durum panelleri)
-# - OpenCV (cv2): Kamera görüntüsünü işleme ve gösterme
-# - NumPy: Görsel verilerin manipülasyonu
-# - threading: Uzun süren işlemler için arka plan çalıştırma
-# - logging: Hata ve işlem kayıtları tutma
-# - datetime / time: Zaman damgası ve performans ölçümü
-# - collections.deque: FPS ve işlem süresi hesaplaması
-
-# === SINIFLAR ===
-# - DashboardFrame: Ana kontrol paneli sınıfı (tk.Frame türemiştir)
-
-# === TEMEL FONKSİYONLAR ===
-# - __init__: UI bileşenlerini başlatır, stil tanımlar, kamera bağlantısını kurar
-# - _create_enhanced_ui: Ana UI elemanlarını oluşturur (kamera alanı, menü, istatistikler)
-# - _update_camera_display: Kamera görüntüsünü güncellemek için çalışan asenkron fonksiyon
-# - _ultra_update_camera_display: Ultra yüksek performanslı kamera güncelleme motoru
-# - _handle_fall_detection: Düşme algılandığında çağrılır, uyarı gösterir
-# - _toggle_system: Sistemi başlatır/durdurur
-# - _select_camera / _next_camera / _previous_camera: Kamera geçişleri
-# - toggle_fullscreen: Tam ekran moduna geçiş
-# - _create_enhanced_card: UI kartları oluşturmak için yardımcı fonksiyon
-# - _update_enhanced_ui_info: FPS, bağlantı durumu gibi bilgileri günceller
-# - _add_enhanced_overlay: Görüntü üzerine ekstra bilgi yazısı ekler
-# - _create_enhanced_last_event_section: Son düşme olayı bilgisini gösterir
-# - on_destroy: Temizlik işlemleri (kamerayı durdurma, thread'leri sonlandırma)
-
-# === GÖRSEL İŞLEME ===
-# - Kamera görüntüsünün boyutunu optimize eder
-# - En yüksek kaliteli yeniden boyutlandırmayı kullanır (INTER_LINEAR)
-# - Üzerine overlay bilgileri (FPS, kamera ID, tarih/saat) eklenir
-
-# === DÜŞME ALGILAMA ===
-# - Düşme algılandığında kırmızı uyarı mesajı gösterilir
-# - 5 saniye sonra otomatik olarak kaybolur
-# - Her algılama sonrası sayaç artırılır
-
-# === PERFORMANS İZLEME ===
-# - Ortalama FPS
-# - Bellek kullanımı
-# - Çalışma süresi (uptime)
-# - Toplam düşme sayısı
-# - Aktif kamera sayısı
-
-# === TAM EKRAN DESTEĞİ ===
-# - F11 tuşu ile tam ekran moduna geçebilir
-# - Yeniden boyutlandırma sırasında görüntü kalitesi korunur
-
-# === MENÜ VE AYARLAR ===
-# - Güvenli çıkış butonu
-# - Ayarlar menüsüne hızlı erişim
-# - Geçmiş olaylara erişim
-
-# === KAMERA DESTEĞİ ===
-# - Çoklu kamera yönetimi
-# - Otomatik bağlantı kontrolü
-# - Kamera seçim butonları
-# - Bağlantı durumu göstergesi (Bağlı/Red)
-
-# === THREAD VE GERÇEK ZAMANLI İŞLEME ===
-# - Kamera görüntüsünü ayrı bir thread'de işler
-# - AI modeli yüklüyse gerçek zamanlı analiz yapılır
-# - Display hızı (~40 FPS) dinamik olarak kontrol edilir
-
-# === HATA YÖNETİMİ ===
-# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
-# - Kullanıcıya anlamlı mesajlar gösterilir
-# - Kamera bağlantısı kesildiğinde bilgilendirme yapılır
-
-# === LOGGING ===
-# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
-# - Log formatı: Tarih/Zaman [Seviye] Mesaj
-
-# === TEST AMAÇLI KULLANIM ===
-# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
-# - Mock DB veya test ortamı ile çalıştırılabilir
-
-# === NOTLAR ===
-# - Bu dosya, app.py ve settings.py ile entegre çalışır
-# - UI stilleri temasına göre değişkenlik gösterebilir
-# - FallDetector sınıfı ile AI entegrasyonu sağlanmıştır
-# =======================================================================================
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
@@ -135,16 +33,16 @@ class DashboardFrame(tk.Frame):
         # Sistem durumları
         self.system_running = False
         self.is_fullscreen = False
-        self.selected_camera_index = 0  # Varsayılan olarak ilk kamera seçili
+        self.selected_camera_index = 0
         
         # Performans optimizasyonu
         self.frame_skip_counter = 0
-        self.frame_skip_rate = 1  # Her frame'i işle (daha yüksek kalite)
+        self.frame_skip_rate = 1
         self.last_update_time = time.time()
         self.target_fps = 30
         self.min_update_interval = 1.0 / self.target_fps
         
-        # Frame yönetimi - TEK KAMERA İÇİN
+        # Frame yönetimi
         self.current_frame = None
         self.processed_frame = None
         self.frame_lock = threading.Lock()
@@ -174,17 +72,17 @@ class DashboardFrame(tk.Frame):
 
         # Modern dark tema
         self.colors = {
-            'bg_primary': "#0D1117",      # GitHub dark background
-            'bg_secondary': "#161B22",    # Sidebar background
-            'bg_tertiary': "#2A2F3A",     # Card background (daha açık ton)
-            'accent_primary': "#238636",  # Success green
-            'accent_danger': "#DA3633",   # Danger red
-            'accent_warning': "#FB8500",  # Warning orange
-            'accent_info': "#1F6FEB",     # Info blue
-            'text_primary': "#FFFFFF",    # Primary text (daha parlak)
-            'text_secondary': "#8B949E",  # Secondary text
-            'border': "#30363D",          # Border color
-            'hover': "#30363D"            # Hover effect
+            'bg_primary': "#0D1117",
+            'bg_secondary': "#161B22",
+            'bg_tertiary': "#2A2F3A",
+            'accent_primary': "#238636",
+            'accent_danger': "#DA3633",
+            'accent_warning': "#FB8500",
+            'accent_info': "#1F6FEB",
+            'text_primary': "#FFFFFF",
+            'text_secondary': "#8B949E",
+            'border': "#30363D",
+            'hover': "#30363D"
         }
 
         # Tracking bilgileri için değişkenler
@@ -221,15 +119,15 @@ class DashboardFrame(tk.Frame):
         self.main_container = tk.Frame(self, bg=self.colors['bg_primary'])
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Grid layout - sol panel küçük, sağ panel büyük
+        # Grid layout
         self.main_container.grid_rowconfigure(0, weight=1)
-        self.main_container.grid_columnconfigure(0, weight=1, minsize=350)  # Sol panel sabit genişlik
-        self.main_container.grid_columnconfigure(1, weight=5)  # Kamera alanı çok büyük
+        self.main_container.grid_columnconfigure(0, weight=1, minsize=350)
+        self.main_container.grid_columnconfigure(1, weight=5)
         
         # Sol kontrol paneli
         self._create_control_panel()
         
-        # Ana kamera alanı (TEK ALAN)
+        # Ana kamera alanı
         self._create_single_camera_area()
         
         # Keyboard shortcuts
@@ -242,8 +140,6 @@ class DashboardFrame(tk.Frame):
         """Sol kontrol panelini oluşturur."""
         self.control_panel = tk.Frame(self.main_container, bg=self.colors['bg_secondary'])
         self.control_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
- 
-
         
         # Scroll edilebilir içerik
         canvas = tk.Canvas(self.control_panel, bg=self.colors['bg_secondary'], highlightthickness=0)
@@ -269,14 +165,11 @@ class DashboardFrame(tk.Frame):
         # Canlı istatistikler
         self._create_stats_section(scrollable_frame)
         
-        # Son olay bilgisi
-        self._create_last_event_section(scrollable_frame)
-        
-        # Menü butonları (sadece Çıkış kalacak, diğerleri header’a taşındı)
+        # Menü butonları
         self._create_menu_section(scrollable_frame)
 
     def _create_header_section(self, parent):
-        """Header section - Ayarlar ve Olay Geçmişi sağ üst köşede."""
+        """Header section - Logo ve kullanıcı bilgisi."""
         header_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], height=100)
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         header_frame.pack_propagate(False)
@@ -297,25 +190,6 @@ class DashboardFrame(tk.Frame):
                              font=("Segoe UI", 12),
                              fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
         user_label.pack(pady=(10, 0))
-
-        # Sağ üst köşe butonları
-        top_right_panel = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
-        top_right_panel.place(relx=1, rely=0.1, x=-10, anchor="ne")
-        
-        # Ayarlar butonu
-        settings_btn = tk.Button(top_right_panel, text="⚙️ Ayarlar", font=("Segoe UI", 12, "bold"),
-                                bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
-                                padx=10, pady=6, command=self.settings_fn,
-                                activebackground="#CF1A1A", cursor="hand2")
-        settings_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Olay geçmişi butonu
-        history_btn = tk.Button(top_right_panel, text="📋 Geçmiş", font=("Segoe UI", 12, "bold"),
-                               bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
-                               padx=10, pady=6, command=self.history_fn,
-                               activebackground="#1A5ACF", cursor="hand2")
-        history_btn.pack(side=tk.LEFT, padx=5)
-        
 
     def _create_system_control_section(self, parent):
         """Sistem kontrolü section."""
@@ -437,31 +311,18 @@ class DashboardFrame(tk.Frame):
             value_label.pack(side=tk.RIGHT, pady=10, padx=10)
 
     def _create_last_event_section(self, parent):
-        """Son olay section."""
-        event_frame = tk.LabelFrame(parent, text="🔔 Son Düşme Olayı", 
-                                   font=("Segoe UI", 14, "bold"),
-                                   fg=self.colors['text_primary'], bg=self.colors['bg_secondary'],
-                                   bd=1, relief="solid")
-        event_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        event_info_frame = tk.Frame(event_frame, bg=self.colors['bg_tertiary'])
-        event_info_frame.pack(fill=tk.X, padx=15, pady=15)
-        
-        # Event bilgileri
-        for var in [self.event_time_var, self.event_conf_var, self.event_id_var]:
-            label = tk.Label(event_info_frame, textvariable=var, font=("Segoe UI", 12),
-                           fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
-            label.pack(anchor="w", pady=2)
+        """Son olay section kaldırıldı, sağ üst köşeye taşındı."""
+        pass
 
     def _create_menu_section(self, parent):
-        """Menü section - Sadece Çıkış butonu kalacak."""
+        """Menü section - Sadece Çıkış butonu."""
         menu_frame = tk.LabelFrame(parent, text="⚙️ Menü", 
                                   font=("Segoe UI", 14, "bold"),
                                   fg=self.colors['text_primary'], bg=self.colors['bg_secondary'],
                                   bd=1, relief="solid")
         menu_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Sadece Çıkış butonu
+        # Çıkış butonu
         btn = tk.Button(menu_frame, text="🚪 Çıkış", font=("Segoe UI", 12),
                        bg=self.colors['accent_danger'], fg="white", command=self.logout_fn,
                        relief=tk.FLAT, cursor="hand2", pady=8)
@@ -473,7 +334,7 @@ class DashboardFrame(tk.Frame):
         self.camera_area.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         
         # Kamera info header
-        self.camera_header = tk.Frame(self.camera_area, bg=self.colors['bg_tertiary'], height=50)
+        self.camera_header = tk.Frame(self.camera_area, bg=self.colors['bg_tertiary'], height=80)
         self.camera_header.pack(fill=tk.X, padx=10, pady=(10, 5))
         self.camera_header.pack_propagate(False)
         
@@ -486,21 +347,50 @@ class DashboardFrame(tk.Frame):
                                     fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'])
         camera_info_label.pack(anchor="w")
         
-        # Sağ taraf - durum bilgileri
+        # Sağ taraf - son düşme olayı ve ayarlar
         right_info = tk.Frame(self.camera_header, bg=self.colors['bg_tertiary'])
-        right_info.pack(side=tk.RIGHT, fill=tk.Y, padx=20, pady=10)
+        right_info.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
         
-        # Bağlantı durumu
-        connection_label = tk.Label(right_info, textvariable=self.connection_status_var,
-                                   font=("Segoe UI", 12), fg=self.colors['accent_danger'],
+        # Son düşme olayı
+        event_frame = tk.Frame(right_info, bg=self.colors['bg_tertiary'])
+        event_frame.pack(side=tk.RIGHT, padx=(0, 10))
+        
+        tk.Label(event_frame, text="🔔 Son Düşme Olayı", font=("Segoe UI", 12, "bold"),
+                 fg=self.colors['text_primary'], bg=self.colors['bg_tertiary']).pack(anchor="e")
+        for var in [self.event_time_var, self.event_conf_var, self.event_id_var]:
+            label = tk.Label(event_frame, textvariable=var, font=("Segoe UI", 10),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
+            label.pack(anchor="e")
+        
+        # Ayarlar ve Geçmiş butonları
+        buttons_frame = tk.Frame(right_info, bg=self.colors['bg_tertiary'])
+        buttons_frame.pack(side=tk.RIGHT)
+        
+        settings_btn = tk.Button(buttons_frame, text="⚙️ Ayarlar", font=("Segoe UI", 10, "bold"),
+                                bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
+                                padx=8, pady=4, command=self.settings_fn,
+                                activebackground="#CF1A1A", cursor="hand2")
+        settings_btn.pack(side=tk.TOP, pady=2)
+        
+        history_btn = tk.Button(buttons_frame, text="📋 Geçmiş", font=("Segoe UI", 10, "bold"),
+                               bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
+                               padx=8, pady=4, command=self.history_fn,
+                               activebackground="#1A5ACF", cursor="hand2")
+        history_btn.pack(side=tk.TOP, pady=2)
+        
+        # Bağlantı durumu ve FPS
+        status_frame = tk.Frame(right_info, bg=self.colors['bg_tertiary'])
+        status_frame.pack(side=tk.RIGHT, padx=10)
+        
+        connection_label = tk.Label(status_frame, textvariable=self.connection_status_var,
+                                   font=("Segoe UI", 10), fg=self.colors['accent_danger'],
                                    bg=self.colors['bg_tertiary'])
-        connection_label.pack(side=tk.LEFT, padx=10)
+        connection_label.pack(anchor="e")
         
-        # FPS bilgisi
-        fps_label = tk.Label(right_info, textvariable=self.fps_display_var,
-                            font=("Segoe UI", 12, "bold"), fg=self.colors['accent_primary'],
+        fps_label = tk.Label(status_frame, textvariable=self.fps_display_var,
+                            font=("Segoe UI", 10, "bold"), fg=self.colors['accent_primary'],
                             bg=self.colors['bg_tertiary'])
-        fps_label.pack(side=tk.LEFT, padx=10)
+        fps_label.pack(anchor="e")
         
         # ANA KAMERA GÖRÜNTÜ ALANI
         self.main_camera_frame = tk.Frame(self.camera_area, bg="#000000", highlightthickness=2,
@@ -625,7 +515,7 @@ class DashboardFrame(tk.Frame):
                     with self.frame_lock:
                         self.processed_frame = annotated_frame
                 
-                time.sleep(0.03)  # ~33 FPS
+                time.sleep(0.03)
                 
             except Exception as e:
                 logging.error(f"Frame işleme hatası: {e}")
