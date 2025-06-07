@@ -100,6 +100,8 @@
 # - Log formatı: Tarih/Zaman [Seviye] Mesaj
 # =======================================================================================
 
+
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -119,12 +121,12 @@ from ui.login import LoginFrame
 from ui.register import RegisterFrame
 from ui.dashboard import DashboardFrame
 from ui.settings import SettingsFrame
-from ui.history import HistoryFrame
+from ui.history import EnhancedHistoryFrame
 
 # Configuration
 from config.firebase_config import FIREBASE_CONFIG
-
 from config.settings import THEME_LIGHT, THEME_DARK, DEFAULT_THEME, CAMERA_CONFIGS
+
 # Services
 from utils.auth import FirebaseAuth
 from data.database import FirestoreManager
@@ -135,7 +137,7 @@ from core.notification import NotificationManager
 from core.stream_server import run_api_server_in_thread
 
 class GuardApp:
-    """Ultra gelişmiş ana uygulama sınıfı - AdvancedFallDetector entegrasyonu."""
+    """Ultra gelişmiş ana uygulama sınıfı - Enhanced AI model switching ile."""
 
     def __init__(self, root: tk.Tk):
         """
@@ -143,15 +145,15 @@ class GuardApp:
             root (tk.Tk): Tkinter kök penceresi
         """
         self.root = root
-        self.root.title("Guard AI - Ultra Enhanced Fall Detection System v3.0")
+        self.root.title("Guard AI - Ultra Enhanced Fall Detection System v4.0")
         self.root.geometry("1400x900")
         self.root.minsize(1200, 800)
         self.root.configure(bg="#f5f5f5")
 
         # App metadata
-        self.app_version = "3.0.0"
+        self.app_version = "4.0.0"
         self.app_name = "Guard AI Ultra"
-        self.build_date = "2025-06-06"
+        self.build_date = "2025-06-07"
         
         # Tema durumu
         self.current_theme = DEFAULT_THEME
@@ -346,9 +348,12 @@ class GuardApp:
                     uptime = current_time - self.performance_monitor['start_time']
                     
                     # Memory usage (basit hesaplama)
-                    import psutil
-                    process = psutil.Process()
-                    self.performance_monitor['memory_usage'] = process.memory_info().rss / 1024 / 1024  # MB
+                    try:
+                        import psutil
+                        process = psutil.Process()
+                        self.performance_monitor['memory_usage'] = process.memory_info().rss / 1024 / 1024  # MB
+                    except ImportError:
+                        self.performance_monitor['memory_usage'] = 0.0
                     
                     # System state güncelle
                     if hasattr(self, 'fall_detector') and self.fall_detector:
@@ -535,7 +540,7 @@ class GuardApp:
             self.dashboard_frame = None
             
         self._clear_content()
-        self.history_frame = HistoryFrame(
+        self.history_frame = EnhancedHistoryFrame(
             self.content_frame,
             self.current_user,
             self.db_manager,
@@ -558,55 +563,252 @@ class GuardApp:
             logging.error(f"Enhanced content temizleme hatası: {e}")
 
     def _on_enhanced_login_success(self, user):
-        """Enhanced giriş başarılı callback."""
+        """🎉 Enhanced login başarılı"""
         try:
-            self.current_user = user
-            self.system_state['session_start'] = time.time()
+            logging.info(f"✅ Enhanced login başarılı: {user.get('email', 'Bilinmeyen')}")
+            logging.info(f"👤 User ID: {user.get('localId', 'Bilinmeyen')}")
             
-            # User data management
-            self.db_manager.update_last_login(user["localId"])
-            user_data = self.db_manager.get_user_data(user["localId"])
-
-            if not user_data:
+            user_id = user.get("localId")
+            if not user_id:
+                logging.error("❌ User ID bulunamadı")
+                messagebox.showerror("Hata", "Kullanıcı kimliği alınamadı")
+                return
+            
+            # Kullanıcının var olup olmadığını kontrol et
+            user_exists = self.db_manager.check_user_exists(user_id)
+            
+            if not user_exists:
+                logging.info(f"🆕 Yeni kullanıcı algılandı: {user_id}")
+                
+                # Yeni kullanıcı verilerini hazırla
                 user_data = {
-                    "email": user.get("email", ""),
-                    "displayName": user.get("displayName", ""),
-                    "lastLogin": time.time(),
-                    "appVersion": self.app_version,
-                    "preferences": {
-                        "theme": self.current_theme,
-                        "notifications": True,
-                        "ai_model": self.system_state['current_model']
-                    }
+                    'email': user.get('email', ''),
+                    'displayName': user.get('displayName', user.get('email', '').split('@')[0]),
+                    'photoURL': user.get('photoURL', ''),
+                    'emailVerified': user.get('emailVerified', False),
+                    'phoneNumber': user.get('phoneNumber', ''),
+                    'provider': 'google' if '@gmail.com' in user.get('email', '') else 'email',
+                    'fcmToken': user.get('fcmToken', ''),
+                    'created_at': datetime.datetime.now().isoformat(),
+                    'first_login': True
                 }
-                self.db_manager.create_new_user(user["localId"], user_data)
-                user_data = self.db_manager.get_user_data(user["localId"])
-
-            # Theme update
-            if user_data and "settings" in user_data and "theme" in user_data["settings"]:
-                if user_data["settings"]["theme"] != self.current_theme:
-                    self.current_theme = user_data["settings"]["theme"]
-                    self._setup_enhanced_styles()
-
-            # DÜZELTME: Enhanced notification manager - boş user_data ile başlat
+                
+                # Yeni kullanıcı oluştur
+                success = self.db_manager.create_new_user(user_id, user_data)
+                if success:
+                    logging.info(f"✅ Yeni kullanıcı başarıyla oluşturuldu: {user_id}")
+                else:
+                    logging.warning(f"⚠️ Yeni kullanıcı oluşturulamadı, devam ediliyor: {user_id}")
+            else:
+                logging.info(f"👤 Mevcut kullanıcı: {user_id}")
+                
+                # Giriş sayısını güncelle
+                self.db_manager.update_login_count(user_id)
+            
+            # Son giriş zamanını güncelle
+            self.db_manager.update_last_login(user_id)
+            
+            # Kullanıcı verilerini yükle
+            user_data = self.db_manager.get_user_data(user_id)
+            if user_data:
+                # User objesini güncellenmiş verilerle zenginleştir
+                user.update(user_data)
+                logging.info(f"📊 Kullanıcı verileri yüklendi: {len(user_data)} alan")
+            else:
+                logging.warning(f"⚠️ Kullanıcı verileri yüklenemedi: {user_id}")
+            
+            # Current user olarak ayarla
+            self.current_user = user
+            
+            # NotificationManager'ı başlat
             try:
-                self.notification_manager = NotificationManager.get_instance(user_data or {})
-                logging.info("✅ NotificationManager başlatıldı")
-            except Exception as notif_error:
-                logging.error(f"❌ NotificationManager başlatma hatası: {notif_error}")
-                # Basit fallback
-                self.notification_manager = NotificationManager({})
+                if hasattr(self, 'notification_manager') and self.notification_manager:
+                    self.notification_manager.update_user_data(user)
+                    logging.info("✅ NotificationManager başlatıldı")
+                else:
+                    logging.warning("⚠️ NotificationManager bulunamadı")
+            except Exception as e:
+                logging.error(f"❌ NotificationManager başlatma hatası: {e}")
             
-            logging.info(f"✅ Enhanced login başarılı: {user.get('email', 'Unknown')}")
-            logging.info(f"👤 User ID: {user['localId']}")
+            # Tema ayarını uygula
+            settings = user.get('settings', {})
+            dark_mode = settings.get('dark_mode', True)
+            self.current_theme = "dark" if dark_mode else "light"
+            
+            # Debug bilgileri
             logging.info(f"🎨 Tema: {self.current_theme}")
-            logging.info(f"🔔 NotificationManager: {'Aktif' if self.notification_manager else 'Deaktif'}")
+            logging.info(f"🔔 NotificationManager: {'Aktif' if hasattr(self, 'notification_manager') else 'Pasif'}")
             
-            self.show_dashboard()
+            # Dashboard'a yönlendir
+            self._show_dashboard()
             
         except Exception as e:
-            logging.error(f"❌ Enhanced login success hatası: {str(e)}")
-            messagebox.showerror("Login Hatası", f"Giriş işlemi tamamlanamadı:\n{str(e)}")
+            error_msg = f"Enhanced login success hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            
+            # Hata durumunda bile dashboard'a yönlendir
+            try:
+                self.current_user = user
+                self._show_dashboard()
+            except Exception as inner_e:
+                logging.error(f"❌ Dashboard yönlendirme hatası: {inner_e}")
+                messagebox.showerror("Kritik Hata", f"Giriş tamamlanamadı: {error_msg}")
+
+    def _show_dashboard(self):
+        """🖥️ Dashboard'u göster - Gelişmiş hata yönetimi ile"""
+        try:
+            # Mevcut frame'leri temizle
+            self._clear_main_frame()
+            
+            # Gerekli modülleri import et
+            from ui.dashboard import EnhancedDashboardFrame
+            
+            # Dashboard'u oluştur
+            self.dashboard_frame = EnhancedDashboardFrame(
+                self.main_frame,
+                self.current_user,
+                self.db_manager,
+                self._show_login,
+                self._show_settings,
+                self._show_history
+            )
+            self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
+            
+            logging.info(f"🖥️ {'Ultra Enhanced' if hasattr(self.dashboard_frame, 'premium_features') else 'Enhanced'} Dashboard ekranı gösterildi")
+            
+        except Exception as e:
+            logging.error(f"❌ Dashboard gösterim hatası: {e}")
+            
+            # Fallback - basit dashboard
+            try:
+                self._show_simple_dashboard()
+            except Exception as fallback_e:
+                logging.error(f"❌ Fallback dashboard hatası: {fallback_e}")
+                messagebox.showerror("Kritik Hata", "Dashboard yüklenemedi")
+            self._show_login()
+
+    def _show_simple_dashboard(self):
+        """🖥️ Basit dashboard - fallback"""
+        try:
+            # Basit dashboard frame
+            dashboard_frame = tk.Frame(self.main_frame, bg="#1a1a1a")
+            dashboard_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Header
+            header = tk.Frame(dashboard_frame, bg="#333333", height=60)
+            header.pack(fill=tk.X)
+            header.pack_propagate(False)
+            
+            # Başlık
+            title = tk.Label(header, 
+                            text=f"Hoş Geldiniz, {self.current_user.get('displayName', 'Kullanıcı')}",
+                            font=("Arial", 16, "bold"),
+                            bg="#333333", fg="white")
+            title.pack(side=tk.LEFT, padx=20, pady=15)
+            
+            # Çıkış butonu
+            logout_btn = tk.Button(header,
+                                text="Çıkış",
+                                font=("Arial", 12),
+                                bg="#e74c3c", fg="white",
+                                command=self._enhanced_logout)
+            logout_btn.pack(side=tk.RIGHT, padx=20, pady=15)
+            
+            # İçerik
+            content = tk.Frame(dashboard_frame, bg="#1a1a1a")
+            content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            
+            # Bilgi mesajı
+            info_label = tk.Label(content,
+                                text="🔧 Basit mod aktif\nTüm özellikler yükleniyor...",
+                                font=("Arial", 14),
+                                bg="#1a1a1a", fg="#aaaaaa",
+                                justify=tk.CENTER)
+            info_label.pack(expand=True)
+            
+            # Navigation butonları
+            nav_frame = tk.Frame(content, bg="#1a1a1a")
+            nav_frame.pack(side=tk.BOTTOM, pady=20)
+            
+            buttons = [
+                ("⚙️ Ayarlar", self._show_settings),
+                ("📜 Geçmiş", self._show_history),
+                ("🔄 Yenile", self._show_dashboard)
+            ]
+            
+            for text, command in buttons:
+                btn = tk.Button(nav_frame, text=text, font=("Arial", 12),
+                            bg="#3498db", fg="white", width=15,
+                            command=command)
+                btn.pack(side=tk.LEFT, padx=10)
+            
+            logging.info("🖥️ Basit Dashboard ekranı gösterildi")
+            
+        except Exception as e:
+            logging.error(f"❌ Basit dashboard hatası: {e}")
+            raise
+
+    def _enhanced_logout(self):
+        """🚪 Gelişmiş çıkış - hata korumalı"""
+        try:
+            logging.info("🚪 Enhanced logout başlatılıyor...")
+            
+            # Onay dialog
+            result = messagebox.askyesno(
+                "Çıkış", 
+                "Oturumu kapatmak istediğinizden emin misiniz?",
+                icon='question'
+            )
+            
+            if not result:
+                return
+            
+            # Kaynakları temizle
+            try:
+                # Dashboard temizliği
+                if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
+                    if hasattr(self.dashboard_frame, 'cleanup_resources'):
+                        self.dashboard_frame.cleanup_resources()
+                        
+                # Kamera temizliği
+                if hasattr(self, 'fall_detector') and self.fall_detector:
+                    self.fall_detector.cleanup_resources()
+                    logging.info("FallDetector kaynakları temizlendi.")
+                    
+                # NotificationManager temizliği
+                if hasattr(self, 'notification_manager') and self.notification_manager:
+                    if hasattr(self.notification_manager, 'cleanup'):
+                        self.notification_manager.cleanup()
+                        
+            except Exception as e:
+                logging.warning(f"⚠️ Kaynak temizlik hatası: {e}")
+            
+            # Cache temizle
+            try:
+                if hasattr(self.db_manager, 'clear_user_cache'):
+                    user_id = self.current_user.get('localId') if self.current_user else None
+                    self.db_manager.clear_user_cache(user_id)
+            except Exception as e:
+                logging.warning(f"⚠️ Cache temizlik hatası: {e}")
+            
+            # Kullanıcı bilgilerini temizle
+            self.current_user = None
+            
+            # Login ekranına dön
+            self._show_login()
+            
+            logging.info("✅ Enhanced logout tamamlandı")
+            
+        except Exception as e:
+            logging.error(f"❌ Enhanced logout hatası: {e}")
+            
+            # Force logout
+            try:
+                self.current_user = None
+                self._show_login()
+            except Exception as force_e:
+                logging.error(f"❌ Force logout hatası: {force_e}")
+
 
     def start_enhanced_detection(self):
         """Ultra gelişmiş düşme algılama sistemini başlatır."""
@@ -773,7 +975,7 @@ class GuardApp:
 
     def _enhanced_detection_loop(self, camera):
         """
-        DÜZELTME: Ultra Enhanced AI düşme algılama döngüsü - Fixed version
+        Ultra Enhanced AI düşme algılama döngüsü - Fixed version
         
         Args:
             camera: İşlenecek kamera nesnesi
@@ -782,11 +984,11 @@ class GuardApp:
             camera_id = f"camera_{camera.camera_index}"
             logging.info(f"🎥 Enhanced Detection Loop başlatıldı: {camera_id}")
             
-            # DÜZELTME: Loop configuration - daha düşük eşikler
+            # Loop configuration - daha düşük eşikler
             config = {
                 'target_fps': 30,
                 'max_errors': 15,
-                'min_detection_interval': 2.0,  # DÜZELTME: 3 -> 2 saniye
+                'min_detection_interval': 2.0,  # 2 saniye
                 'performance_log_interval': 150,
                 'ai_enabled': self.system_state['ai_model_loaded']
             }
@@ -846,7 +1048,7 @@ class GuardApp:
                             self.system_state['total_detections'] += len(tracks)
                             self.system_state['last_activity'] = time.time()
                         
-                        # DÜZELTME: Enhanced Fall Detection - daha düşük threshold
+                        # Enhanced Fall Detection - daha düşük threshold
                         try:
                             if hasattr(self.fall_detector, 'detect_enhanced_fall'):
                                 fall_result = self.fall_detector.detect_enhanced_fall(frame, tracks)
@@ -859,16 +1061,16 @@ class GuardApp:
                             logging.error(f"❌ {camera_id} fall detection hatası: {fall_error}")
                             is_fall, confidence, track_id, analysis_result = False, 0.0, None, None
                         
-                        # DÜZELTME: Fall event processing - threshold ve interval düşürüldü
+                        # Fall event processing - threshold ve interval düşürüldü
                         current_time = time.time()
-                        if (is_fall and confidence > 0.5 and  # DÜZELTME: 0.6 -> 0.5
+                        if (is_fall and confidence > 0.5 and  # 0.5 threshold
                             (current_time - stats['last_detection_time']) > config['min_detection_interval']):
                             
                             stats['last_detection_time'] = current_time
                             stats['fall_detection_count'] += 1
                             self.system_state['fall_events'] += 1
                             
-                            # DÜZELTME: Enhanced fall event processing - UI thread güvenli çağrı
+                            # Enhanced fall event processing - UI thread güvenli çağrı
                             logging.warning(f"🚨 {camera_id} ENHANCED FALL DETECTED!")
                             logging.info(f"   📍 Track ID: {track_id}")
                             logging.info(f"   📊 Confidence: {confidence:.4f}")
@@ -877,7 +1079,7 @@ class GuardApp:
                                 logging.info(f"   🤸 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
                                 logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
                             
-                            # DÜZELTME: Thread-safe UI çağrısı
+                            # Thread-safe UI çağrısı
                             def handle_fall():
                                 try:
                                     result = self._handle_enhanced_fall_detection(
@@ -980,7 +1182,7 @@ class GuardApp:
     def _handle_enhanced_fall_detection(self, screenshot: np.ndarray, confidence: float, 
                                       camera_id: str, track_id: int, analysis_result=None):
         """
-        DÜZELTME: Enhanced düşme algılama event handler - Fixed version
+        Enhanced düşme algılama event handler - Fixed version
         AdvancedFallDetector analysis_result ile tam entegrasyon.
         
         Args:
@@ -991,7 +1193,7 @@ class GuardApp:
             analysis_result: PoseAnalysisResult object
         """
         try:
-            # DÜZELTME: Debug log ekleme
+            # Debug log ekleme
             logging.warning(f"🚨 FALL DETECTION EVENT TRIGGERED: camera={camera_id}, confidence={confidence:.3f}, track_id={track_id}")
             
             event_id = str(uuid.uuid4())
@@ -999,7 +1201,7 @@ class GuardApp:
             # Enhanced screenshot processing
             enhanced_screenshot = self._enhance_screenshot(screenshot, analysis_result, camera_id)
             
-            # DÜZELTME: Storage upload kontrolü
+            # Storage upload kontrolü
             logging.info(f"📤 Storage'a yükleniyor: event_id={event_id}")
             image_url = None
             try:
@@ -1014,21 +1216,21 @@ class GuardApp:
             # Enhanced model ve analiz bilgilerini al
             model_info = self.fall_detector.get_enhanced_model_info() if self.fall_detector else {}
             
-            # DÜZELTME: Ultra enhanced event data - image_url None olabilir
+            # Ultra enhanced event data - image_url None olabilir
             event_data = {
                 "id": event_id,
                 "user_id": self.current_user["localId"],
                 "timestamp": time.time(),
                 "confidence": float(confidence),
                 "image_url": image_url,  # None olabilir
-                "detection_method": "AdvancedFallDetector_v3",
+                "detection_method": "AdvancedFallDetector_v4",
                 "camera_id": camera_id,
                 "track_id": track_id,
                 
                 # Enhanced model info
                 "model_info": {
                     "model_name": model_info.get("model_name", "Unknown"),
-                    "model_version": "3.0",
+                    "model_version": "4.0",
                     "device": model_info.get("device", "unknown"),
                     "keypoints_count": model_info.get("keypoints_count", 17),
                     "available_models": list(model_info.get("available_models", {}).keys())
@@ -1056,7 +1258,7 @@ class GuardApp:
                 logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
                 logging.info(f"   📋 Risk List: {', '.join(analysis_result.risk_factors)}")
             
-            # DÜZELTME: Enhanced Firestore save kontrolü
+            # Enhanced Firestore save kontrolü
             logging.info(f"💾 Firestore'a kaydediliyor: event_id={event_id}")
             save_result = False
             try:
@@ -1068,7 +1270,7 @@ class GuardApp:
             except Exception as db_error:
                 logging.error(f"❌ Database save exception: {db_error}")
 
-            # DÜZELTME: Enhanced notifications kontrolü
+            # Enhanced notifications kontrolü
             logging.info(f"📧 Bildirim gönderiliyor: event_id={event_id}")
             notification_sent = False
             
@@ -1102,7 +1304,7 @@ class GuardApp:
             else:
                 logging.warning("⚠️ Notification manager yok!")
 
-            # DÜZELTME: Enhanced dashboard update - UI thread güvenli
+            # Enhanced dashboard update - UI thread güvenli
             try:
                 if hasattr(self, "dashboard_frame") and self.dashboard_frame:
                     # Enhanced display data
@@ -1130,7 +1332,7 @@ class GuardApp:
             except Exception as ui_error:
                 logging.error(f"❌ UI update hatası: {ui_error}")
             
-            # DÜZELTME: Final result log
+            # Final result log
             success_status = {
                 'event_saved': save_result,
                 'notification_sent': notification_sent,
@@ -1161,7 +1363,7 @@ class GuardApp:
             font = cv2.FONT_HERSHEY_SIMPLEX
             
             # Enhanced header
-            cv2.putText(enhanced, "GUARD AI v3.0 - ENHANCED FALL DETECTION", 
+            cv2.putText(enhanced, "GUARD AI v4.0 - ENHANCED FALL DETECTION", 
                        (10, 25), font, 0.7, (0, 255, 255), 2)
             
             # Timestamp
@@ -1282,7 +1484,7 @@ class GuardApp:
         """Enhanced dashboard display summary."""
         try:
             base_summary = {
-                'detection_method': 'Advanced AI v3.0',
+                'detection_method': 'Advanced AI v4.0',
                 'tracking_method': 'Enhanced DeepSORT',
                 'model_name': event_data.get('model_info', {}).get('model_name', 'Unknown'),
                 'app_version': self.app_version,
@@ -1349,39 +1551,70 @@ class GuardApp:
             logging.error(f"❌ Enhanced logout hatası: {str(e)}")
 
     def switch_ai_model(self, model_name: str) -> bool:
-        """AI modelini değiştir (SettingsFrame'den çağrılır)."""
+        """
+        AI modelini değiştir (Enhanced Settings'den çağrılır).
+        
+        Args:
+            model_name: Değiştirilecek model adı (örn: "yolo11s-pose")
+            
+        Returns:
+            bool: Başarılı ise True, değilse False
+        """
         try:
+            logging.info(f"🔄 AI Model değiştiriliyor: {model_name}")
+            
             if not self.fall_detector:
-                messagebox.showerror("Hata", "Fall detector başlatılmamış!")
+                error_msg = "Fall detector başlatılmamış!"
+                logging.error(f"❌ {error_msg}")
+                messagebox.showerror("Hata", error_msg)
                 return False
             
-            # Basit model switch - mevcut model path'i güncelle
-            from config.settings import AVAILABLE_MODELS
+            # Model dosyasının varlığını kontrol et
             import os
+            from pathlib import Path
             
-            if model_name not in AVAILABLE_MODELS:
-                messagebox.showerror("Hata", f"Geçersiz model: {model_name}")
-                return False
+            # Model dizinini belirle
+            if hasattr(self.fall_detector, 'model_path') and self.fall_detector.model_path:
+                model_dir = os.path.dirname(self.fall_detector.model_path)
+            else:
+                # Fallback model directory
+                model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "models")
             
-            # Model dosyası var mı kontrol et
-            model_dir = os.path.dirname(self.fall_detector.model_path)
-            new_model_path = os.path.join(model_dir, f"{model_name}.pt")
+            # Model dosyası yolu
+            model_file = f"{model_name}.pt"
+            new_model_path = os.path.join(model_dir, model_file)
             
             if not os.path.exists(new_model_path):
-                messagebox.showerror("Hata", f"Model dosyası bulunamadı: {new_model_path}")
+                error_msg = f"Model dosyası bulunamadı: {new_model_path}\nLütfen önce modeli indirin."
+                logging.error(f"❌ {error_msg}")
+                messagebox.showerror("Model Bulunamadı", error_msg)
                 return False
             
             # Sistemi durdur
             was_running = self.system_state['running']
             if was_running:
+                logging.info("🛑 Sistem model değişimi için durduruluyor...")
                 self.stop_enhanced_detection()
+                time.sleep(2)  # Sistemin tamamen durması için bekle
             
             try:
+                logging.info(f"🔄 Model yükleniyor: {new_model_path}")
+                
                 # Yeni model yükle
                 from ultralytics import YOLO
                 new_model = YOLO(new_model_path)
                 
+                # Test detection
+                import numpy as np
+                test_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+                test_results = new_model(test_frame, verbose=False)
+                
+                if test_results is None:
+                    raise Exception("Model test detection başarısız")
+                
                 # Eski modeli güncelle
+                old_model_name = self.system_state.get('current_model', 'Unknown')
+                
                 self.fall_detector.model = new_model
                 self.fall_detector.model_path = new_model_path
                 self.fall_detector.is_model_loaded = True
@@ -1390,24 +1623,108 @@ class GuardApp:
                 self.system_state['current_model'] = model_name
                 self.system_state['ai_model_loaded'] = True
                 
+                # Model info güncelle
+                try:
+                    model_info = self.fall_detector.get_enhanced_model_info()
+                    logging.info(f"✅ Yeni model bilgileri:")
+                    logging.info(f"   📦 Model: {model_info.get('model_name', 'Unknown')}")
+                    logging.info(f"   🖥️ Cihaz: {model_info.get('device', 'unknown')}")
+                    logging.info(f"   📊 Parametreler: {model_info.get('model_parameters', 'N/A')}")
+                except Exception as info_error:
+                    logging.warning(f"⚠️ Model info alınamadı: {info_error}")
+                
+                # User settings'i güncelle
+                try:
+                    user_data = self.db_manager.get_user_data(self.current_user["localId"])
+                    if user_data:
+                        if "settings" not in user_data:
+                            user_data["settings"] = {}
+                        user_data["settings"]["selected_ai_model"] = model_name
+                        
+                        save_result = self.db_manager.save_user_settings(
+                            self.current_user["localId"], 
+                            user_data["settings"]
+                        )
+                        
+                        if save_result:
+                            logging.info(f"✅ Kullanıcı ayarları güncellendi: {model_name}")
+                        else:
+                            logging.warning(f"⚠️ Kullanıcı ayarları güncellenemedi")
+                except Exception as settings_error:
+                    logging.error(f"❌ Settings güncelleme hatası: {settings_error}")
+                
                 # Sistemi tekrar başlat
                 if was_running:
+                    logging.info("🚀 Sistem yeni model ile başlatılıyor...")
+                    time.sleep(1)  # Kısa bekleme
                     self.start_enhanced_detection()
                 
-                messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {model_name}")
-                logging.info(f"🔄 AI Model değiştirildi: {model_name}")
+                success_msg = f"AI Model başarıyla değiştirildi!\n\n"
+                success_msg += f"Eski Model: {old_model_name}\n"
+                success_msg += f"Yeni Model: {model_name}\n"
+                success_msg += f"Model Dosyası: {model_file}\n\n"
+                if was_running:
+                    success_msg += "Sistem otomatik olarak yeniden başlatıldı."
+                else:
+                    success_msg += "Değişiklik aktif hale gelmesi için sistemi başlatın."
+                
+                messagebox.showinfo("Model Değişimi Başarılı", success_msg)
+                logging.info(f"✅ AI Model başarıyla değiştirildi: {old_model_name} → {model_name}")
                 return True
                 
-            except Exception as e:
-                logging.error(f"Model yükleme hatası: {str(e)}")
-                messagebox.showerror("Hata", f"Model yüklenemedi: {str(e)}")
+            except Exception as model_error:
+                error_msg = f"Model yükleme hatası: {str(model_error)}"
+                logging.error(f"❌ {error_msg}")
+                messagebox.showerror("Model Yükleme Hatası", error_msg)
+                
+                # Sistemi eski durumuna döndür
+                if was_running:
+                    logging.info("🔄 Sistem eski durumuna döndürülüyor...")
+                    self.start_enhanced_detection()
+                
                 return False
                 
         except Exception as e:
-            logging.error(f"❌ Model switch hatası: {str(e)}")
-            messagebox.showerror("Hata", f"Model değiştirme hatası: {str(e)}")
+            error_msg = f"Model değiştirme hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Kritik Hata", error_msg)
             return False
 
+    def get_available_ai_models(self) -> Dict[str, Any]:
+        """
+        Mevcut AI modellerini döndür (Enhanced Settings için).
+        
+        Returns:
+            Dict: Model bilgileri
+        """
+        try:
+            if not self.fall_detector:
+                return {
+                    'current_model': None,
+                    'available_models': {},
+                    'model_loaded': False,
+                    'error': 'Fall detector başlatılmamış'
+                }
+            
+            model_info = self.fall_detector.get_enhanced_model_info()
+            
+            return {
+                'current_model': model_info.get('model_name', None),
+                'available_models': model_info.get('available_models', {}),
+                'model_loaded': model_info.get('model_loaded', False),
+                'device': model_info.get('device', 'unknown'),
+                'keypoints_count': model_info.get('keypoints_count', 17),
+                'model_parameters': model_info.get('model_parameters', 'N/A')
+            }
+            
+        except Exception as e:
+            logging.error(f"❌ Available models alınamadı: {str(e)}")
+            return {
+                'current_model': None,
+                'available_models': {},
+                'model_loaded': False,
+                'error': str(e)
+            }
 
     def get_system_status(self) -> Dict[str, Any]:
         """Enhanced sistem durumunu döndür."""
@@ -1432,24 +1749,199 @@ class GuardApp:
                 'ai_model': {
                     'loaded': self.system_state['ai_model_loaded'],
                     'current': self.system_state['current_model'],
-                    'available': list(self.fall_detector.available_models.keys()) if self.fall_detector else []
+                    'available': list(self.fall_detector.available_models.keys()) if self.fall_detector and hasattr(self.fall_detector, 'available_models') else []
                 }
             }
         except Exception as e:
             logging.error(f"System status hatası: {e}")
             return {'error': str(e)}
 
+    def reload_ai_model(self) -> bool:
+        """
+        Mevcut AI modelini yeniden yükle (Enhanced Settings için).
+        
+        Returns:
+            bool: Başarılı ise True
+        """
+        try:
+            if not self.fall_detector or not self.system_state['current_model']:
+                messagebox.showerror("Hata", "Yeniden yüklenecek model bulunamadı!")
+                return False
+            
+            current_model = self.system_state['current_model']
+            logging.info(f"🔄 AI Model yeniden yükleniyor: {current_model}")
+            
+            # Mevcut modeli yeniden yükle
+            return self.switch_ai_model(current_model)
+            
+        except Exception as e:
+            error_msg = f"Model yeniden yükleme hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Yeniden Yükleme Hatası", error_msg)
+            return False
 
+    def test_ai_model(self) -> bool:
+        """
+        AI modelini test et (Enhanced Settings için).
+        
+        Returns:
+            bool: Test başarılı ise True
+        """
+        try:
+            if not self.fall_detector:
+                messagebox.showerror("Hata", "Test edilecek AI model bulunamadı!")
+                return False
+            
+            logging.info("🧪 AI Model test ediliyor...")
+            
+            # Test frame oluştur
+            import numpy as np
+            test_frame = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
+            
+            # Model test et
+            start_time = time.time()
+            
+            try:
+                if hasattr(self.fall_detector, 'get_enhanced_detection_visualization'):
+                    annotated_frame, tracks = self.fall_detector.get_enhanced_detection_visualization(test_frame)
+                else:
+                    annotated_frame, tracks = self.fall_detector.get_detection_visualization(test_frame)
+                
+                processing_time = (time.time() - start_time) * 1000  # ms
+                
+                # Test sonuçları
+                test_results = {
+                    'processing_time_ms': f"{processing_time:.1f}",
+                    'tracks_detected': len(tracks) if tracks else 0,
+                    'frame_processed': annotated_frame is not None and annotated_frame.size > 0,
+                    'model_responsive': True
+                }
+                
+                success_msg = f"AI Model Test Sonuçları:\n\n"
+                success_msg += f"✅ Model Durumu: Aktif\n"
+                success_msg += f"⚡ İşlem Süresi: {test_results['processing_time_ms']} ms\n"
+                success_msg += f"👥 Algılanan Nesne: {test_results['tracks_detected']} adet\n"
+                success_msg += f"🖼️ Frame İşleme: {'Başarılı' if test_results['frame_processed'] else 'Başarısız'}\n"
+                success_msg += f"🤖 Model Yanıt: {'Başarılı' if test_results['model_responsive'] else 'Başarısız'}\n\n"
+                success_msg += f"Model: {self.system_state['current_model']}"
+                
+                messagebox.showinfo("Model Test Başarılı", success_msg)
+                logging.info(f"✅ AI Model test başarılı: {test_results}")
+                return True
+                
+            except Exception as detection_error:
+                error_msg = f"Model detection test hatası: {str(detection_error)}"
+                logging.error(f"❌ {error_msg}")
+                messagebox.showerror("Model Test Hatası", f"AI Model yanıt vermiyor:\n{error_msg}")
+                return False
+                
+        except Exception as e:
+            error_msg = f"Model test hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Test Hatası", error_msg)
+            return False
 
+    def save_user_settings(self, settings: Dict[str, Any]) -> bool:
+        """
+        Kullanıcı ayarlarını kaydet (Enhanced Settings için).
+        
+        Args:
+            settings: Kaydedilecek ayarlar
+            
+        Returns:
+            bool: Başarılı ise True
+        """
+        try:
+            if not self.current_user:
+                messagebox.showerror("Hata", "Kullanıcı girişi yapılmamış!")
+                return False
+            
+            logging.info(f"💾 Kullanıcı ayarları kaydediliyor: {len(settings)} ayar")
+            
+            # Database'e kaydet
+            save_result = self.db_manager.save_user_settings(
+                self.current_user["localId"], 
+                settings
+            )
+            
+            if save_result:
+                logging.info("✅ Kullanıcı ayarları başarıyla kaydedildi")
+                
+                # Tema değişikliği varsa uygula
+                if "theme" in settings and settings["theme"] != self.current_theme:
+                    old_theme = self.current_theme
+                    self.current_theme = settings["theme"]
+                    self._setup_enhanced_styles()
+                    logging.info(f"🎨 Tema değiştirildi: {old_theme} → {self.current_theme}")
+                
+                # AI model değişikliği varsa uygula
+                if ("selected_ai_model" in settings and 
+                    settings["selected_ai_model"] != self.system_state['current_model']):
+                    
+                    new_model = settings["selected_ai_model"]
+                    logging.info(f"🤖 AI Model ayarı değişti, uygulanıyor: {new_model}")
+                    
+                    # Model değiştirme işlemini arka planda yap
+                    def change_model():
+                        try:
+                            self.switch_ai_model(new_model)
+                        except Exception as model_error:
+                            logging.error(f"❌ Model değiştirme hatası: {model_error}")
+                    
+                    # UI thread'de çalıştır
+                    self.root.after(100, change_model)
+                
+                return True
+            else:
+                logging.error("❌ Kullanıcı ayarları kaydedilemedi")
+                messagebox.showerror("Kayıt Hatası", "Ayarlar kaydedilemedi!")
+                return False
+                
+        except Exception as e:
+            error_msg = f"Ayar kaydetme hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Kritik Hata", error_msg)
+            return False
 
-
-
-
-
-
-
-
-
+    def get_user_settings(self) -> Dict[str, Any]:
+        """
+        Kullanıcı ayarlarını getir (Enhanced Settings için).
+        
+        Returns:
+            Dict: Kullanıcı ayarları
+        """
+        try:
+            if not self.current_user:
+                return {}
+            
+            user_data = self.db_manager.get_user_data(self.current_user["localId"])
+            
+            if user_data and "settings" in user_data:
+                settings = user_data["settings"]
+                logging.info(f"📖 Kullanıcı ayarları yüklendi: {len(settings)} ayar")
+                return settings
+            else:
+                # Varsayılan ayarlar
+                default_settings = {
+                    "email_notification": True,
+                    "sms_notification": False,
+                    "fcm_notification": True,
+                    "phone_number": "",
+                    "dark_mode": False,
+                    "auto_brightness": True,
+                    "brightness_adjustment": 0,
+                    "contrast_adjustment": 1.0,
+                    "fall_sensitivity": "medium",
+                    "selected_ai_model": self.system_state.get('current_model', 'yolo11l-pose'),
+                    "theme": self.current_theme
+                }
+                
+                logging.info("📋 Varsayılan ayarlar döndürülüyor")
+                return default_settings
+                
+        except Exception as e:
+            logging.error(f"❌ Kullanıcı ayarları alınamadı: {str(e)}")
+            return {}
 
     def _on_enhanced_close(self):
         """Enhanced uygulama kapatma."""
@@ -1497,11 +1989,11 @@ if __name__ == "__main__":
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('guard_ai_v3.log', encoding='utf-8')
+            logging.FileHandler('guard_ai_v4.log', encoding='utf-8')
         ]
     )
     
-    logging.info("🚀 Guard AI Ultra v3.0 başlatılıyor...")
+    logging.info("🚀 Guard AI Ultra v4.0 başlatılıyor...")
     
     try:
         root = tk.Tk()

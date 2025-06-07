@@ -81,6 +81,19 @@
 # =======================================================================================
 
 
+# =======================================================================================
+# === PROGRAM AÇIKLAMASI ===
+# Bu program: AI destekli bir güvenlik/gözlem uygulamasında bulunan "Gelişmiş Ayarlar" ekranını tanımlar.
+# Ana işlevleri arasında:
+# - Kullanıcı ayarlarının yönetimi
+# - AI model seçimi ve indirme desteği (YOLO modelleri)
+# - Kamera ayarları (parlaklık, kontrast, otomatik aydınlatma)
+# - Düşme algılama hassasiyeti ayarları
+# - Bildirim tercihlerinin düzenlenmesi (E-posta, SMS, Mobil Bildirim)
+# - Tema (koyu/açık mod) özelleştirmesi
+# - ANLıK BİLDİRİM TEST ÖZELLİĞİ (YENİ!)
+# =======================================================================================
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
@@ -88,6 +101,9 @@ import logging
 import threading
 import time
 import glob
+import uuid
+import numpy as np
+from datetime import datetime
 from PIL import Image, ImageTk
 
 class EnhancedSettingsFrame(tk.Frame):
@@ -667,7 +683,7 @@ class EnhancedSettingsFrame(tk.Frame):
         test_btn.pack(pady=(10, 0))
 
     def _create_notification_card(self, parent):
-        """Bildirim ayarları kartı."""
+        """Bildirim ayarları kartı - YENİ: Test bildirimi özelliği eklendi."""
         card = self._create_card(parent, "🔔 Bildirim Ayarları")
         
         # E-posta bildirimi
@@ -716,17 +732,32 @@ class EnhancedSettingsFrame(tk.Frame):
                                    state="disabled" if not self.sms_notification_var.get() else "normal")
         self.phone_entry.pack(fill=tk.X, pady=(5, 0))
         
-        # Test bildirimi
-        test_btn = tk.Button(card,
-                            text="📧 Bildirimleri Test Et",
-                            font=("Segoe UI", 11),
-                            bg=self.colors['accent_secondary'],
-                            fg="#FFFFFF",
-                            relief=tk.FLAT,
-                            padx=15, pady=8,
-                            command=self._test_notifications,
-                            cursor="hand2")
-        test_btn.pack(pady=(15, 0))
+        # Test bildirimi - YENİ ÖZELLİK!
+        test_frame = tk.Frame(card, bg=self.colors['bg_secondary'])
+        test_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # Test butonları yan yana
+        instant_test_btn = tk.Button(test_frame,
+                                    text="⚡ Anında Test Bildirimi",
+                                    font=("Segoe UI", 11, "bold"),
+                                    bg=self.colors['accent_warning'],
+                                    fg="#FFFFFF",
+                                    relief=tk.FLAT,
+                                    padx=15, pady=8,
+                                    command=self._send_instant_test_notification,
+                                    cursor="hand2")
+        instant_test_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        full_test_btn = tk.Button(test_frame,
+                                 text="📧 Tam Test",
+                                 font=("Segoe UI", 11),
+                                 bg=self.colors['accent_secondary'],
+                                 fg="#FFFFFF",
+                                 relief=tk.FLAT,
+                                 padx=15, pady=8,
+                                 command=self._test_notifications,
+                                 cursor="hand2")
+        full_test_btn.pack(side=tk.LEFT)
 
     def _create_fall_detection_card(self, parent):
         """Düşme algılama ayarları kartı."""
@@ -1092,8 +1123,150 @@ class EnhancedSettingsFrame(tk.Frame):
         self.phone_entry.config(state="normal" if sms_enabled else "disabled")
         self._set_modified()
 
+    def _send_instant_test_notification(self):
+        """
+        ANINDA TEST BİLDİRİMİ GÖNDER - YENİ ÖZELLİK!
+        Mevcut ayarlara göre anında test bildirimi gönderir.
+        """
+        try:
+            logging.info("⚡ Anında test bildirimi gönderiliyor...")
+            
+            # NotificationManager'ı al
+            notification_manager = self._get_notification_manager()
+            if not notification_manager:
+                messagebox.showerror("Hata", "Bildirim sistemi bulunamadı!")
+                return
+            
+            # Test olayı verisi oluştur
+            test_event_data = {
+                "id": str(uuid.uuid4()),
+                "user_id": self.user["localId"],
+                "timestamp": time.time(),
+                "confidence": 0.95,  # %95 güvenilirlik
+                "image_url": None,  # Test için resim yok
+                "detection_method": "TEST_NOTIFICATION",
+                "camera_id": "test_camera",
+                "track_id": 999,
+                "test": True,  # Bu bir test bildirimi
+                "enhanced_summary": "Bu bir test bildirimidir - Anında gönderim",
+                "severity_level": "medium"
+            }
+            
+            # Test screenshot oluştur (basit rengarenk görüntü)
+            test_screenshot = self._create_test_screenshot()
+            
+            # Kullanıcı ayarlarını notification manager'a aktar
+            current_user_data = {
+                "localId": self.user["localId"],
+                "email": self.user.get("email", ""),
+                "email_notification": self.email_notification_var.get(),
+                "fcm_notification": self.fcm_notification_var.get(),
+                "sms_notification": self.sms_notification_var.get(),
+                "phone_number": self.phone_var.get().strip(),
+                "fcmToken": self.user_data.get("fcmToken"),  # FCM token'ı
+                "settings": {
+                    "email_notification": self.email_notification_var.get(),
+                    "fcm_notification": self.fcm_notification_var.get(),
+                    "sms_notification": self.sms_notification_var.get(),
+                    "phone_number": self.phone_var.get().strip()
+                }
+            }
+            
+            # NotificationManager'ı güncelle
+            notification_manager.update_user_data(current_user_data)
+            
+            # Bildirimi gönder
+            success = notification_manager.send_notifications(test_event_data, test_screenshot)
+            
+            if success:
+                # Aktif kanalları belirle
+                active_channels = []
+                if self.email_notification_var.get():
+                    active_channels.append("E-posta")
+                if self.fcm_notification_var.get():
+                    active_channels.append("Push Bildirimi")
+                if self.sms_notification_var.get() and self.phone_var.get().strip():
+                    active_channels.append("SMS")
+                
+                messagebox.showinfo(
+                    "Test Bildirimi Başarılı! ⚡",
+                    f"Anında test bildirimi gönderildi!\n\n"
+                    f"📱 Aktif Kanallar ({len(active_channels)}):\n"
+                    f"• {chr(10).join(active_channels) if active_channels else 'Varsayılan kanal'}\n\n"
+                    f"⏰ Gönderim Zamanı: {datetime.now().strftime('%H:%M:%S')}\n"
+                    f"🎯 Test ID: {test_event_data['id'][:8]}...\n\n"
+                    "Bildirimlerinizi kontrol edin!"
+                )
+                
+                logging.info(f"✅ Anında test bildirimi başarılı: {active_channels}")
+                
+            else:
+                messagebox.showerror(
+                    "Test Bildirimi Başarısız!",
+                    "Anında test bildirimi gönderilemedi!\n\n"
+                    "Olası nedenler:\n"
+                    "• İnternet bağlantısı problemi\n"
+                    "• Bildirim ayarları eksik\n"
+                    "• SMTP/SMS servisleri yapılandırılmamış\n\n"
+                    "Lütfen ayarlarınızı kontrol edin."
+                )
+                logging.error("❌ Anında test bildirimi başarısız")
+            
+        except Exception as e:
+            error_msg = f"Anında test bildirimi hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Test Hatası", error_msg)
+
+    def _create_test_screenshot(self):
+        """Test için renkli screenshot oluştur."""
+        try:
+            # 640x480 renkli test görüntüsü
+            test_image = np.zeros((480, 640, 3), dtype=np.uint8)
+            
+            # Renkli desenler ekle
+            test_image[0:160, :] = [255, 100, 100]  # Kırmızı
+            test_image[160:320, :] = [100, 255, 100]  # Yeşil  
+            test_image[320:480, :] = [100, 100, 255]  # Mavi
+            
+            # Test metni ekle (OpenCV gerekli)
+            try:
+                import cv2
+                cv2.putText(test_image, "TEST BILDIRIMI", (150, 240), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(test_image, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+                           (180, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(test_image, "Guard AI Test Notification", 
+                           (150, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            except ImportError:
+                pass  # OpenCV yoksa sadece renkli bloklar
+            
+            return test_image
+            
+        except Exception as e:
+            logging.error(f"Test screenshot oluşturma hatası: {e}")
+            # Basit siyah görüntü döndür
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+
+    def _get_notification_manager(self):
+        """NotificationManager instance'ını al."""
+        try:
+            # Ana uygulama widget'ını bul
+            widget = self.master
+            while widget:
+                if hasattr(widget, 'notification_manager'):
+                    return widget.notification_manager
+                widget = widget.master
+            
+            # Direkt NotificationManager sınıfını import edip instance al
+            from core.notification import NotificationManager
+            return NotificationManager.get_instance(self.user_data)
+            
+        except Exception as e:
+            logging.error(f"NotificationManager alınamadı: {e}")
+            return None
+
     def _test_notifications(self):
-        """Bildirimleri test et."""
+        """Bildirimleri test et (eski fonksiyon - şimdi tam test yapar)."""
         try:
             active_notifications = []
             
@@ -1108,22 +1281,18 @@ class EnhancedSettingsFrame(tk.Frame):
                 messagebox.showwarning("Uyarı", "Hiçbir bildirim türü aktif değil.")
                 return
             
-            # Test bildirimi simülasyonu
+            # Test bildirimi onayı
             test_result = messagebox.askyesno(
-                "Bildirim Testi",
+                "Tam Bildirim Testi",
                 f"Aşağıdaki bildirim türleri test edilecek:\n\n"
                 f"• {chr(10).join(active_notifications)}\n\n"
+                "Bu tam bir test olup gerçek bildirim sistemini kullanır.\n"
                 "Test bildirimi göndermek istiyor musunuz?"
             )
             
             if test_result:
-                # Gerçek test implementasyonu burada olacak
-                messagebox.showinfo(
-                    "Test Tamamlandı",
-                    f"Test bildirimi gönderildi!\n\n"
-                    f"Aktif kanallar: {len(active_notifications)}\n"
-                    f"• {chr(10).join(active_notifications)}"
-                )
+                # Anında test bildirimi fonksiyonunu çağır
+                self._send_instant_test_notification()
             
         except Exception as e:
             messagebox.showerror("Test Hatası", f"Bildirim testi yapılamadı:\n{str(e)}")
@@ -1195,7 +1364,7 @@ class EnhancedSettingsFrame(tk.Frame):
             logging.info(f"Settings: {settings}")
             logging.info(f"User data: {user_data}")
             
-            # Veritabanında güncelle
+                        # Veritabanında güncelle
             user_update_success = self.db_manager.update_user_data(self.user["localId"], user_data)
             settings_update_success = self.db_manager.save_user_settings(self.user["localId"], settings)
             
@@ -1206,11 +1375,20 @@ class EnhancedSettingsFrame(tk.Frame):
                 # Kamera ayarlarını uygula
                 self._apply_camera_settings()
                 
+                # Ana uygulamaya ayarları aktar (AI model değişikliği için)
+                app_instance = self._get_app_instance()
+                if app_instance and hasattr(app_instance, 'save_user_settings'):
+                    app_instance.save_user_settings(settings)
+                
                 self.is_modified = False
                 
                 messagebox.showinfo(
                     "Başarı",
                     "Tüm ayarlarınız başarıyla kaydedildi!\n\n"
+                    "✅ Kullanıcı bilgileri güncellendi\n"
+                    "✅ Bildirim tercihleri kaydedildi\n"
+                    "✅ Kamera ayarları uygulandı\n"
+                    "✅ AI model ayarları güncellendi\n\n"
                     "Değişiklikler aktif oturum için uygulandı."
                 )
                 
@@ -1219,7 +1397,9 @@ class EnhancedSettingsFrame(tk.Frame):
                 messagebox.showerror(
                     "Hata",
                     "Ayarlar kaydedilirken bir hata oluştu.\n"
-                    "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
+                    "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin.\n\n"
+                    f"Kullanıcı güncelleme: {'✅' if user_update_success else '❌'}\n"
+                    f"Ayarlar güncelleme: {'✅' if settings_update_success else '❌'}"
                 )
             
         except Exception as e:
@@ -1246,8 +1426,14 @@ class EnhancedSettingsFrame(tk.Frame):
                 return
             # Hayır - Kaydetme, devam et
         
+        try:
+            # Widget temizliği
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.unbind_all("<MouseWheel>")
+        except:
+            pass
+        
         self.back_fn()
-
 
 
 # Backward compatibility
@@ -1258,20 +1444,62 @@ if __name__ == "__main__":
     # Test
     root = tk.Tk()
     root.title("Enhanced Settings Test")
-    root.geometry("900x700")
+    root.geometry("1200x800")
     
     # Mock data
     user = {"localId": "test", "displayName": "Test User", "email": "test@example.com"}
     
     class MockDBManager:
-        def get_user_data(self, user_id): return {"settings": {}}
-        def update_user_data(self, user_id, data): pass
-        def save_user_settings(self, user_id, settings): pass
+        def get_user_data(self, user_id): 
+            return {
+                "settings": {
+                    "email_notification": True,
+                    "fcm_notification": True,
+                    "sms_notification": False,
+                    "phone_number": "",
+                    "dark_mode": False,
+                    "auto_brightness": True,
+                    "brightness_adjustment": 0,
+                    "contrast_adjustment": 1.0,
+                    "fall_sensitivity": "medium",
+                    "selected_ai_model": "yolo11l-pose"
+                }
+            }
+        def update_user_data(self, user_id, data): 
+            print(f"MockDB: User data updated for {user_id}: {data}")
+            return True
+        def save_user_settings(self, user_id, settings): 
+            print(f"MockDB: Settings saved for {user_id}: {settings}")
+            return True
+    
+    class MockFallDetector:
+        def __init__(self):
+            self.model_path = "/path/to/yolo11l-pose.pt"
+        
+        def get_enhanced_model_info(self):
+            return {
+                "model_name": "yolo11l-pose",
+                "model_loaded": True,
+                "device": "CPU",
+                "keypoints_count": 17
+            }
+    
+    def test_back():
+        print("Back button pressed")
+        root.quit()
     
     settings = EnhancedSettingsFrame(
         root, user, MockDBManager(), 
-        lambda: print("Back pressed"), None
+        test_back, MockFallDetector()
     )
     settings.pack(fill=tk.BOTH, expand=True)
+    
+    print("🧪 Enhanced Settings Test Başlatıldı")
+    print("✨ YENİ ÖZELLİKLER:")
+    print("   ⚡ Anında Test Bildirimi")
+    print("   📧 Tam Bildirim Testi") 
+    print("   🎨 Gelişmiş UI/UX")
+    print("   🔧 Model Yönetimi")
+    print("   📱 Mobil Push Desteği")
     
     root.mainloop()
