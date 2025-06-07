@@ -1,16 +1,103 @@
 # =======================================================================================
-# 📄 Dosya Adı: dashboard.py
-# 📁 Konum: guard_pc_app/ui/dashboard.py
-# 📌 Açıklama:
-# optimize edilmiş dashboard - TEK KAMERA ALANI.
-# Ayarlar ve olay geçmişi sağ üst köşede, sol panel yazıları daha görünür.
-# Kameralar liste şeklinde seçilir, yüksek performans optimizasyonları.
-# 🔗 Bağlantılı Dosyalar:
-# - app.py (ana uygulama)
-# - core/camera.py (kamera yönetimi)
-# - core/fall_detection.py (YOLOv11 düşme algılama)
-# - core/stream_server.py (video akışı)
-# - config/settings.py (tema ve ayarlar)
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: dashboard.py 
+# Konum: pc/ui/dashboard.py
+# Açıklama:
+# Guard AI uygulamasının ana kontrol paneli olan DashboardFrame sınıfını içerir.
+# Gerçek zamanlı kamera görüntüsünü gösterir, sistem durumunu takip eder,
+# düşme algılandığında kullanıcıyı bilgilendirir ve temel ayarları sağlar.
+#
+# Bu dosya, AI destekli güvenlik sisteminin en kritik UI bileşenlerinden biridir.
+
+# === ÖZELLİKLER ===
+# - Gerçek zamanlı kamera görüntüsü
+# - Düşme algılama bildirimleri
+# - Sistem durumu göstergeleri (FPS, bağlantı durumu)
+# - Kamera seçimi ve tam ekran mod desteği
+# - Performans izleme (uptime, bellek kullanımı)
+# - Ayarlar ve çıkış butonları
+
+# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
+# - tkinter: Arayüz oluşturma (kamera görüntüleri, durum panelleri)
+# - OpenCV (cv2): Kamera görüntüsünü işleme ve gösterme
+# - NumPy: Görsel verilerin manipülasyonu
+# - threading: Uzun süren işlemler için arka plan çalıştırma
+# - logging: Hata ve işlem kayıtları tutma
+# - datetime / time: Zaman damgası ve performans ölçümü
+# - collections.deque: FPS ve işlem süresi hesaplaması
+
+# === SINIFLAR ===
+# - DashboardFrame: Ana kontrol paneli sınıfı (tk.Frame türemiştir)
+
+# === TEMEL FONKSİYONLAR ===
+# - __init__: UI bileşenlerini başlatır, stil tanımlar, kamera bağlantısını kurar
+# - _create_enhanced_ui: Ana UI elemanlarını oluşturur (kamera alanı, menü, istatistikler)
+# - _update_camera_display: Kamera görüntüsünü güncellemek için çalışan asenkron fonksiyon
+# - _ultra_update_camera_display: Ultra yüksek performanslı kamera güncelleme motoru
+# - _handle_fall_detection: Düşme algılandığında çağrılır, uyarı gösterir
+# - _toggle_system: Sistemi başlatır/durdurur
+# - _select_camera / _next_camera / _previous_camera: Kamera geçişleri
+# - toggle_fullscreen: Tam ekran moduna geçiş
+# - _create_enhanced_card: UI kartları oluşturmak için yardımcı fonksiyon
+# - _update_enhanced_ui_info: FPS, bağlantı durumu gibi bilgileri günceller
+# - _add_enhanced_overlay: Görüntü üzerine ekstra bilgi yazısı ekler
+# - _create_enhanced_last_event_section: Son düşme olayı bilgisini gösterir
+# - on_destroy: Temizlik işlemleri (kamerayı durdurma, thread'leri sonlandırma)
+
+# === GÖRSEL İŞLEME ===
+# - Kamera görüntüsünün boyutunu optimize eder
+# - En yüksek kaliteli yeniden boyutlandırmayı kullanır (INTER_LINEAR)
+# - Üzerine overlay bilgileri (FPS, kamera ID, tarih/saat) eklenir
+
+# === DÜŞME ALGILAMA ===
+# - Düşme algılandığında kırmızı uyarı mesajı gösterilir
+# - 5 saniye sonra otomatik olarak kaybolur
+# - Her algılama sonrası sayaç artırılır
+
+# === PERFORMANS İZLEME ===
+# - Ortalama FPS
+# - Bellek kullanımı
+# - Çalışma süresi (uptime)
+# - Toplam düşme sayısı
+# - Aktif kamera sayısı
+
+# === TAM EKRAN DESTEĞİ ===
+# - F11 tuşu ile tam ekran moduna geçebilir
+# - Yeniden boyutlandırma sırasında görüntü kalitesi korunur
+
+# === MENÜ VE AYARLAR ===
+# - Güvenli çıkış butonu
+# - Ayarlar menüsüne hızlı erişim
+# - Geçmiş olaylara erişim
+
+# === KAMERA DESTEĞİ ===
+# - Çoklu kamera yönetimi
+# - Otomatik bağlantı kontrolü
+# - Kamera seçim butonları
+# - Bağlantı durumu göstergesi (Bağlı/Red)
+
+# === THREAD VE GERÇEK ZAMANLI İŞLEME ===
+# - Kamera görüntüsünü ayrı bir thread'de işler
+# - AI modeli yüklüyse gerçek zamanlı analiz yapılır
+# - Display hızı (~40 FPS) dinamik olarak kontrol edilir
+
+# === HATA YÖNETİMİ ===
+# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
+# - Kullanıcıya anlamlı mesajlar gösterilir
+# - Kamera bağlantısı kesildiğinde bilgilendirme yapılır
+
+# === LOGGING ===
+# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
+# - Log formatı: Tarih/Zaman [Seviye] Mesaj
+
+# === TEST AMAÇLI KULLANIM ===
+# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
+# - Mock DB veya test ortamı ile çalıştırılabilir
+
+# === NOTLAR ===
+# - Bu dosya, app.py ve settings.py ile entegre çalışır
+# - UI stilleri temasına göre değişkenlik gösterebilir
+# - FallDetector sınıfı ile AI entegrasyonu sağlanmıştır
 # =======================================================================================
 
 import tkinter as tk
