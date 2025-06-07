@@ -1,9 +1,85 @@
 # =======================================================================================
-# 📄 Dosya Adı: camera.py 
-# 📁 Konum: core/camera.py
-# 📌 Açıklama:
-# Yüksek performanslı kamera sistemi - akışlı video, parlaklık kontrolü
-# Frame buffering, async processing, dynamic quality adjustment
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: camera.py (ULTRA ENHANCED CAMERA ENGINE)
+# Konum: pc/core/camera.py
+# Açıklama:
+# Bu dosya, Guard AI uygulamasında kullanılan gelişmiş kamera motorunu tanımlar.
+# Gerçek zamanlı kamera görüntüsünü alır, işleme tabi tutar, parlaklık ve kontrast
+# kontrolü sağlar ve yüksek performanslı video akışı sunar.
+#
+# Çoklu backend desteği (cv2.CAP_DSHOW, cv2.CAP_V4L2, vs.) ile uyumludur.
+
+# === ÖZELLİKLER ===
+# - Gerçek zamanlı kamera akışı
+# - Otomatik ve manuel parlaklık/kontrast kontrolü
+# - Frame atlama (performance optimizasyonu)
+# - Dinamik kalite ayarı (yüksek CPU kullanımında)
+# - Yeniden bağlantı sistemi (bağlantı kesilirse otomatik tekrar bağlanır)
+# - Performans izleme (FPS, buffer boyutu, ortalama parlaklık)
+# - Farklı backend destekleri (DSHOW, V4L2, vb.)
+
+# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
+# - cv2 (OpenCV): Kamera görüntüsünü alma ve işleme
+# - numpy: Görsel verilerin analizi için
+# - threading: Arka planda çalışan kamera döngüsü
+# - logging: Hata ve işlem kayıtları tutma
+# - time / queue / deque: Zamanlama ve buffer yönetimi
+# - platform: Sistem bilgisi almak için
+
+# === SINIFLAR ===
+# - Camera: Gelişmiş kamera kontrol sınıfı (threaded yapıda çalışır)
+
+# === TEMEL FONKSİYONLAR ===
+# - __init__: Kamera bağlantısı başlatılır, varsayılan ayarlar yapılır
+# - start: Kamera akışını başlatır
+# - stop: Kamera akışını durdurur
+# - get_frame: İşlenmiş bir frame döner
+# - _capture_loop: Ana kamera yakalama döngüsü
+# - _analyze_and_adjust_brightness: Parlaklık analizi ve gerekirse ayar yapar
+# - _apply_brightness_adjustments: Frame’e yazılım bazlı parlaklık/kontrast uygular
+# - _fast_reconnect: Bağlantı koparsa hızlı yeniden bağlanmayı dener
+# - set_brightness / set_contrast: Manuel parlaklık ve kontrast ayarları
+# - get_performance_stats: FPS, buffer boyutu, parlaklık gibi istatistikleri döner
+
+# === PARLAKLIK KONTROLÜ ===
+# - Görüntünün gri tonlamaya çevrilmesiyle ortalama parlaklık ölçülür
+# - Optimal parlaklık aralığı: 80-170 (0-255 arasında)
+# - Çok parlaksa otomatik olarak azaltılır
+# - Çok karanlıkssa otomatik olarak artırılır
+
+# === GERÇEK ZAMANLI İŞLEME ===
+# - Her frame ayrı ayrı işlenir
+# - Kalite dinamik olarak ayarlanabilir
+# - Yüksek CPU yüküne karşı frame atlanabilir
+
+# === BACKEND DESTEĞİ ===
+# - Windows: cv2.CAP_DSHOW
+# - Linux: cv2.CAP_V4L2
+# - Diğer platformlar için varsayılan backend kullanılır
+
+# === PERFORMANS İZLEME ===
+# - Ortalama FPS
+# - Buffer boyutu
+# - Son 10 frame’in işlem süresi
+# - Geçerli parlaklık/kontrast değerleri
+
+# === HATA YÖNETİMİ ===
+# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
+# - Kullanıcıya anlamlı mesajlar gösterilir
+# - Bağlantı hatası durumunda uyarı verilir
+
+# === LOGGING ===
+# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
+# - Log formatı: Tarih/Zaman [Seviye] Mesaj
+
+# === TEST AMAÇLI KULLANIM ===
+# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
+# - Basit test modunda FPS ve parlaklık değerleri terminale yazdırılır
+
+# === NOTLAR ===
+# - Bu dosya, app.py, dashboard.py ve settings.py ile entegre çalışır
+# - Yüksek performans için thread’de çalıştırılır
+# - Ayarlar ana uygulama üzerinden güncellenebilir
 # =======================================================================================
 
 import cv2

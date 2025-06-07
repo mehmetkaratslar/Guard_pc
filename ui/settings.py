@@ -80,6 +80,7 @@
 # - Bu sayede dosya doğrudan çalıştırıldığında bir test arayüzü açılır (MockDBManager ile).
 # =======================================================================================
 
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
@@ -108,10 +109,14 @@ class EnhancedSettingsFrame(tk.Frame):
         self.back_fn = back_fn
         self.fall_detector = fall_detector
         
+        # Canvas referansı scroll hatası için
+        self.canvas = None
+        
         # Kullanıcı ayarlarını yükle
         try:
             self.user_data = self.db_manager.get_user_data(user["localId"])
             self.settings = self.user_data.get("settings", {}) if self.user_data else {}
+            logging.info(f"Kullanıcı ayarları yüklendi: {len(self.settings)} ayar")
         except Exception as e:
             logging.error(f"Kullanıcı ayarları yükleme hatası: {e}")
             self.user_data = {}
@@ -139,6 +144,16 @@ class EnhancedSettingsFrame(tk.Frame):
         
         # Kamera referansları (ana uygulamadan alınacak)
         self.cameras = self._get_camera_references()
+
+    def destroy(self):
+        """Widget'ı temizle."""
+        try:
+            # Mouse wheel binding'ini temizle
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.unbind_all("<MouseWheel>")
+        except:
+            pass
+        super().destroy()
 
     def _scan_available_models(self):
         """Mevcut model dosyalarını tara."""
@@ -374,50 +389,58 @@ class EnhancedSettingsFrame(tk.Frame):
     def _create_scrollable_content(self):
         """Scrollable içerik oluştur."""
         # Canvas ve scrollbar
-        canvas = tk.Canvas(self, bg=self.colors['bg_primary'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_primary'])
+        self.canvas = tk.Canvas(self, bg=self.colors['bg_primary'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        scrollable_frame = tk.Frame(self.canvas, bg=self.colors['bg_primary'])
         
         scrollable_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
         
         # Grid
-        canvas.grid(row=1, column=0, sticky="nsew")
+        self.canvas.grid(row=1, column=0, sticky="nsew")
         scrollbar.grid(row=1, column=1, sticky="ns")
         
         # İçerik kartları
         self._create_content_cards(scrollable_frame)
         
-        # Mouse wheel scroll
+        # Mouse wheel scroll - güvenli versiyon
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            try:
+                if self.canvas and self.canvas.winfo_exists():
+                    self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except tk.TclError:
+                pass  # Widget destroyed, ignore
         
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
     def _create_content_cards(self, parent):
-        """İçerik kartlarını oluştur."""
-        # Kullanıcı bilgileri
-        self._create_user_info_card(parent)
+        """İçerik kartlarını 2 sütunlu olarak oluştur (sağda: Düşme Algılama + Tema)"""
+        # Grid yapısı oluştur
+        parent.columnconfigure(0, weight=1)
+        parent.columnconfigure(1, weight=1)
+
+        # Sol frame (sütun 0)
+        sol_frame = tk.Frame(parent, bg=self.colors['bg_primary'])
+        sol_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        # Sağ frame (sütun 1)
+        sag_frame = tk.Frame(parent, bg=self.colors['bg_primary'])
+        sag_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        # Sol sütuna ana ayarlar
+        self._create_user_info_card(sol_frame)
+        self._create_ai_model_card(sol_frame)
+        self._create_camera_settings_card(sol_frame)
         
-        # AI Model yönetimi
-        self._create_ai_model_card(parent)
-        
-        # Kamera ayarları
-        self._create_camera_settings_card(parent)
-        
-        # Düşme algılama ayarları
-        self._create_fall_detection_card(parent)
-        
-        # Bildirim ayarları
-        self._create_notification_card(parent)
-        
-        # Tema ve görünüm
-        self._create_appearance_card(parent)
+
+        # Sağ sütuna: Düşme Algılama + Tema
+        self._create_fall_detection_card(sag_frame)
+        self._create_appearance_card(sag_frame)
+        self._create_notification_card(sag_frame)
 
     def _create_user_info_card(self, parent):
         """Kullanıcı bilgileri kartı."""
@@ -436,10 +459,15 @@ class EnhancedSettingsFrame(tk.Frame):
         # Mevcut model bilgisi
         if self.fall_detector:
             try:
-                model_info = self.fall_detector.get_enhanced_model_info()
-                current_model = model_info.get('model_name', 'Bilinmiyor')
-                model_status = "🟢 Yüklü" if model_info.get('model_loaded') else "🔴 Yüklenmedi"
-            except:
+                if hasattr(self.fall_detector, 'get_enhanced_model_info'):
+                    model_info = self.fall_detector.get_enhanced_model_info()
+                    current_model = model_info.get('model_name', 'Bilinmiyor')
+                    model_status = "🟢 Yüklü" if model_info.get('model_loaded') else "🔴 Yüklenmedi"
+                else:
+                    current_model = self._get_current_model_name()
+                    model_status = "🟢 Aktif"
+            except Exception as e:
+                logging.error(f"Model bilgisi alınamadı: {e}")
                 current_model = 'Hata'
                 model_status = "❌ Hata"
         else:
@@ -638,35 +666,6 @@ class EnhancedSettingsFrame(tk.Frame):
                             cursor="hand2")
         test_btn.pack(pady=(10, 0))
 
-    def _create_fall_detection_card(self, parent):
-        """Düşme algılama ayarları kartı."""
-        card = self._create_card(parent, "🚨 Düşme Algılama Ayarları")
-        
-        # Hassasiyet seviyesi
-        tk.Label(card,
-                text="Algılama Hassasiyeti:",
-                font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'],
-                bg=self.colors['bg_secondary']).pack(anchor=tk.W, pady=(0, 10))
-        
-        sensitivity_levels = [
-            ("low", "Düşük - Az uyarı, yüksek doğruluk"),
-            ("medium", "Orta - Dengeli (Önerilen)"),
-            ("high", "Yüksek - Daha fazla uyarı"),
-            ("ultra", "Ultra - Maksimum hassasiyet")
-        ]
-        
-        for value, description in sensitivity_levels:
-            radio = tk.Radiobutton(card,
-                                  text=description,
-                                  variable=self.sensitivity_var,
-                                  value=value,
-                                  font=("Segoe UI", 10),
-                                  fg=self.colors['text_primary'],
-                                  bg=self.colors['bg_secondary'],
-                                  command=lambda: self._set_modified())
-            radio.pack(anchor=tk.W, pady=2)
-
     def _create_notification_card(self, parent):
         """Bildirim ayarları kartı."""
         card = self._create_card(parent, "🔔 Bildirim Ayarları")
@@ -728,6 +727,35 @@ class EnhancedSettingsFrame(tk.Frame):
                             command=self._test_notifications,
                             cursor="hand2")
         test_btn.pack(pady=(15, 0))
+
+    def _create_fall_detection_card(self, parent):
+        """Düşme algılama ayarları kartı."""
+        card = self._create_card(parent, "🚨 Düşme Algılama Ayarları")
+        
+        # Hassasiyet seviyesi
+        tk.Label(card,
+                text="Algılama Hassasiyeti:",
+                font=("Segoe UI", 12, "bold"),
+                fg=self.colors['text_primary'],
+                bg=self.colors['bg_secondary']).pack(anchor=tk.W, pady=(0, 10))
+        
+        sensitivity_levels = [
+            ("low", "Düşük - Az uyarı, yüksek doğruluk"),
+            ("medium", "Orta - Dengeli (Önerilen)"),
+            ("high", "Yüksek - Daha fazla uyarı"),
+            ("ultra", "Ultra - Maksimum hassasiyet")
+        ]
+        
+        for value, description in sensitivity_levels:
+            radio = tk.Radiobutton(card,
+                                  text=description,
+                                  variable=self.sensitivity_var,
+                                  value=value,
+                                  font=("Segoe UI", 10),
+                                  fg=self.colors['text_primary'],
+                                  bg=self.colors['bg_secondary'],
+                                  command=lambda: self._set_modified())
+            radio.pack(anchor=tk.W, pady=2)
 
     def _create_appearance_card(self, parent):
         """Görünüm ayarları kartı."""
@@ -842,7 +870,17 @@ class EnhancedSettingsFrame(tk.Frame):
                 else:
                     messagebox.showerror("Hata", "Model değiştirilemedi!")
             else:
-                messagebox.showerror("Hata", "Ana uygulama referansı bulunamadı.")
+                # Direkt fall_detector üzerinden değiştirmeyi dene
+                if self.fall_detector and hasattr(self.fall_detector, 'load_model'):
+                    model_path = self.available_models[selected_model]['path']
+                    success = self.fall_detector.load_model(model_path)
+                    if success:
+                        self._set_modified()
+                        messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {selected_model}")
+                    else:
+                        messagebox.showerror("Hata", "Model yüklenemedi!")
+                else:
+                    messagebox.showerror("Hata", "Model değiştirme fonksiyonu bulunamadı.")
                 
         except Exception as e:
             logging.error(f"Model değiştirme hatası: {e}")
@@ -1101,6 +1139,10 @@ class EnhancedSettingsFrame(tk.Frame):
     def _refresh_ui(self):
         """UI'yi yenile."""
         try:
+            # Mevcut mouse wheel binding'ini temizle
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.unbind_all("<MouseWheel>")
+            
             # Mevcut widget'ları temizle
             for widget in self.winfo_children():
                 widget.destroy()
@@ -1129,10 +1171,6 @@ class EnhancedSettingsFrame(tk.Frame):
 
     def _save_settings(self):
         """Ayarları kaydet."""
-        if not self.is_modified:
-            self._on_back()
-            return
-        
         try:
             # Yeni ayarları hazırla
             settings = {
@@ -1153,29 +1191,43 @@ class EnhancedSettingsFrame(tk.Frame):
                 "displayName": self.name_var.get().strip()
             }
             
+            logging.info(f"Ayarlar kaydediliyor - User: {self.user['localId']}")
+            logging.info(f"Settings: {settings}")
+            logging.info(f"User data: {user_data}")
+            
             # Veritabanında güncelle
-            self.db_manager.update_user_data(self.user["localId"], user_data)
-            self.db_manager.save_user_settings(self.user["localId"], settings)
+            user_update_success = self.db_manager.update_user_data(self.user["localId"], user_data)
+            settings_update_success = self.db_manager.save_user_settings(self.user["localId"], settings)
             
-            # Kullanıcı nesnesini güncelle
-            self.user["displayName"] = user_data["displayName"]
-            
-            # Kamera ayarlarını uygula
-            self._apply_camera_settings()
-            
-            messagebox.showinfo(
-                "Başarı",
-                "Tüm ayarlarınız başarıyla kaydedildi!\n\n"
-                "Değişiklikler aktif oturum için uygulandı."
-            )
-            
-            self._on_back()
+            if user_update_success and settings_update_success:
+                # Kullanıcı nesnesini güncelle
+                self.user["displayName"] = user_data["displayName"]
+                
+                # Kamera ayarlarını uygula
+                self._apply_camera_settings()
+                
+                self.is_modified = False
+                
+                messagebox.showinfo(
+                    "Başarı",
+                    "Tüm ayarlarınız başarıyla kaydedildi!\n\n"
+                    "Değişiklikler aktif oturum için uygulandı."
+                )
+                
+                self._on_back()
+            else:
+                messagebox.showerror(
+                    "Hata",
+                    "Ayarlar kaydedilirken bir hata oluştu.\n"
+                    "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
+                )
             
         except Exception as e:
             logging.error(f"Ayarlar kaydetme hatası: {e}")
             messagebox.showerror(
                 "Hata",
-                f"Ayarlar kaydedilirken hata oluştu:\n{str(e)}"
+                f"Ayarlar kaydedilirken hata oluştu:\n{str(e)}\n\n"
+                "Ayarlar yerel depolamaya kaydedilmeye çalışılacak."
             )
 
     def _on_back(self):
@@ -1195,6 +1247,7 @@ class EnhancedSettingsFrame(tk.Frame):
             # Hayır - Kaydetme, devam et
         
         self.back_fn()
+
 
 
 # Backward compatibility

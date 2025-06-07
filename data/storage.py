@@ -1,4 +1,82 @@
-#pc/data/storage.py
+# =======================================================================================
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: storage.py (FIREBASE STORAGE VE YEREL GÖRSEL DEPOLAMA)
+# Konum: guard_pc_app/data/storage.py
+# Açıklama:
+# Bu sınıf, Guard AI uygulamasında düşme olayları sırasında alınan ekran görüntülerinin 
+# Firebase Cloud Storage ve yerel disk üzerinde saklanması, alınması ve silinmesi işlemlerini yönetir.
+#
+# Uygulama çevrimdışıyken bile görüntüleri geçici olarak yerel olarak saklayabilir,
+# internet bağlantısı tekrar sağlandığında buluta senkronize edebilir.
+
+# === ÖZELLİKLER ===
+# - Firebase Storage entegrasyonu (görüntü yükleme/indirme)
+# - Yerel disk desteği (çevrimdışı işlemeye izin verir)
+# - Görüntü URL oluşturma (signed URL veya yerel yol)
+# - Ekran görüntüsünü listeleme/silme işlemleri
+# - Bağlantı testi (Storage erişilebilirliği kontrolü)
+
+# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
+# - logging: Hata ve işlem kayıtları tutma
+# - firebase_admin.storage: Firebase Storage erişimi
+# - cv2 (OpenCV): Görüntü işleme ve JPEG formatına dönüştürme
+# - numpy: Görsel verilerin manipülasyonu
+# - os / tempfile: Yerel dosya yönetimi
+# - datetime: Signed URL süresi için zaman damgası
+
+# === SINIFLAR ===
+# - ScreenshotStorageManager: Firebase Storage ve yerel depolama işlemleri için ana sınıf
+
+# === TEMEL FONKSİYONLAR ===
+# - save_screenshot: Düşme anında alınan ekran görüntüsünü kaydeder (yerel ya da uzak)
+# - get_screenshot_url: Belirli bir düşme olayının ekran görüntüsünün URL'sini döndürür
+# - download_screenshot: Görüntüyü indirip OpenCV formatında döner
+# - list_all_screenshots: Kullanıcının tüm ekran görüntülerini listeler
+# - delete_screenshot: Belirli bir ekran görüntüsünü siler
+# - test_connection: Firebase Storage bağlantısını test eder
+
+# === VERİ DEPOLAMA MEKANİZMALARI ===
+# 1. FIREBASE STORAGE:
+#    - Ana depolama alanı
+#    - Gerçek zamanlı erişim
+#    - Birden fazla cihaz arasında senkronizasyon
+#    - Signed URL ile güvenli erişim
+# 2. YEREL DEPOLAMA:
+#    - Çevrimdışı modda kullanılabilir
+#    - Geçici yedekleme mekanizması
+#    - Otomatik senkronizasyon destekli
+
+# === GÖRSEL İŞLEME ===
+# - Görüntü OpenCV ile işlenir (JPEG formatında sıkıştırılır)
+# - Yerel olarak `user_id/event_id.jpg` şeklinde saklanır
+# - Firebase Storage'a `screenshots/{user_id}/{event_id}.jpg` yoluyla yüklenir
+
+# === URL ÜRETİMİ ===
+# - Firebase Storage için signed URL üretir (365 gün geçerli)
+# - Yerel dosyalar için `file://` protokolü kullanılır
+
+# === BAĞIMSIZ ÇALIŞMA DESTEĞİ ===
+# - Eğer internet yoksa yerel dosyaya yazma yapılır
+# - İnternet tekrar bağlandığında yerel veriler Firebase'e senkronize edilir
+
+# === HATA YÖNETİMİ ===
+# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
+# - Kullanıcıya anlamlı mesajlar gösterilir
+# - Bağlantı hatası durumunda uyarı verilir
+
+# === LOGGING ===
+# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
+# - Log formatı: Tarih/Zaman [Seviye] Mesaj
+
+# === TEST AMAÇLI KULLANIM ===
+# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
+# - Mock DB veya test ortamı ile çalıştırılabilir
+
+# === NOTLAR ===
+# - Bu dosya, app.py, dashboard.py ve database.py ile entegre çalışır
+# - Firebase kimlik doğrulaması zorunludur
+# - Yerel depolama sadece geçici çözümler içindir
+# =======================================================================================
 import logging
 import firebase_admin
 from firebase_admin import storage
@@ -43,6 +121,14 @@ class StorageManager:
             str: Yüklenen dosyanın URL'si/yolu, hata durumunda None
         """
         try:
+            if not user_id:
+                logging.error("upload_screenshot: user_id boş")
+                return None
+                
+            if image is None or image.size == 0:
+                logging.error("upload_screenshot: image boş veya geçersiz")
+                return None
+                
             if event_id is None:
                 event_id = str(uuid.uuid4())
                 
@@ -53,11 +139,22 @@ class StorageManager:
                 return self._upload_local(user_id, image, event_id)
             
             # Firebase Storage'a yükle
-            return self._upload_firebase(user_id, image, event_id)
+            result = self._upload_firebase(user_id, image, event_id)
+            
+            # Firebase başarısız olursa yerel depolamaya da kaydet
+            if result is None:
+                logging.warning("Firebase yükleme başarısız, yerel depolamaya kaydediliyor")
+                return self._upload_local(user_id, image, event_id)
+            
+            return result
                 
         except Exception as e:
             logging.error(f"Ekran görüntüsü yüklenirken hata oluştu: {str(e)}", exc_info=True)
-            return None
+            # Hata durumunda yerel depolamayı dene
+            try:
+                return self._upload_local(user_id, image, event_id)
+            except:
+                return None
     
     def _upload_local(self, user_id, image, event_id):
         """Yerel depolamaya kaydet."""
@@ -82,6 +179,7 @@ class StorageManager:
             return None
     
     def _upload_firebase(self, user_id, image, event_id):
+        """Firebase Storage'a yükle."""
         try:
             # Görüntüyü encode et
             encode_param = [cv2.IMWRITE_JPEG_QUALITY, 90]
@@ -125,7 +223,6 @@ class StorageManager:
             logging.error(f"Firebase Storage yükleme hatası: {str(e)}", exc_info=True)
             return None
 
-    
     def delete_screenshot(self, user_id, event_id):
         """Ekran görüntüsünü Firebase Storage'dan veya yerel depolamadan siler.
         
@@ -137,27 +234,40 @@ class StorageManager:
             bool: İşlem başarılı ise True, değilse False
         """
         try:
-            if not self.is_available:
-                # Yerel depolamadan sil
+            if not user_id or not event_id:
+                logging.error("delete_screenshot: user_id veya event_id boş")
+                return False
+                
+            success = True
+            
+            # Yerel depolamadan sil
+            try:
                 local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
                 if os.path.exists(local_path):
                     os.remove(local_path)
                     logging.info(f"Ekran görüntüsü yerel depolamadan silindi: {local_path}")
-                    return True
+            except Exception as e:
+                logging.error(f"Yerel silme hatası: {e}")
+                success = False
+            
+            if not self.is_available:
+                return success
+            
+            # Firebase Storage'dan sil
+            try:
+                blob_path = f"fall_events/{user_id}/{event_id}.jpg"
+                blob = self.bucket.blob(blob_path)
+                
+                if blob.exists():
+                    blob.delete()
+                    logging.info(f"Ekran görüntüsü Firebase'den silindi: {blob_path}")
                 else:
-                    logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {local_path}")
-                    return False
+                    logging.warning(f"Silinecek ekran görüntüsü Firebase'de bulunamadı: {blob_path}")
+            except Exception as e:
+                logging.error(f"Firebase silme hatası: {e}")
+                success = False
             
-            blob_path = f"fall_events/{user_id}/{event_id}.jpg"
-            blob = self.bucket.blob(blob_path)
-            
-            if blob.exists():
-                blob.delete()
-                logging.info(f"Ekran görüntüsü silindi: {blob_path}")
-                return True
-            else:
-                logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {blob_path}")
-                return False
+            return success
                 
         except Exception as e:
             logging.error(f"Ekran görüntüsü silinirken hata oluştu: {str(e)}")
@@ -174,15 +284,20 @@ class StorageManager:
             str: Görüntünün URL'si, hata durumunda None
         """
         try:
-            if not self.is_available:
-                # Yerel dosya yolunu döndür
-                local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
-                if os.path.exists(local_path):
-                    return f"file://{os.path.abspath(local_path)}"
-                else:
-                    logging.warning(f"Görüntü bulunamadı: {local_path}")
-                    return None
+            if not user_id or not event_id:
+                logging.error("get_screenshot_url: user_id veya event_id boş")
+                return None
+                
+            # Önce yerel dosyaya bak
+            local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
+            if os.path.exists(local_path):
+                return f"file://{os.path.abspath(local_path)}"
             
+            if not self.is_available:
+                logging.warning(f"Görüntü bulunamadı: {local_path}")
+                return None
+            
+            # Firebase Storage'da ara
             blob_path = f"fall_events/{user_id}/{event_id}.jpg"
             blob = self.bucket.blob(blob_path)
             
@@ -191,7 +306,6 @@ class StorageManager:
                 blob.reload()
                 if blob.metadata and 'firebaseStorageDownloadTokens' in blob.metadata:
                     token = blob.metadata['firebaseStorageDownloadTokens']
-                    project_id = firebase_admin._apps['[DEFAULT]']._project_id
                     bucket_name = self.bucket.name
                     return f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_path.replace('/', '%2F')}?alt=media&token={token}"
                 else:
@@ -204,7 +318,7 @@ class StorageManager:
                     )
                     return url
             else:
-                logging.warning(f"Görüntü bulunamadı: {blob_path}")
+                logging.warning(f"Görüntü Firebase'de bulunamadı: {blob_path}")
                 return None
                 
         except Exception as e:
@@ -222,16 +336,22 @@ class StorageManager:
             numpy.ndarray: Görüntü, hata durumunda None
         """
         try:
-            if not self.is_available:
-                # Yerel dosyayı oku
-                local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
-                if os.path.exists(local_path):
-                    img = cv2.imread(local_path)
+            if not user_id or not event_id:
+                logging.error("download_screenshot: user_id veya event_id boş")
+                return None
+                
+            # Önce yerel dosyayı dene
+            local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
+            if os.path.exists(local_path):
+                img = cv2.imread(local_path)
+                if img is not None:
                     return img
-                else:
-                    logging.warning(f"İndirilecek görüntü bulunamadı: {local_path}")
-                    return None
             
+            if not self.is_available:
+                logging.warning(f"İndirilecek görüntü bulunamadı: {local_path}")
+                return None
+            
+            # Firebase Storage'dan indir
             blob_path = f"fall_events/{user_id}/{event_id}.jpg"
             blob = self.bucket.blob(blob_path)
             
@@ -245,7 +365,7 @@ class StorageManager:
                 
                 return img
             else:
-                logging.warning(f"İndirilecek görüntü bulunamadı: {blob_path}")
+                logging.warning(f"İndirilecek görüntü Firebase'de bulunamadı: {blob_path}")
                 return None
                 
         except Exception as e:
@@ -262,29 +382,56 @@ class StorageManager:
             list: event_id'lerin listesi
         """
         try:
-            if not self.is_available:
-                # Yerel dosyaları listele
-                user_dir = os.path.join(self.local_storage_dir, user_id)
-                if not os.path.exists(user_dir):
-                    return []
+            if not user_id:
+                logging.error("list_all_screenshots: user_id boş")
+                return []
                 
+            event_ids = set()
+            
+            # Yerel dosyaları listele
+            user_dir = os.path.join(self.local_storage_dir, user_id)
+            if os.path.exists(user_dir):
                 files = os.listdir(user_dir)
-                event_ids = [f.replace('.jpg', '') for f in files if f.endswith('.jpg')]
-                return event_ids
+                local_ids = [f.replace('.jpg', '') for f in files if f.endswith('.jpg')]
+                event_ids.update(local_ids)
             
-            # Storage'dan liste al
-            prefix = f"fall_events/{user_id}/"
-            blobs = self.bucket.list_blobs(prefix=prefix)
+            if not self.is_available:
+                return list(event_ids)
             
-            event_ids = []
-            for blob in blobs:
-                filename = os.path.basename(blob.name)
-                if filename.endswith('.jpg'):
-                    event_id = filename.replace('.jpg', '')
-                    event_ids.append(event_id)
+            # Firebase Storage'dan liste al
+            try:
+                prefix = f"fall_events/{user_id}/"
+                blobs = self.bucket.list_blobs(prefix=prefix)
+                
+                for blob in blobs:
+                    filename = os.path.basename(blob.name)
+                    if filename.endswith('.jpg'):
+                        event_id = filename.replace('.jpg', '')
+                        event_ids.add(event_id)
+            except Exception as e:
+                logging.error(f"Firebase listeleme hatası: {e}")
             
-            return event_ids
+            return list(event_ids)
                 
         except Exception as e:
             logging.error(f"Ekran görüntüleri listelenirken hata oluştu: {str(e)}")
             return []
+
+    def test_connection(self):
+        """Storage bağlantısını test eder."""
+        if not self.is_available:
+            return {"status": "local", "message": "Yerel depolama aktif"}
+        
+        try:
+            # Test dosyası yükle
+            test_data = b"test data"
+            test_blob = self.bucket.blob("test/connection_test.txt")
+            test_blob.upload_from_string(test_data, content_type='text/plain')
+            
+            # Test dosyasını sil
+            test_blob.delete()
+            
+            return {"status": "connected", "message": "Firebase Storage bağlantısı başarılı"}
+        except Exception as e:
+            logging.error(f"Storage bağlantı testi hatası: {e}")
+            return {"status": "error", "message": f"Bağlantı hatası: {str(e)}"}

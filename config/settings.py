@@ -1,9 +1,79 @@
 # =======================================================================================
-# 📄 Dosya Adı: settings.py (ENHANCED VERSION)
-# 📁 Konum: guard_pc_app/config/settings.py
-# 📌 Açıklama:
-# YOLOv11 Pose Estimation ve DeepSORT için gelişmiş ayarlar.
-# Pose detection, tracking ve düşme algılama parametreleri.
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: settings.py (GELİŞMİŞ UYGULAMA YAPILANDIRMALARI)
+# Konum: guard_pc_app/config/settings.py
+# Açıklama:
+# Guard AI uygulamasında kullanılan tüm yapılandırma ayarlarını içeren dosyadır.
+# AI modeli seçimleri, kamera kalitesi, güvenlik politikaları, ekran çözünürlüğü,
+# gizlilik modu, veri saklama süreleri gibi temel yapılandırmalar burada tanımlanmıştır.
+
+# === ÖZELLİKLER ===
+# - AI modeli kalite/performans profilleri
+# - Kamera kalitesi ve FPS ayarları
+# - Güvenlik ve şifreleme yapılandırması
+# - Eklenti ve API genişletme ayarları
+# - Pose noktaları ve bağlantıları (YOLOv11-pose için)
+# - DeepSORT takip algoritması parametreleri
+# - Düşme algılama hassasiyeti ayarları
+
+# === BAŞLICA BÖLÜMLER ===
+# 1. AI MODELİ SEÇİM PROFİLLERİ
+#    - Farklı hız/doğruluk dengesi sunar
+#    - yolo11n-pose: En hızlı, düşük doğruluk (~6MB)
+#    - yolo11s-pose: Hızlı, orta doğruluk (~22MB)
+#    - yolo11m-pose: Dengeli hız ve iyi doğruluk (~52MB)
+#    - yolo11l-pose: Yavaş, yüksek doğruluk (~110MB)
+#    - yolo11x-pose: En yavaş, en yüksek doğruluk (~220MB)
+
+# 2. KAMERA KALİTESİ AYARLARI
+#    - Çözünürlük ve FPS ayarları
+#    - low: 640x480 @ 15 FPS
+#    - medium: 1280x720 @ 20 FPS
+#    - high: 1920x1080 @ 25 FPS
+#    - ultra: 3840x2160 @ 15 FPS
+
+# 3. GÜVENLİK VE GİZLİLİK
+#    - Saklanan verilerin şifrelenmesi
+#    - Güvenli veri iletimi
+#    - Veri saklama süresi (gün cinsinden)
+#    - Otomatik eski olay silme
+#    - Gizlilik modu (yüz blurlama)
+
+# 4. EKLENTİ VE GENİŞLETME DESTEĞİ
+#    - Eklenti desteği
+#    - Özel model yükleme
+#    - API genişletmeleri
+
+# 5. POSE TANIMLARI (YOLOv11-pose)
+#    - İnsan vücudundaki 17 farklı anatomik nokta
+#    - Her noktanın isim, renk ve gösterilen adı var
+#    - Bağlantılar (örn. omuz-diz, el-bilek) COCO formatında
+
+# 6. DEEPSORT TRACKING PARAMETRELERİ
+#    - max_age: Track'in kaybolma süresi (frame sayısı)
+#    - n_init: Track onaylamak için gereken frame sayısı
+#    - max_iou_distance: IOU mesafesi eşik değeri
+#    - max_cosine_distance: Cosine mesafesi eşik değeri
+#    - nn_budget: Max özellik vektörü sayısı
+#    - max_feature_history: Özellik geçmişi uzunluğu
+
+# 7. DÜŞME ALGILAMA PARAMETRELERİ
+#    - confidence_threshold: Minimum güven skoru
+#    - angle_threshold: Düşme açısı eşik değeri
+#    - speed_threshold: Hareket hızı eşiği
+#    - fall_duration: Sürekli düşme süresi (saniye)
+#    - min_detection_interval: Aynı kişi için minimum tekrar algılama süresi
+
+# === KULLANIM AMACI ===
+# - Uygulamanın performansını optimize etmek
+# - Kullanıcıya özelleştirme imkanı sunmak
+# - Sistem kaynaklarının verimli kullanılmasını sağlamak
+# - Gerçek zamanlı analizde doğru dengeyi kurmak
+
+# === NOTLAR ===
+# - Bu dosya, app.py, camera.py, dashboard.py ve detection.py ile entegre çalışır
+# - Yapılandırma değerleri, ayarlar menüsünden kullanıcı tarafından değiştirilebilir
+# - Varsayılan değerler test edilmiş senaryolara göre belirlenmiştir
 # =======================================================================================
 
 import os

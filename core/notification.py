@@ -1,5 +1,78 @@
-# core/notification.py
-# Geliştirilmiş bildirim gönderme modülü
+# =======================================================================================
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: notification.py (GELİŞMİŞ BİLDİRİM SİSTEMİ)
+# Konum: guard_pc_app/core/notification.py
+# Açıklama:
+# Bu sınıf, Guard AI uygulamasında düşme olayları tespit edildiğinde kullanıcıya 
+# çeşitli iletişim kanalları üzerinden bilgilendirme göndermek için kullanılır.
+#
+# Desteklenen Bildirim Kanalları:
+# - E-posta (SMTP ile)
+# - SMS (Twilio API veya benzeri)
+# - Telegram mesajı (Telegram Bot API)
+# - Mobil Push Bildirimi (Firebase Cloud Messaging - FCM)
+
+# === ÖZELLİKLER ===
+# - Çoklu bildirim kanalı desteği
+# - Asenkron kuyruk sistemi (Queue)
+# - Bildirim geçmişi saklama
+# - Kullanıcı ayarlarına göre bildirim tercihleri
+# - Test bildirimleri için özel mod
+# - Hata durumunda fallback mekanizması (örn. SMS başarısızsa e-posta gönderimi)
+
+# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
+# - smtplib / email: SMTP üzerinden e-posta gönderimi
+# - telepot: Telegram botu ile mesajlaşma
+# - requests: REST API çağrıları (Twilio, Telegram)
+# - firebase_admin.messaging: Firebase Cloud Messaging (FCM) entegrasyonu
+# - threading: Asenkron işlem yönetimi
+# - queue: Bildirim kuyruğu yönetimi
+# - logging: Hata ve işlem kayıtları tutma
+
+# === SINIFLAR ===
+# - NotificationManager: Birden fazla kanalda bildirim gönderen ana sınıf
+
+# === TEMEL FONKSİYONLAR ===
+# - __init__: Gerekli servisleri başlatır (SMTP, Telegram, Twilio, FCM)
+# - send_notifications: Belirtilen düşme olayı için tüm aktif kanallara bildirim gönderir
+# - _send_email_notification: E-posta bildirimi gönderir
+# - _send_sms_notification: SMS bildirimi gönderir
+# - _send_telegram_notification: Telegram mesajı gönderir
+# - _send_fcm_notification: FCM push bildirimi gönderir
+# - update_user_data: Kullanıcı ayarlarını günceller
+# - _start_queue_processor: Bildirim kuyruğunu işleyen thread’i başlatır
+# - _process_notification_queue: Bekleyen bildirimleri sırayla işler
+
+# === BİLDİRİM İÇERİKLERİ ===
+# - Düşme zamanı (timestamp)
+# - Güvenilirlik oranı (confidence score)
+# - Ekran görüntüsü bağlantısı (image_url)
+# - Olay ID’si (event_id)
+# - Test bildirimi mi? (test=True/False)
+
+# === GÖRSEL DESTEK ===
+# - Ekran görüntüsünü gömülü olarak e-postaya ekler
+# - Telegram'a fotoğraf olarak gönderir
+# - FCM ile URL olarak paylaşır
+
+# === HATA YÖNETİMİ ===
+# - Her kanal için hata kontrolü yapılır
+# - Gönderim başarısız olursa loglanır
+# - Fallback sistemleri devreye girer
+
+# === LOGGING ===
+# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
+# - Log formatı: Tarih/Zaman [Seviye] Mesaj
+
+# === TEST AMAÇLI KULLANIM ===
+# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
+# - Mock verilerle test bildirimleri gönderilebilir
+
+# === NOTLAR ===
+# - Bu dosya, app.py, dashboard.py ve database.py ile entegre çalışır
+# - Ortam değişkenleri (.env) üzerinden gizli anahtarlar alınır (SMTP, Twilio, Telegram Token vb.)
+# - Kuyruk sistemi sayesinde yüksek sayıda bildirimde performans düşmez
+# =======================================================================================
 
 import logging
 import smtplib
