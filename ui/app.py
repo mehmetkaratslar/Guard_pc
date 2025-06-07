@@ -1,11 +1,103 @@
 
 # =======================================================================================
-# 📄 Dosya Adı: app.py (ULTRA ENHANCED VERSION V3 - FIXED)
-# 📁 Konum: guard_pc_app/ui/app.py
-# 📌 Açıklama:
-# Ultra gelişmiş ana uygulama arayüzü - AdvancedFallDetector entegrasyonu
-# Enhanced düşme algılama, çoklu model desteği, real-time analytics
-# DÜZELTME: Bildirim ve olay kayıt sorunları çözüldü
+# === PROGRAM AÇIKLAMASI ===
+# Dosya Adı: app.py (ULTRA ENHANCED VERSION V3 - FIXED)
+# Konum: guard_pc_app/ui/app.py
+# Açıklama:
+# Guard AI Ultra, gelişmiş yapay zeka destekli düşme tespiti yapan bir güvenlik/gözlem uygulamasıdır.
+# Gerçek zamanlı kamera görüntülerinden insan figürlerinin takibi ve düşme riskinin analizi yapılır.
+# Uygulama, kullanıcı dostu bir arayüz ile ayarların yapılandırılmasına,
+# bildirimlerin gönderilmesine ve geçmiş olayların incelenmesine izin verir.
+
+# === ÖZELLİKLER ===
+# - Gelişmiş YOLOv11 tabanlı düşme tespiti (pose estimation)
+# - Çoklu kamera desteği (USB/IP kameralar)
+# - Gerçek zamanlı görselleştirme
+# - Bildirim sistemi (E-posta, SMS, Mobil Push)
+# - Ayarlar paneli (AI model seçimi, tema, kamera ayarları)
+# - Geçmiş olay kayıtları ve ekran görüntüleri
+# - Firebase entegrasyonu (kullanıcı kimlik doğrulama, veritabanı, depolama)
+# - API sunucusu desteği (harici erişim için)
+
+# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
+# - tkinter: Arayüz oluşturma (Login, Register, Dashboard, Settings, History)
+# - OpenCV (cv2): Kamera görüntüsünü işleme
+# - NumPy: Görsel ve matematiksel işlemler
+# - Firebase: Kimlik doğrulama, veritabanı ve dosya saklama
+# - threading: Arka plan işlemleri (algılama döngüsü, indirmeler)
+# - logging: Sistemde oluşan tüm hatalar ve işlem kayıtları
+# - datetime / time: Zaman damgası ve performans ölçümü
+# - uuid: Olay ID'leri üretmek için
+# - psutil: Bellek kullanımı izleme
+
+# === SINIFLAR ===
+# - GuardApp: Ana uygulama sınıfı (tk.Tk türemiştir)
+#   - LoginFrame: Giriş ekranı
+#   - RegisterFrame: Kayıt ekranı
+#   - DashboardFrame: Ana kontrol paneli (kamera akışı, durum bilgileri)
+#   - SettingsFrame: Gelişmiş ayarlar (bu dosyada ayrı bir sınıf olarak tanımlanmıştır)
+#   - HistoryFrame: Geçmiş düşme olaylarını gösteren arayüz
+
+# === TEMEL FONKSİYONLAR ===
+# - __init__: Uygulamayı başlatır, UI bileşenlerini oluşturur, Firebase servislerini kurar
+# - _setup_enhanced_styles: UI stilleri ve renk temasını yönetir
+# - _setup_firebase: Firebase kimlik doğrulama, veritabanı ve depolama bağlantılarını sağlar
+# - _setup_advanced_fall_detection: Düşme algılama motorunu başlatır (YOLO + pose analiz)
+# - start_enhanced_detection: Kamerayı başlatır ve düşme algılamaya başlar
+# - stop_enhanced_detection: Kamerayı ve algılamayı durdurur
+# - _enhanced_detection_loop: Her kamera için çalışan gerçek zamanlı algılama döngüsü
+# - _handle_enhanced_fall_detection: Düşme algılandığında bildirim gönderir, veritabanına kaydeder
+# - show_login / show_register / show_dashboard / show_settings / show_history: UI geçiş fonksiyonları
+# - switch_ai_model: AI modelini değiştirme
+# - logout: Kullanıcının çıkış yapması
+# - _on_enhanced_close: Uygulama kapatıldığında temizlik işlemleri
+
+# === MODEL YÖNETİMİ ===
+# - AI model dizini: resources/models/
+# - Desteklenen modeller:
+#   - yolo11n-pose: En hızlı, düşük doğruluk (~6MB)
+#   - yolo11s-pose: Hızlı, orta doğruluk (~22MB)
+#   - yolo11m-pose: Orta hız ve iyi doğruluk (~52MB)
+#   - yolo11l-pose: Yavaş, yüksek doğruluk (~110MB)
+#   - yolo11x-pose: En yavaş, en yüksek doğruluk (~220MB)
+
+# === BİLDİRİM MEKANİZMASI ===
+# - E-posta bildirimi
+# - SMS bildirimi (telefon numarası girilirse)
+# - Mobil push bildirimi (Firebase Cloud Messaging ile)
+
+# === VERİTABANI İŞLEMLERİ ===
+# - Kullanıcı girişi ve kayıt işlemleri Firebase Auth üzerinden yapılır
+# - Ayarlar, kullanıcı bilgileri ve düşme olayları Firestore üzerinde saklanır
+# - Ekran görüntüleri Firebase Storage'a yüklenir
+
+# === PERFORMANS İZLEME ===
+# - Ortalama FPS
+# - Toplam frame sayısı
+# - Bellek kullanımı (psutil kullanılarak)
+# - Çalışma süresi (uptime)
+
+# === GÜVENLİ KAPATMA ===
+# - Kamera akışlarını durdurma
+# - AI modeli temizliği
+# - Sonuçları loglama
+
+# === TEST ÇALIŞTIRMA ===
+# - `if __name__ == "__main__":` bloğu ile uygulama bağımsız çalıştırılabilir
+# - Test için mock database bağlantısı ya da gerçek Firebase yapılandırması yapılabilir
+
+# === GERİ DÖNÜŞ MEKANİZMASI ===
+# - Ayarlardan çıkarken değişiklik varsa uyarı verilir
+# - Bildirim gönderildikten sonra dashboard güncellenir
+
+# === HATA YÖNETİMİ ===
+# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
+# - Kullanıcıya anlamlı mesajlar gösterilir
+# - Hatalı işlemlerden sonra sistem güvenli şekilde devam eder veya durur
+
+# === DOSYA LOGGING ===
+# - Günlük aktiviteler bir log dosyasına yazılır (guard_ai_v3.log)
+# - Log formatı: Tarih/Zaman [Seviye] Mesaj
 # =======================================================================================
 
 import tkinter as tk

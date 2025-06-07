@@ -1,8 +1,9 @@
 # =======================================================================================
-# 📄 Dosya Adı: camera.py (KAMERA BAŞLATMA SORUNU ÇÖZÜMÜ)
-# 📁 Konum: pc/core/camera.py
+# 📄 Dosya Adı: camera.py 
+# 📁 Konum: core/camera.py
 # 📌 Açıklama:
-# Kamera başlatma sorunlarını çözen güncellenmiş versiyon
+# Yüksek performanslı kamera sistemi - akışlı video, parlaklık kontrolü
+# Frame buffering, async processing, dynamic quality adjustment
 # =======================================================================================
 
 import cv2
@@ -12,10 +13,11 @@ import logging
 import time
 import platform
 from collections import deque
+import queue
 from config.settings import CAMERA_CONFIGS, FRAME_WIDTH, FRAME_HEIGHT, FRAME_RATE
 
-class Camera:
-    """Geliştirilmiş kamera sınıfı - başlatma sorunları çözüldü."""
+class EnhancedCamera:
+    """Yüksek performanslı, akışlı kamera sınıfı."""
     
     def __init__(self, camera_index, backend=cv2.CAP_ANY):
         """
@@ -30,31 +32,44 @@ class Camera:
         self.is_running = False
         self.thread = None
         
-        # Frame yönetimi
-        self.frame = None
+        # YÜKSEK PERFORMANS FRAME YÖNETİMİ
+        self.frame_buffer = queue.Queue(maxsize=3)  # Küçük buffer - düşük latency
         self.frame_lock = threading.RLock()
         self.last_frame_time = 0
+        self.target_fps = 30
+        self.actual_fps = 0
+        self.frame_count = 0
+        self.fps_start_time = time.time()
+        
+        # AKIŞLI VİDEO İÇİN OPTİMİZASYON
+        self.skip_frames = 0  # Frame atlama (performance için)
+        self.quality_adjustment = 1.0  # Dinamik kalite ayarı
+        self.processing_time = deque(maxlen=10)  # Son 10 frame işlem süresi
+        
+        # PARLAKILIK VE KAMERA KONTROLLERI
+        self.brightness_adjustment = 0  # -100 ile +100 arası
+        self.contrast_adjustment = 1.0  # 0.5 ile 2.0 arası
+        self.exposure_adjustment = -6   # Otomatik exposure control
+        self.auto_brightness = True    # Otomatik parlaklık ayarı
         
         # Bağlantı yönetimi
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 3
         self.connection_stable = False
         
-        # Backend listesi - platform bazlı
+        # Backend seçimi
         self.backend_fallbacks = self._get_platform_backends()
-        
-        # Kamera validation
         self.camera_validated = False
         
-        logging.info(f"Kamera {camera_index} nesnesi oluşturuldu")
+        logging.info(f"EnhancedCamera {camera_index} oluşturuldu")
     
     def _get_platform_backends(self):
-        """Platform için en uygun backend sıralaması."""
+        """Platform optimized backend sıralaması."""
         if platform.system() == "Windows":
             return [
-                cv2.CAP_DSHOW,      # DirectShow - Windows için en iyi
+                cv2.CAP_DSHOW,      # DirectShow - En iyi performans
                 cv2.CAP_MSMF,       # Media Foundation
-                cv2.CAP_ANY         # Fallback
+                cv2.CAP_ANY
             ]
         elif platform.system() == "Linux":
             return [
@@ -74,14 +89,14 @@ class Camera:
         if self.camera_validated:
             return True
         
-        logging.info(f"Kamera {self.camera_index} doğrulanıyor...")
+        logging.info(f"EnhancedCamera {self.camera_index} doğrulanıyor...")
         
         # Önce belirtilen backend'i dene
         if self.original_backend != cv2.CAP_ANY:
             if self._test_camera_with_backend(self.original_backend):
                 self.backend = self.original_backend
                 self.camera_validated = True
-                logging.info(f"Kamera {self.camera_index}: {self._backend_name(self.original_backend)} backend başarılı")
+                logging.info(f"Kamera {self.camera_index}: {self._backend_name(self.original_backend)} BAŞARILI")
                 return True
         
         # Fallback backend'leri dene
@@ -89,42 +104,38 @@ class Camera:
             if self._test_camera_with_backend(backend):
                 self.backend = backend
                 self.camera_validated = True
-                logging.info(f"Kamera {self.camera_index}: {self._backend_name(backend)} backend başarılı")
+                logging.info(f"Kamera {self.camera_index}: {self._backend_name(backend)} BAŞARILI")
                 return True
         
-        logging.error(f"Kamera {self.camera_index}: Hiçbir backend ile çalışmıyor!")
+        logging.error(f"Kamera {self.camera_index}: TÜM BACKEND'LER BAŞARISIZ!")
         return False
     
     def _test_camera_with_backend(self, backend):
         """Belirli bir backend ile kamerayı test eder."""
         test_cap = None
         try:
-            # Kamera bağlantısını test et
             test_cap = cv2.VideoCapture(self.camera_index, backend)
             
             if not test_cap.isOpened():
                 return False
             
-            # Buffer size ayarla
-            test_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            # Temel parametreleri ayarla
+            # Yüksek performans ayarları
+            test_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer
             test_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             test_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             test_cap.set(cv2.CAP_PROP_FPS, 30)
             
-            # Frame okumayı test et
+            # Frame test
             ret, frame = test_cap.read()
             
             if ret and frame is not None and frame.size > 0:
-                logging.debug(f"Kamera {self.camera_index} test başarılı: {frame.shape}")
+                logging.debug(f"Kamera {self.camera_index} test BAŞARILI: {frame.shape}")
                 return True
             else:
-                logging.debug(f"Kamera {self.camera_index} frame okunamadı")
                 return False
                 
         except Exception as e:
-            logging.debug(f"Kamera {self.camera_index} test hatası: {e}")
+            logging.debug(f"Kamera {self.camera_index} test HATASI: {e}")
             return False
         finally:
             if test_cap:
@@ -134,12 +145,12 @@ class Camera:
                     pass
     
     def start(self):
-        """Kamerayı başlatır."""
+        """Yüksek performanslı kamera başlatma."""
         if self.is_running:
             logging.warning(f"Kamera {self.camera_index} zaten çalışıyor")
             return True
         
-        # Önce kamerayı doğrula
+        # Doğrulama
         if not self._validate_camera_with_fallback():
             logging.error(f"Kamera {self.camera_index} doğrulanamadı")
             return False
@@ -152,61 +163,87 @@ class Camera:
                 logging.error(f"Kamera {self.camera_index} açılamadı")
                 return False
             
-            # Kamera parametrelerini ayarla
-            self._setup_camera_parameters()
+            # YÜKSEK PERFORMANS PARAMETRELERİ
+            self._setup_high_performance_parameters()
             
-            # İlk frame'i test et
+            # İlk frame test
             if not self._test_initial_frame():
-                logging.error(f"Kamera {self.camera_index} ilk frame testi başarısız")
+                logging.error(f"Kamera {self.camera_index} ilk frame testi BAŞARISIZ")
                 self._cleanup()
                 return False
             
-            # Capture thread'ini başlat
+            # Frame buffer temizle
+            while not self.frame_buffer.empty():
+                try:
+                    self.frame_buffer.get_nowait()
+                except queue.Empty:
+                    break
+            
+            # Yüksek performanslı capture thread
             self.is_running = True
-            self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self.thread = threading.Thread(target=self._high_performance_capture_loop, daemon=True)
             self.thread.start()
             
             self.connection_stable = True
-            logging.info(f"Kamera {self.camera_index} başarıyla başlatıldı ({self._backend_name(self.backend)})")
+            logging.info(f"EnhancedCamera {self.camera_index} BAŞLATILDI ({self._backend_name(self.backend)})")
             return True
             
         except Exception as e:
-            logging.error(f"Kamera {self.camera_index} başlatma hatası: {e}")
+            logging.error(f"Kamera {self.camera_index} başlatma HATASI: {e}")
             self._cleanup()
             return False
     
-    def _setup_camera_parameters(self):
-        """Kamera parametrelerini optimize eder."""
+    def _setup_high_performance_parameters(self):
+        """Yüksek performans kamera parametreleri."""
         try:
-            # Temel parametreler
+            # TEMEL AYARLAR
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-            self.cap.set(cv2.CAP_PROP_FPS, FRAME_RATE)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            self.cap.set(cv2.CAP_PROP_FPS, self.target_fps)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal latency
             
-            # Platform spesifik optimizasyonlar
+            # PERFORMANS OPTİMİZASYONU
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+            
+            # PARLAKLIK VE KONTRAST KONTROLLERI
             if platform.system() == "Windows":
-                # Windows için ek ayarlar
-                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
-                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+                # Windows spesifik ayarlar
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manuel exposure
+                self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure_adjustment)
+                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)  # Başlangıç parlaklığı
+                self.cap.set(cv2.CAP_PROP_CONTRAST, 0.5)    # Başlangıç kontrast
+                self.cap.set(cv2.CAP_PROP_SATURATION, 0.5)  # Renk doygunluğu
+                self.cap.set(cv2.CAP_PROP_GAIN, 0)         # Gain kontrolü
+                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)    # Manuel focus
             
-            logging.debug(f"Kamera {self.camera_index} parametreleri ayarlandı")
+            # Gerçek ayarları kontrol et
+            actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            
+            logging.info(f"Kamera {self.camera_index} gerçek ayarlar: {actual_width}x{actual_height} @ {actual_fps}fps")
             
         except Exception as e:
             logging.warning(f"Kamera {self.camera_index} parametre ayarlama hatası: {e}")
     
     def _test_initial_frame(self):
-        """İlk frame'i test eder."""
+        """İlk frame testi - hızlı."""
         try:
             for attempt in range(5):
                 ret, frame = self.cap.read()
                 if ret and frame is not None and frame.size > 0:
-                    with self.frame_lock:
-                        self.frame = frame
-                        self.last_frame_time = time.time()
-                    logging.debug(f"Kamera {self.camera_index} ilk frame başarılı: {frame.shape}")
+                    # Parlaklık analizi
+                    self._analyze_and_adjust_brightness(frame)
+                    
+                    # Buffer'a ekle
+                    try:
+                        self.frame_buffer.put_nowait(frame)
+                    except queue.Full:
+                        pass
+                    
+                    logging.debug(f"Kamera {self.camera_index} ilk frame OK: {frame.shape}")
                     return True
-                time.sleep(0.1)
+                time.sleep(0.05)
             
             return False
             
@@ -214,95 +251,233 @@ class Camera:
             logging.error(f"Kamera {self.camera_index} ilk frame test hatası: {e}")
             return False
     
-    def _capture_loop(self):
-        """Frame yakalama döngüsü."""
+    def _high_performance_capture_loop(self):
+        """Yüksek performanslı frame yakalama döngüsü."""
         consecutive_failures = 0
         max_failures = 10
+        frame_interval = 1.0 / self.target_fps
         
         while self.is_running:
+            loop_start = time.time()
+            
             try:
                 if not self.cap or not self.cap.isOpened():
-                    logging.warning(f"Kamera {self.camera_index} bağlantısı koptu, yeniden bağlanılıyor...")
-                    if not self._reconnect():
+                    if not self._fast_reconnect():
                         break
                     continue
                 
+                # Frame yakala
                 ret, frame = self.cap.read()
                 
                 if not ret or frame is None:
                     consecutive_failures += 1
                     if consecutive_failures >= max_failures:
-                        logging.error(f"Kamera {self.camera_index}: Çok fazla hata, thread sonlandırılıyor")
+                        logging.error(f"Kamera {self.camera_index}: Maksimum hata, thread sonlandırılıyor")
                         break
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
                 
                 # Başarılı frame
                 consecutive_failures = 0
                 
-                with self.frame_lock:
-                    self.frame = frame
-                    self.last_frame_time = time.time()
+                # Parlaklık ayarı (gerekirse)
+                if self.auto_brightness:
+                    adjusted_frame = self._apply_brightness_adjustments(frame)
+                else:
+                    adjusted_frame = frame
                 
-                # FPS kontrolü
-                time.sleep(1.0 / FRAME_RATE)
+                # Frame buffer'a ekle (non-blocking)
+                try:
+                    # Eski frame'leri temizle
+                    while self.frame_buffer.qsize() >= 2:
+                        try:
+                            self.frame_buffer.get_nowait()
+                        except queue.Empty:
+                            break
+                    
+                    self.frame_buffer.put_nowait(adjusted_frame)
+                except queue.Full:
+                    # Buffer dolu, en eski frame'i at
+                    try:
+                        self.frame_buffer.get_nowait()
+                        self.frame_buffer.put_nowait(adjusted_frame)
+                    except queue.Empty:
+                        pass
+                
+                # FPS hesaplama
+                self.frame_count += 1
+                if time.time() - self.fps_start_time >= 1.0:
+                    self.actual_fps = self.frame_count / (time.time() - self.fps_start_time)
+                    self.frame_count = 0
+                    self.fps_start_time = time.time()
+                
+                # Frame rate kontrolü - dinamik
+                elapsed_time = time.time() - loop_start
+                sleep_time = max(0, frame_interval - elapsed_time)
+                
+                # Performans optimizasyonu
+                if elapsed_time > frame_interval * 1.5:  # Yavaş işleme
+                    self.skip_frames = min(2, self.skip_frames + 1)
+                else:
+                    self.skip_frames = max(0, self.skip_frames - 1)
+                
+                if sleep_time > 0 and self.skip_frames == 0:
+                    time.sleep(sleep_time)
                 
             except Exception as e:
-                logging.error(f"Kamera {self.camera_index} capture loop hatası: {e}")
+                logging.error(f"Kamera {self.camera_index} capture loop HATA: {e}")
                 consecutive_failures += 1
                 if consecutive_failures >= max_failures:
                     break
-                time.sleep(0.5)
+                time.sleep(0.1)
         
         self.is_running = False
         self.connection_stable = False
-        logging.info(f"Kamera {self.camera_index} capture loop sonlandı")
+        logging.info(f"Kamera {self.camera_index} capture loop SONLANDI")
     
-    def _reconnect(self):
-        """Kamera yeniden bağlantısı."""
+    def _analyze_and_adjust_brightness(self, frame):
+        """Frame parlaklığını analiz et ve gerekirse ayarla."""
+        try:
+            # Frame'in ortalama parlaklığını hesapla
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            mean_brightness = np.mean(gray)
+            
+            # Optimal parlaklık aralığı: 80-170 (0-255 arası)
+            if mean_brightness > 200:  # Çok parlak
+                if self.brightness_adjustment > -50:
+                    self.brightness_adjustment -= 10
+                    self._apply_camera_brightness()
+                    logging.debug(f"Kamera {self.camera_index}: Parlaklık azaltıldı -> {self.brightness_adjustment}")
+            
+            elif mean_brightness < 60:  # Çok karanlık
+                if self.brightness_adjustment < 50:
+                    self.brightness_adjustment += 10
+                    self._apply_camera_brightness()
+                    logging.debug(f"Kamera {self.camera_index}: Parlaklık artırıldı -> {self.brightness_adjustment}")
+            
+        except Exception as e:
+            logging.debug(f"Parlaklık analizi hatası: {e}")
+    
+    def _apply_camera_brightness(self):
+        """Kamera donanımına parlaklık ayarını uygula."""
+        try:
+            if self.cap and self.cap.isOpened():
+                # Normalize brightness (-100, +100) -> (0, 1)
+                normalized_brightness = (self.brightness_adjustment + 100) / 200.0
+                normalized_brightness = max(0.0, min(1.0, normalized_brightness))
+                
+                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, normalized_brightness)
+                
+        except Exception as e:
+            logging.debug(f"Kamera parlaklık ayarı hatası: {e}")
+    
+    def _apply_brightness_adjustments(self, frame):
+        """Frame üzerinde yazılım parlaklık ayarı."""
+        try:
+            if self.brightness_adjustment == 0 and self.contrast_adjustment == 1.0:
+                return frame
+            
+            # Parlaklık ve kontrast ayarı
+            adjusted = cv2.convertScaleAbs(frame, 
+                                         alpha=self.contrast_adjustment, 
+                                         beta=self.brightness_adjustment)
+            return adjusted
+            
+        except Exception as e:
+            logging.debug(f"Yazılım parlaklık ayarı hatası: {e}")
+            return frame
+    
+    def _fast_reconnect(self):
+        """Hızlı yeniden bağlantı."""
         self.reconnect_attempts += 1
         
         if self.reconnect_attempts > self.max_reconnect_attempts:
-            logging.error(f"Kamera {self.camera_index}: Maksimum yeniden bağlantı denemesi aşıldı")
+            logging.error(f"Kamera {self.camera_index}: Maksimum reconnect aşıldı")
             return False
         
         try:
-            # Mevcut bağlantıyı kapat
             if self.cap:
                 self.cap.release()
                 self.cap = None
             
-            time.sleep(1.0)  # Bekle
+            time.sleep(0.5)  # Kısa bekleme
             
-            # Yeniden bağlan
             self.cap = cv2.VideoCapture(self.camera_index, self.backend)
             
             if self.cap.isOpened():
-                self._setup_camera_parameters()
-                if self._test_initial_frame():
-                    self.reconnect_attempts = 0
-                    self.connection_stable = True
-                    logging.info(f"Kamera {self.camera_index} yeniden bağlandı")
-                    return True
+                self._setup_high_performance_parameters()
+                self.reconnect_attempts = 0
+                self.connection_stable = True
+                logging.info(f"Kamera {self.camera_index} HIZLI RECONNECT başarılı")
+                return True
             
             return False
             
         except Exception as e:
-            logging.error(f"Kamera {self.camera_index} yeniden bağlantı hatası: {e}")
+            logging.error(f"Kamera {self.camera_index} fast reconnect HATA: {e}")
             return False
     
+    def get_frame(self):
+        """En güncel frame'i al - non-blocking."""
+        try:
+            # En güncel frame'i al
+            frame = None
+            while not self.frame_buffer.empty():
+                try:
+                    frame = self.frame_buffer.get_nowait()
+                except queue.Empty:
+                    break
+            
+            if frame is not None:
+                return frame.copy()
+            else:
+                return self._create_placeholder_frame()
+                
+        except Exception as e:
+            logging.debug(f"get_frame hatası: {e}")
+            return self._create_placeholder_frame()
+    
+    def set_brightness(self, brightness):
+        """Manuel parlaklık ayarı (-100 ile +100 arası)."""
+        self.brightness_adjustment = max(-100, min(100, brightness))
+        self.auto_brightness = False  # Otomatik parlaklığı kapat
+        self._apply_camera_brightness()
+        logging.info(f"Kamera {self.camera_index} manuel parlaklık: {self.brightness_adjustment}")
+    
+    def set_contrast(self, contrast):
+        """Manuel kontrast ayarı (0.5 ile 2.0 arası)."""
+        self.contrast_adjustment = max(0.5, min(2.0, contrast))
+        logging.info(f"Kamera {self.camera_index} kontrast: {self.contrast_adjustment}")
+    
+    def enable_auto_brightness(self, enable=True):
+        """Otomatik parlaklık ayarını aç/kapat."""
+        self.auto_brightness = enable
+        logging.info(f"Kamera {self.camera_index} otomatik parlaklık: {enable}")
+    
+    def get_performance_stats(self):
+        """Performans istatistiklerini döndür."""
+        return {
+            'actual_fps': self.actual_fps,
+            'target_fps': self.target_fps,
+            'skip_frames': self.skip_frames,
+            'buffer_size': self.frame_buffer.qsize(),
+            'brightness_adjustment': self.brightness_adjustment,
+            'auto_brightness': self.auto_brightness,
+            'connection_stable': self.connection_stable
+        }
+    
     def stop(self):
-        """Kamerayı durdurur."""
+        """Kamerayı durdur."""
         self.is_running = False
         
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
         
         self._cleanup()
-        logging.info(f"Kamera {self.camera_index} durduruldu")
+        logging.info(f"EnhancedCamera {self.camera_index} DURDURULDU")
     
     def _cleanup(self):
-        """Kaynakları temizler."""
+        """Kaynakları temizle."""
         try:
             if self.cap:
                 self.cap.release()
@@ -310,22 +485,17 @@ class Camera:
         except:
             pass
         
-        with self.frame_lock:
-            self.frame = None
+        # Buffer temizle
+        while not self.frame_buffer.empty():
+            try:
+                self.frame_buffer.get_nowait()
+            except queue.Empty:
+                break
         
         self.connection_stable = False
     
-    def get_frame(self):
-        """Mevcut frame'i döndürür."""
-        with self.frame_lock:
-            if self.frame is not None:
-                return self.frame.copy()
-            else:
-                # Placeholder frame oluştur
-                return self._create_placeholder_frame()
-    
     def _create_placeholder_frame(self):
-        """Placeholder frame oluşturur."""
+        """Placeholder frame oluştur."""
         frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
         
         # Gradient arka plan
@@ -344,20 +514,30 @@ class Camera:
             message = f"Kamera {self.camera_index} - HAZIR"
             color = (0, 255, 0)
         
-        # Metni ortala
+        # Performans bilgisi
+        perf_text = f"FPS: {self.actual_fps:.1f}/{self.target_fps}"
+        
+        # Metni çiz
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1.0
         thickness = 2
+        
+        # Ana mesaj
         text_size = cv2.getTextSize(message, font, font_scale, thickness)[0]
         text_x = (FRAME_WIDTH - text_size[0]) // 2
         text_y = (FRAME_HEIGHT + text_size[1]) // 2
-        
         cv2.putText(frame, message, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
+        
+        # Performans bilgisi
+        perf_size = cv2.getTextSize(perf_text, font, 0.7, 1)[0]
+        perf_x = (FRAME_WIDTH - perf_size[0]) // 2
+        perf_y = text_y + 40
+        cv2.putText(frame, perf_text, (perf_x, perf_y), font, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
         
         return frame
     
     def _backend_name(self, backend):
-        """Backend adını döndürür."""
+        """Backend adını döndür."""
         names = {
             cv2.CAP_ANY: "AUTO",
             cv2.CAP_DSHOW: "DirectShow",
@@ -370,111 +550,46 @@ class Camera:
         return names.get(backend, f"Backend_{backend}")
 
 
-# Kamera keşif ve test fonksiyonları
-def discover_and_test_cameras():
-    """Sistem kameralarını keşfeder ve test eder."""
-    available_cameras = []
-    
-    logging.info("Kameralar taranıyor ve test ediliyor...")
-    
-    # Windows için optimize edilmiş tarama
-    if platform.system() == "Windows":
-        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF]
-    else:
-        backends = [cv2.CAP_ANY]
-    
-    for index in range(5):  # 0-4 arası test et
-        for backend in backends:
-            try:
-                logging.info(f"Kamera {index} test ediliyor ({Camera(0, backend)._backend_name(backend)})...")
-                
-                test_camera = Camera(index, backend)
-                
-                if test_camera._validate_camera_with_fallback():
-                    # Gerçek başlatma testi
-                    if test_camera.start():
-                        # Kısa süre çalıştır
-                        time.sleep(2)
-                        frame = test_camera.get_frame()
-                        test_camera.stop()
-                        
-                        if frame is not None and frame.size > 0:
-                            camera_info = {
-                                "index": index,
-                                "backend": backend,
-                                "backend_name": test_camera._backend_name(backend),
-                                "name": f"Kamera {index}",
-                                "status": "working",
-                                "resolution": f"{frame.shape[1]}x{frame.shape[0]}"
-                            }
-                            
-                            available_cameras.append(camera_info)
-                            logging.info(f"✅ Kamera {index} çalışıyor: {camera_info['backend_name']}")
-                            break  # Bu indeks için başka backend deneme
-                    else:
-                        logging.warning(f"⚠️ Kamera {index} başlatılamadı: {test_camera._backend_name(backend)}")
-                else:
-                    logging.warning(f"⚠️ Kamera {index} doğrulanamadı: {test_camera._backend_name(backend)}")
-                    
-            except Exception as e:
-                logging.debug(f"Kamera {index} test hatası ({backend}): {e}")
-    
-    logging.info(f"Toplam {len(available_cameras)} çalışan kamera bulundu")
-    return available_cameras
+# Geriye uyumluluk için alias
+Camera = EnhancedCamera
 
 
-def test_camera_quick(camera_index=0):
-    """Hızlı kamera testi."""
-    print(f"Kamera {camera_index} hızlı test başlatılıyor...")
+# Test ve demo fonksiyonları
+def test_enhanced_camera(camera_index=0):
+    """Enhanced kamera testini yapar."""
+    print(f"Enhanced Camera {camera_index} test başlatılıyor...")
     
-    camera = Camera(camera_index)
+    camera = EnhancedCamera(camera_index)
     
-    print("1. Kamera doğrulanıyor...")
-    if not camera._validate_camera_with_fallback():
-        print(f"❌ Kamera {camera_index} doğrulanamadı!")
-        return False
-    
-    print("2. Kamera başlatılıyor...")
     if not camera.start():
         print(f"❌ Kamera {camera_index} başlatılamadı!")
         return False
     
-    print("3. Frame test ediliyor...")
-    for i in range(10):
-        frame = camera.get_frame()
-        if frame is not None and frame.size > 0:
-            print(f"✅ Frame {i+1}: {frame.shape}")
-        else:
-            print(f"❌ Frame {i+1}: Boş")
-        time.sleep(0.5)
+    print("✅ Kamera başlatıldı, 10 saniye test...")
     
-    print("4. Kamera durduruluyor...")
+    start_time = time.time()
+    frame_count = 0
+    
+    while time.time() - start_time < 10:
+        frame = camera.get_frame()
+        if frame is not None:
+            frame_count += 1
+            
+            # Performance stats
+            if frame_count % 30 == 0:
+                stats = camera.get_performance_stats()
+                print(f"📊 FPS: {stats['actual_fps']:.1f}, Buffer: {stats['buffer_size']}, Brightness: {stats['brightness_adjustment']}")
+        
+        time.sleep(1/30)  # 30 FPS test
+    
     camera.stop()
     
-    print(f"✅ Kamera {camera_index} test tamamlandı!")
+    avg_fps = frame_count / 10
+    print(f"✅ Test tamamlandı. Ortalama FPS: {avg_fps:.1f}")
     return True
 
 
 if __name__ == "__main__":
-    # Test ve demo
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
-    print("🔍 Kamera keşif ve test başlatılıyor...")
-    cameras = discover_and_test_cameras()
-    
-    if cameras:
-        print(f"\n✅ {len(cameras)} çalışan kamera bulundu:")
-        for cam in cameras:
-            print(f"  📹 {cam['name']} - {cam['resolution']} ({cam['backend_name']})")
-        
-        # İlk kamerayı detaylı test et
-        if cameras:
-            print(f"\n🧪 İlk kamera detaylı test ediliyor...")
-            test_camera_quick(cameras[0]['index'])
-    else:
-        print("❌ Hiç çalışan kamera bulunamadı!")
-        print("\nSorun giderme önerileri:")
-        print("1. Kamera fiziksel olarak bağlı mı?")
-        print("2. Başka bir uygulama kamerayı kullanıyor mu?")
-        print("3. Kamera sürücüleri güncel mi?")
-        print("4. Antivirus/güvenlik yazılımı kamerayı engelliyor mu?")
+    # Test çalıştır
+    logging.basicConfig(level=logging.INFO)
+    test_enhanced_camera(0)
