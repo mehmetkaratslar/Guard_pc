@@ -778,3 +778,225 @@ if __name__ == "__main__":
         format='%(asctime)s [%(levelname)s] %(message)s'
     )
     run_stream_server(debug=True)
+    
+    
+# =======================================================================================
+
+# MOBIL API ENDPOİNTLERİ
+@app.route('/api/mobile/cameras')
+def mobile_get_cameras():
+    """Mobil için kamera listesi."""
+    server = get_stream_server()
+    
+    cameras = []
+    for camera_id, camera_info in server.cameras.items():
+        # Kamera durumunu kontrol et
+        is_available = camera_info['status'] == 'ready'
+        
+        cameras.append({
+            "id": camera_id,
+            "name": camera_info['config']['name'],
+            "index": camera_info['config']['index'],
+            "status": camera_info['status'],
+            "available": is_available,
+            "stream_url": f"/mobile/stream/{camera_id}",
+            "pose_stream_url": f"/mobile/stream/{camera_id}/pose",
+            "detection_stream_url": f"/mobile/stream/{camera_id}/detection"
+        })
+    
+    return jsonify({
+        "success": True,
+        "cameras": cameras,
+        "server_info": {
+            "name": "Guard AI Stream Server",
+            "version": "1.0.0",
+            "total_cameras": len(cameras),
+            "available_cameras": len([c for c in cameras if c['available']])
+        }
+    })
+
+@app.route('/api/mobile/server/info')
+def mobile_server_info():
+    """Mobil için server bilgileri."""
+    server = get_stream_server()
+    
+    return jsonify({
+        "success": True,
+        "server": {
+            "name": "Guard AI Mobile Stream",
+            "version": "1.0.0",
+            "status": "online",
+            "ai_model_loaded": server.health_status['ai_model'] == 'loaded',
+            "features": [
+                "Real-time Video Streaming",
+                "YOLOv11 Pose Detection",
+                "Fall Detection Alerts",
+                "Multi-Camera Support"
+            ]
+        },
+        "endpoints": {
+            "cameras": "/api/mobile/cameras",
+            "stream": "/mobile/stream/{camera_id}",
+            "pose_stream": "/mobile/stream/{camera_id}/pose",
+            "detection_stream": "/mobile/stream/{camera_id}/detection",
+            "health": "/api/mobile/health"
+        }
+    })
+
+@app.route('/api/mobile/health')
+def mobile_health_check():
+    """Mobil için sağlık kontrolü."""
+    server = get_stream_server()
+    
+    total_cameras = len(server.cameras)
+    active_cameras = 0
+    ready_cameras = 0
+    
+    camera_status = {}
+    for camera_id, camera_info in server.cameras.items():
+        camera = camera_info['camera']
+        is_running = hasattr(camera, 'is_running') and camera.is_running
+        is_ready = camera_info['status'] == 'ready'
+        
+        if is_running:
+            active_cameras += 1
+        if is_ready:
+            ready_cameras += 1
+        
+        camera_status[camera_id] = {
+            'name': camera_info['config']['name'],
+            'status': camera_info['status'],
+            'running': is_running,
+            'ready': is_ready,
+            'active_streams': camera_info['active_streams']
+        }
+    
+    overall_status = "healthy"
+    if active_cameras == 0:
+        overall_status = "no_cameras"
+    elif active_cameras < ready_cameras:
+        overall_status = "degraded"
+    
+    return jsonify({
+        "success": True,
+        "status": overall_status,
+        "timestamp": time.time(),
+        "cameras": {
+            "total": total_cameras,
+            "ready": ready_cameras,
+            "active": active_cameras,
+            "details": camera_status
+        },
+        "ai_model": {
+            "status": server.health_status['ai_model'],
+            "loaded": server.health_status['ai_model'] == 'loaded'
+        }
+    })
+
+# MOBİL VİDEO STREAM ENDPOİNTLERİ
+@app.route('/mobile/stream/<camera_id>')
+def mobile_video_feed(camera_id):
+    """Mobil için temel video stream."""
+    server = get_stream_server()
+    
+    # CORS headers ekle
+    def generate_with_cors():
+        for chunk in server.generate_frames(camera_id, quality='medium', 
+                                           include_pose=False, include_detection=False):
+            yield chunk
+    
+    response = Response(generate_with_cors(),
+                       mimetype='multipart/x-mixed-replace; boundary=frame')
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+
+@app.route('/mobile/stream/<camera_id>/pose')
+def mobile_video_feed_pose(camera_id):
+    """Mobil için pose detection stream."""
+    server = get_stream_server()
+    
+    def generate_with_cors():
+        for chunk in server.generate_frames(camera_id, quality='medium', 
+                                           include_pose=True, include_detection=False):
+            yield chunk
+    
+    response = Response(generate_with_cors(),
+                       mimetype='multipart/x-mixed-replace; boundary=frame')
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+
+@app.route('/mobile/stream/<camera_id>/detection')
+def mobile_video_feed_detection(camera_id):
+    """Mobil için full detection stream."""
+    server = get_stream_server()
+    
+    def generate_with_cors():
+        for chunk in server.generate_frames(camera_id, quality='high', 
+                                           include_pose=True, include_detection=True):
+            yield chunk
+    
+    response = Response(generate_with_cors(),
+                       mimetype='multipart/x-mixed-replace; boundary=frame')
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+
+# MOBİL FALL ALERT ENDPOİNTLERİ
+@app.route('/api/mobile/alerts/recent')
+def mobile_recent_alerts():
+    """Mobil için son uyarılar."""
+    server = get_stream_server()
+    
+    # Son 24 saatteki uyarılar (örnek)
+    alerts = []
+    
+    return jsonify({
+        "success": True,
+        "alerts": alerts,
+        "count": len(alerts),
+        "period": "24h"
+    })
+
+@app.route('/api/mobile/quality/<camera_id>')
+def mobile_stream_quality_options(camera_id):
+    """Mobil için kalite seçenekleri."""
+    server = get_stream_server()
+    
+    if camera_id not in server.cameras:
+        return jsonify({"success": False, "error": "Camera not found"}), 404
+    
+    return jsonify({
+        "success": True,
+        "camera_id": camera_id,
+        "quality_options": {
+            "low": {
+                "name": "Düşük Kalite",
+                "resolution": "320x240",
+                "fps": 15,
+                "url": f"/mobile/stream/{camera_id}?quality=low"
+            },
+            "medium": {
+                "name": "Orta Kalite",
+                "resolution": "640x480", 
+                "fps": 25,
+                "url": f"/mobile/stream/{camera_id}?quality=medium"
+            },
+            "high": {
+                "name": "Yüksek Kalite",
+                "resolution": "1280x720",
+                "fps": 30,
+                "url": f"/mobile/stream/{camera_id}?quality=high"
+            }
+        }
+    })

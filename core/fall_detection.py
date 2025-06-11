@@ -797,15 +797,12 @@ class FallDetector:
         except Exception as e:
             logging.error(f"Person tracks güncelleme hatası: {str(e)}")
 
+
+
+
     def _analyze_fall_for_person(self, person_track):
         """
-        Belirli bir kişi için düşme analizi yapar.
-        
-        Args:
-            person_track (PersonTrack): Kişi tracking bilgileri
-            
-        Returns:
-            tuple: (düşme_durumu, güven_skoru)
+        DÜZELTME: Gelişmiş düşme analizi - EKLEMLERİ DAHA HASSAS KONTROL EDER
         """
         if not person_track.has_valid_pose():
             return False, 0.0
@@ -814,105 +811,309 @@ class FallDetector:
             keypoints = person_track.latest_keypoints
             keypoint_confs = person_track.latest_keypoint_confs
             
-            # Güvenilir keypoint'leri filtrele
-            conf_mask = keypoint_confs > self.fall_detection_params['confidence_threshold']
+            # DÜZELTME: Güvenilir keypoint'leri filtrele (daha düşük eşik)
+            conf_mask = keypoint_confs > 0.25  # 0.3 -> 0.25 (daha hassas)
             valid_keypoints = np.sum(conf_mask)
             
-            if valid_keypoints < self.fall_detection_params['min_keypoints']:
+            if valid_keypoints < 8:  # 10 -> 8 (daha esnek)
                 return False, 0.0
             
-            # Ana keypoint'leri al
-            nose = keypoints[0] if conf_mask[0] else None
-            left_shoulder = keypoints[5] if conf_mask[5] else None
-            right_shoulder = keypoints[6] if conf_mask[6] else None
-            left_hip = keypoints[11] if conf_mask[11] else None
-            right_hip = keypoints[12] if conf_mask[12] else None
+            # DÜZELTME: Doğru COCO keypoint indeksleri (0-based)
+            nose = keypoints[0] if conf_mask[0] else None                    # 0: burun
+            left_shoulder = keypoints[5] if conf_mask[5] else None          # 5: sol omuz
+            right_shoulder = keypoints[6] if conf_mask[6] else None         # 6: sağ omuz
+            left_elbow = keypoints[7] if conf_mask[7] else None             # 7: sol dirsek
+            right_elbow = keypoints[8] if conf_mask[8] else None            # 8: sağ dirsek
+            left_hip = keypoints[11] if conf_mask[11] else None             # 11: sol kalça
+            right_hip = keypoints[12] if conf_mask[12] else None            # 12: sağ kalça
+            left_knee = keypoints[13] if conf_mask[13] else None            # 13: sol diz
+            right_knee = keypoints[14] if conf_mask[14] else None           # 14: sağ diz
+            left_ankle = keypoints[15] if conf_mask[15] else None           # 15: sol ayak bileği
+            right_ankle = keypoints[16] if conf_mask[16] else None          # 16: sağ ayak bileği
             
-            # Baş merkezi hesapla
-            head_center = None
-            if nose is not None:
-                head_center = nose
-            elif left_shoulder is not None and right_shoulder is not None:
-                head_center = (left_shoulder + right_shoulder) / 2
-                head_center[1] -= 20  # Yaklaşık baş pozisyonu
+            # DÜZELTME: Vücut merkez noktalarını hesapla
+            shoulder_center = None
+            if left_shoulder is not None and right_shoulder is not None:
+                shoulder_center = (left_shoulder + right_shoulder) / 2
             
-            # Pelvis merkezi hesapla
-            pelvis_center = None
+            hip_center = None
             if left_hip is not None and right_hip is not None:
-                pelvis_center = (left_hip + right_hip) / 2
+                hip_center = (left_hip + right_hip) / 2
             
-            if head_center is None or pelvis_center is None:
-                return False, 0.0
+            # Ayak merkezi
+            foot_center = None
+            if left_ankle is not None and right_ankle is not None:
+                foot_center = (left_ankle + right_ankle) / 2
+            elif left_ankle is not None:
+                foot_center = left_ankle
+            elif right_ankle is not None:
+                foot_center = right_ankle
             
-            # 1. Baş-Pelvis dikey mesafe oranı kontrolü
-            head_pelvis_distance = abs(head_center[1] - pelvis_center[1])
-            bbox_height = person_track.latest_bbox[3] - person_track.latest_bbox[1]
-            
-            if bbox_height > 0:
-                height_ratio = head_pelvis_distance / bbox_height
-            else:
-                height_ratio = 1.0
-            
-            # 2. Eğiklik açısı kontrolü
-            dx = pelvis_center[0] - head_center[0]
-            dy = pelvis_center[1] - head_center[1]
-            
-            if dy != 0:
-                tilt_angle = abs(math.degrees(math.atan(dx / dy)))
-            else:
-                tilt_angle = 90.0
-            
-            # 3. Omuz-kalça hizalaması kontrolü
-            shoulder_hip_alignment = 0.0
-            if (left_shoulder is not None and right_shoulder is not None and 
-                left_hip is not None and right_hip is not None):
-                
-                shoulder_angle = math.degrees(math.atan2(
-                    right_shoulder[1] - left_shoulder[1],
-                    right_shoulder[0] - left_shoulder[0]
-                ))
-                
-                hip_angle = math.degrees(math.atan2(
-                    right_hip[1] - left_hip[1],
-                    right_hip[0] - left_hip[0]
-                ))
-                
-                shoulder_hip_alignment = abs(shoulder_angle - hip_angle)
-            
-            # Düşme skorunu hesapla
+            # DÜZELTME: Ana düşme algılama kriterleri
+            fall_indicators = []
             fall_score = 0.0
             
-            # Baş-pelvis oranı skoru
-            if height_ratio < self.fall_detection_params['head_pelvis_ratio_threshold']:
-                ratio_score = 1.0 - (height_ratio / self.fall_detection_params['head_pelvis_ratio_threshold'])
-                fall_score += ratio_score * 0.4
+            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (50 derece kriteri)
+            if shoulder_center is not None and hip_center is not None:
+                # Omuz-kalça çizgisinin dikey eksene göre açısı
+                dx = hip_center[0] - shoulder_center[0]
+                dy = hip_center[1] - shoulder_center[1]
+                
+                if abs(dy) > 1:  # Bölme sıfıra yakın değilse
+                    tilt_angle = abs(math.degrees(math.atan(dx / abs(dy))))
+                    
+                    # DÜZELTME: 50 derece eşiği
+                    if tilt_angle > 50:  # 45 -> 50 derece
+                        fall_score += 0.6  # Ağırlık artırıldı
+                        fall_indicators.append("omuz_kalca_egim")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Omuz-kalça eğimi {tilt_angle:.1f}°")
+                    elif tilt_angle > 35:  # Kısmi risk
+                        fall_score += 0.3
+                        fall_indicators.append("egim_riski")
             
-            # Eğiklik açısı skoru
-            if tilt_angle > self.fall_detection_params['tilt_angle_threshold']:
-                tilt_score = min(1.0, (tilt_angle - self.fall_detection_params['tilt_angle_threshold']) / 45.0)
-                fall_score += tilt_score * 0.4
+            # 2. DÜZELTME: DİZ EĞİM AÇISI KONTROLÜ
+            if (left_knee is not None and left_hip is not None and left_ankle is not None):
+                # Sol bacak açısı (kalça-diz-ayak)
+                v1 = left_hip - left_knee
+                v2 = left_ankle - left_knee
+                
+                # Vektörler arası açı
+                dot_product = np.dot(v1, v2)
+                norms = np.linalg.norm(v1) * np.linalg.norm(v2)
+                
+                if norms > 0:
+                    cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
+                    knee_angle = math.degrees(math.acos(cos_angle))
+                    
+                    # DÜZELTME: Diz açısı 50 derece altındaysa düşme riski
+                    if knee_angle < 50:  # Diz büküldüyse
+                        fall_score += 0.4
+                        fall_indicators.append("diz_bukum")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Sol diz açısı {knee_angle:.1f}°")
             
-            # Omuz-kalça hizalaması skoru
-            if shoulder_hip_alignment > 30:
-                alignment_score = min(1.0, (shoulder_hip_alignment - 30) / 60.0)
-                fall_score += alignment_score * 0.2
+            # Sağ bacak için aynı kontrol
+            if (right_knee is not None and right_hip is not None and right_ankle is not None):
+                v1 = right_hip - right_knee
+                v2 = right_ankle - right_knee
+                
+                dot_product = np.dot(v1, v2)
+                norms = np.linalg.norm(v1) * np.linalg.norm(v2)
+                
+                if norms > 0:
+                    cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
+                    knee_angle = math.degrees(math.acos(cos_angle))
+                    
+                    if knee_angle < 50:
+                        fall_score += 0.4
+                        fall_indicators.append("sag_diz_bukum")
             
-            # Düşme eşiği
-            fall_threshold = 0.6
-            is_fall = fall_score > fall_threshold
+            # 3. DÜZELTME: BAGIRSAK-AYAK DİKEY MESAFE ORANI
+            if hip_center is not None and foot_center is not None:
+                hip_foot_distance = abs(hip_center[1] - foot_center[1])
+                bbox_height = person_track.latest_bbox[3] - person_track.latest_bbox[1]
+                
+                if bbox_height > 0:
+                    height_ratio = hip_foot_distance / bbox_height
+                    
+                    # DÜZELTME: Kalça ayak mesafesi çok azsa düşme
+                    if height_ratio < 0.6:  # 0.8 -> 0.6 (daha hassas)
+                        fall_score += 0.5
+                        fall_indicators.append("yukseklik_kaybi")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Yükseklik oranı {height_ratio:.3f}")
+            
+            # 4. DÜZELTME: OMUZ GENİŞLİĞİ VS YÜKSEK ORANI
+            if (left_shoulder is not None and right_shoulder is not None and 
+                shoulder_center is not None and foot_center is not None):
+                
+                shoulder_width = abs(left_shoulder[0] - right_shoulder[0])
+                body_height = abs(shoulder_center[1] - foot_center[1])
+                
+                if body_height > 0:
+                    width_height_ratio = shoulder_width / body_height
+                    
+                    # DÜZELTME: Genişlik/yükseklik oranı çok büyükse yatmış demek
+                    if width_height_ratio > 0.8:  # Yatay pozisyon
+                        fall_score += 0.7
+                        fall_indicators.append("yatay_pozisyon")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Genişlik/yükseklik oranı {width_height_ratio:.3f}")
+            
+            # 5. DÜZELTME: DİRSEK YERE YAKIN MI? (Desteklenme hareketi)
+            for elbow_name, elbow_point in [("sol_dirsek", left_elbow), ("sag_dirsek", right_elbow)]:
+                if elbow_point is not None and foot_center is not None:
+                    elbow_foot_distance = abs(elbow_point[1] - foot_center[1])
+                    
+                    # Dirsek ayağa çok yakınsa (düşme sırasında destek alma)
+                    if elbow_foot_distance < 80:  # piksel cinsinden
+                        fall_score += 0.3
+                        fall_indicators.append(f"{elbow_name}_destek")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: {elbow_name} destek hareketi")
+            
+            # DÜZELTME: DÜŞME KARARI - DÜŞÜK EŞİK
+            fall_threshold = 0.5  # 0.6 -> 0.5 (daha hassas)
+            is_fall = fall_score >= fall_threshold
             
             if is_fall:
-                logging.debug(f"Fall analysis - ID: {person_track.track_id}, "
-                            f"Height ratio: {height_ratio:.3f}, "
-                            f"Tilt angle: {tilt_angle:.1f}°, "
-                            f"Alignment: {shoulder_hip_alignment:.1f}°, "
-                            f"Fall score: {fall_score:.3f}")
+                logging.warning(f"🚨 DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
             
             return is_fall, fall_score
             
         except Exception as e:
-            logging.error(f"Fall analysis hatası: {str(e)}")
+            logging.error(f"Düşme analizi hatası: {str(e)}")
             return False, 0.0
+
+    def _enhanced_detection_loop(self, camera):
+        """
+        DÜZELTME: Optimized detection loop - Daha akıcı kamera
+        """
+        try:
+            camera_id = f"camera_{camera.camera_index}"
+            logging.info(f"🎥 Enhanced Detection Loop başlatıldı: {camera_id}")
+            
+            # DÜZELTME: Performans optimizasyonu
+            config = {
+                'target_fps': 25,  # 30 -> 25 (daha kararlı)
+                'max_errors': 10,  # 15 -> 10
+                'min_detection_interval': 1.5,  # 2.0 -> 1.5 saniye (daha hızlı)
+                'performance_log_interval': 100,  # 150 -> 100
+                'ai_enabled': self.system_state['ai_model_loaded'],
+                'frame_skip': 1  # Her frame'i işle
+            }
+            
+            stats = {
+                'frame_count': 0,
+                'detection_count': 0,
+                'fall_detection_count': 0,
+                'error_count': 0,
+                'session_start': time.time(),
+                'last_detection_time': 0,
+                'total_processing_time': 0.0,
+                'fps_counter': 0,
+                'fps_start_time': time.time()
+            }
+            
+            frame_duration = 1.0 / config['target_fps']
+            last_fps_log = time.time()
+            
+            while self.system_state['running']:
+                loop_start = time.time()
+                
+                try:
+                    # DÜZELTME: Kamera durumu kontrolü
+                    if not camera or not hasattr(camera, 'is_running') or not camera.is_running:
+                        time.sleep(0.1)
+                        continue
+                    
+                    # DÜZELTME: Frame alma optimizasyonu
+                    frame = camera.get_frame()
+                    if frame is None or frame.size == 0:
+                        stats['error_count'] += 1
+                        if stats['error_count'] < config['max_errors']:
+                            time.sleep(0.05)  # Kısa bekleme
+                            continue
+                        else:
+                            logging.error(f"💥 {camera_id}: Maksimum hata sayısına ulaşıldı")
+                            break
+                    
+                    # Frame başarılı - error count sıfırla
+                    stats['error_count'] = 0
+                    stats['frame_count'] += 1
+                    stats['fps_counter'] += 1
+                    processing_start = time.time()
+                    
+                    # DÜZELTME: AI Detection
+                    if config['ai_enabled'] and self.fall_detector:
+                        try:
+                            # Pose detection
+                            annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
+                            
+                            # Stats güncelle
+                            if tracks:
+                                stats['detection_count'] += len(tracks)
+                                self.system_state['total_detections'] += len(tracks)
+                                self.system_state['last_activity'] = time.time()
+                            
+                            # DÜZELTME: Fall Detection - Daha hassas eşik
+                            current_time = time.time()
+                            if (current_time - stats['last_detection_time']) > config['min_detection_interval']:
+                                is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
+                                
+                                # DÜZELTME: Düşük eşik değeri
+                                if is_fall and confidence > 0.4:  # 0.5 -> 0.4
+                                    stats['last_detection_time'] = current_time
+                                    stats['fall_detection_count'] += 1
+                                    self.system_state['fall_events'] += 1
+                                    
+                                    logging.warning(f"🚨 {camera_id} DÜŞME ALGILANDI!")
+                                    logging.info(f"   📍 Track ID: {track_id}")
+                                    logging.info(f"   📊 Confidence: {confidence:.4f}")
+                                    
+                                    # DÜZELTME: Thread-safe fall handling
+                                    def handle_fall():
+                                        try:
+                                            self._handle_enhanced_fall_detection(
+                                                annotated_frame, confidence, camera_id, track_id, None
+                                            )
+                                        except Exception as handle_error:
+                                            logging.error(f"❌ Fall handling hatası: {handle_error}")
+                                    
+                                    self.root.after(0, handle_fall)
+                        
+                        except Exception as ai_error:
+                            logging.error(f"❌ {camera_id} AI detection hatası: {ai_error}")
+                            annotated_frame = frame
+                    
+                    else:
+                        annotated_frame = frame
+                    
+                    # DÜZELTME: Processing time
+                    processing_time = time.time() - processing_start
+                    stats['total_processing_time'] += processing_time
+                    
+                    # DÜZELTME: FPS logging - Her 5 saniyede bir
+                    if time.time() - last_fps_log >= 5.0:
+                        elapsed = time.time() - stats['fps_start_time']
+                        if elapsed > 0:
+                            current_fps = stats['fps_counter'] / elapsed
+                            logging.info(f"📊 {camera_id} FPS: {current_fps:.1f}")
+                            
+                            # Reset
+                            stats['fps_counter'] = 0
+                            stats['fps_start_time'] = time.time()
+                            last_fps_log = time.time()
+                    
+                    # DÜZELTME: Akıcılık için dinamik FPS kontrolü
+                    elapsed_time = time.time() - loop_start
+                    target_sleep = frame_duration - elapsed_time
+                    
+                    # CPU kullanımına göre uyarla
+                    if processing_time > frame_duration * 0.8:  # %80'den fazla CPU kullanımı
+                        target_sleep = max(0.01, target_sleep)  # Minimum 10ms
+                    else:
+                        target_sleep = max(0.005, target_sleep)  # Minimum 5ms
+                    
+                    if target_sleep > 0:
+                        time.sleep(target_sleep)
+                    
+                except Exception as inner_e:
+                    stats['error_count'] += 1
+                    logging.error(f"❌ {camera_id} loop inner hatası: {str(inner_e)}")
+                    
+                    if stats['error_count'] >= config['max_errors']:
+                        logging.error(f"💥 {camera_id} maksimum hata sayısına ulaştı")
+                        break
+                    
+                    time.sleep(0.1)
+            
+            # Final log
+            total_time = time.time() - stats['session_start']
+            avg_fps = stats['frame_count'] / total_time if total_time > 0 else 0
+            logging.info(f"🏁 {camera_id} Session tamamlandı: {avg_fps:.1f} FPS")
+            
+        except Exception as e:
+            logging.error(f"💥 {camera_id} Detection loop kritik hatası: {str(e)}")
+        finally:
+            logging.info(f"🧹 {camera_id} detection thread temizlendi")
+
 
     def _draw_visualizations(self, frame, tracks):
         """

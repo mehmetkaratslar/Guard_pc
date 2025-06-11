@@ -187,62 +187,57 @@ DEEPSORT_CONFIG = {
 
 # Düşme Algılama Parametreleri
 FALL_DETECTION_CONFIG = {
-    # Ana düşme algılama eşikleri
-    "head_pelvis_ratio_threshold": 0.8,    # Baş-pelvis dikey mesafe oranı
-    "tilt_angle_threshold": 45,            # Vücut eğiklik açısı (derece)
-    "shoulder_hip_alignment_threshold": 30, # Omuz-kalça hizalaması (derece)
+    # DÜZELTME: Daha hassas eşikler
+    "head_pelvis_ratio_threshold": 0.6,    # 0.8 -> 0.6 (daha hassas)
+    "tilt_angle_threshold": 50,            # 45 -> 50 (sizin istediğiniz değer)
+    "shoulder_hip_alignment_threshold": 40, # 30 -> 40 (daha toleranslı)
     
-    # Süreklilik kontrolleri
-    "continuity_frames": 5,                # Süreklilik için gerekli frame sayısı
-    "min_detection_interval": 5.0,        # Minimum algılama aralığı (saniye)
-    "max_detection_per_minute": 3,        # Dakika başına maksimum düşme algılama
+    # DÜZELTME: Daha hızlı response
+    "continuity_frames": 3,                # 5 -> 3 (daha hızlı algılama)
+    "min_detection_interval": 1.5,        # 5.0 -> 1.5 (daha sık kontrol)
+    "max_detection_per_minute": 5,        # 3 -> 5 (daha fazla algılama)
     
-    # Kalite kontrolleri
-    "min_keypoints": 10,                   # Minimum gerekli keypoint sayısı
-    "min_keypoint_confidence": 0.3,       # Minimum keypoint güven değeri
-    "min_pose_stability": 0.2,            # Minimum pose kararlılığı
+    # DÜZELTME: Daha düşük kalite gereksinimleri
+    "min_keypoints": 8,                    # 10 -> 8 (daha esnek)
+    "min_keypoint_confidence": 0.25,      # 0.3 -> 0.25 (daha hassas)
+    "min_pose_stability": 0.15,           # 0.2 -> 0.15 (daha toleranslı)
     
-    # Gelişmiş parametreler
-    "body_ratio_analysis": True,          # Vücut oranı analizi aktif/pasif
-    "temporal_analysis": True,            # Zamansal analiz aktif/pasif
-    "multi_frame_validation": True,       # Çoklu frame doğrulama
-    "pose_sequence_analysis": True,       # Pose sekans analizi
+    # Diğer ayarlar aynı kalabilir
+    "body_ratio_analysis": True,
+    "temporal_analysis": True,
+    "multi_frame_validation": True,
+    "pose_sequence_analysis": True,
     
-    # Düşme tipleri ağırlıkları
     "fall_type_weights": {
-        "forward_fall": 0.4,              # İleri düşme ağırlığı
-        "backward_fall": 0.3,             # Geri düşme ağırlığı
-        "side_fall": 0.25,                # Yana düşme ağırlığı
-        "sitting_fall": 0.05              # Oturma hareketi ağırlığı
+        "forward_fall": 0.4,
+        "backward_fall": 0.3,
+        "side_fall": 0.25,
+        "sitting_fall": 0.05
     }
 }
 
 # Görselleştirme Ayarları
 VISUALIZATION_CONFIG = {
-    # Pose görselleştirme
-    "show_pose_points": True,             # Pose noktalarını göster
-    "show_pose_skeleton": True,           # Pose iskeletini göster
-    "show_pose_labels": False,            # Pose etiketlerini göster
-    "pose_point_radius": 4,               # Pose noktası boyutu
-    "pose_line_thickness": 2,             # Pose çizgi kalınlığı
+    "show_pose_points": True,
+    "show_pose_skeleton": True,
+    "show_pose_labels": False,
+    "pose_point_radius": 3,              # 4 -> 3 (performance)
+    "pose_line_thickness": 2,
     
-    # Tracking görselleştirme
-    "show_track_id": True,                # Track ID'lerini göster
-    "show_confidence": True,              # Güven skorlarını göster
-    "show_bounding_box": True,            # Bounding box'ları göster
-    "bounding_box_thickness": 2,          # Bounding box kalınlığı
+    "show_track_id": True,
+    "show_confidence": True,
+    "show_bounding_box": True,
+    "bounding_box_thickness": 2,
     
-    # Düşme algılama görselleştirme
-    "fall_alert_color": (0, 0, 255),     # Düşme uyarısı rengi (BGR)
-    "normal_color": (0, 255, 0),         # Normal durum rengi (BGR)
-    "tracking_color": (255, 0, 0),       # Tracking rengi (BGR)
-    "show_fall_overlay": True,            # Düşme overlay'i göster
-    "fall_text_size": 1.2,               # Düşme metni boyutu
+    "fall_alert_color": (0, 0, 255),
+    "normal_color": (0, 255, 0),
+    "tracking_color": (255, 0, 0),
+    "show_fall_overlay": True,
+    "fall_text_size": 1.0,              # 1.2 -> 1.0 (performance)
     
-    # UI ayarları
-    "camera_display_size": (820, 600),   # Kamera görüntü boyutu
-    "ui_update_interval": 33,             # UI güncelleme aralığı (ms) ~30 FPS
-    "stats_update_interval": 1000,       # İstatistik güncelleme aralığı (ms)
+    "camera_display_size": (1200, 800),  # Optimize boyut
+    "ui_update_interval": 25,            # 33 -> 25 ms (~40 FPS)
+    "stats_update_interval": 500,        # 1000 -> 500 ms (daha hızlı)
 }
 
 # API sunucusu ayarları
@@ -251,13 +246,17 @@ API_PORT = 8002
 STREAM_PORT = 5000
 
 # Performans Ayarları
+# Performans Ayarları - DÜZELTME
 PERFORMANCE_CONFIG = {
-    "max_concurrent_detections": 3,      # 3 kamera için
-    "frame_skip_ratio": 0,               # Tüm frame'leri işle
-    "gpu_acceleration": True,            # GPU varsa kullan
-    "multi_threading": True,             # Çoklu thread aktif
-    "memory_optimization": True,         # Bellek optimizasyonu
-    "detection_queue_size": 15,          # 3 kamera x 5 queue
+    "max_concurrent_detections": 3,
+    "frame_skip_ratio": 1,               # 0 -> 1 (her frame'i işle)
+    "gpu_acceleration": True,
+    "multi_threading": True,
+    "memory_optimization": True,
+    "detection_queue_size": 3,           # 15 -> 3 (düşük latency)
+    "camera_buffer_size": 1,             # Minimum buffer
+    "display_fps_limit": 40,             # UI FPS limit
+    "ai_detection_fps": 15,              # AI detection FPS (daha düşük)
 }
 
 # Bildirim ayarları
@@ -596,6 +595,52 @@ VERSION_HISTORY = {
     "2.0.0": "YOLOv11 Pose Estimation + DeepSORT entegrasyonu",
     "1.0.0": "Temel YOLOv8 düşme algılama sistemi"
 }
+
+
+
+# =======================================================================================
+
+# Akıcı kamera için optimize ayarlar
+CAMERA_BUFFER_CONFIG = {
+    "buffer_size": 1,                    # Tek frame buffer
+    "capture_fps": 30,                   # Yakalama FPS
+    "display_fps": 30,                   # Gösterim FPS
+    "processing_fps": 10,                # AI işleme FPS (daha düşük)
+    "frame_skip_display": 1,             # Display için frame atlama yok
+    "frame_skip_ai": 3,                  # AI için her 3. frame
+    "double_buffering": True,            # Çift buffer sistemi
+    "direct_display": True,              # Doğrudan display güncelleme
+}
+
+# Mobil API ayarları  
+MOBILE_API_CONFIG = {
+    "enabled": True,
+    "port": 5000,
+    "host": "0.0.0.0",
+    "cors_enabled": True,
+    "max_clients": 5,
+    "stream_timeout": 300,               # 5 dakika
+    "quality_profiles": {
+        "mobile_low": {"width": 320, "height": 240, "fps": 15, "quality": 60},
+        "mobile_medium": {"width": 640, "height": 480, "fps": 20, "quality": 70},
+        "mobile_high": {"width": 854, "height": 480, "fps": 25, "quality": 80}
+    }
+}
+
+# Performance ayarları güncelle
+PERFORMANCE_CONFIG = {
+    "max_concurrent_detections": 3,
+    "frame_skip_ratio": 0,               # Hiç frame atlama
+    "gpu_acceleration": True,
+    "multi_threading": True,
+    "memory_optimization": True,
+    "detection_queue_size": 1,           # Minimal queue
+    "camera_buffer_size": 1,             # Tek frame buffer
+    "display_fps_limit": 30,             # 30 FPS display
+    "ai_detection_fps": 10,              # 10 FPS AI processing
+    "mobile_stream_enabled": True,       # Mobil stream aktif
+}
+
 
 # Ek yardımcı fonksiyonlar için sabitler
 CONSTANTS = {

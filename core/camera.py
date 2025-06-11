@@ -270,38 +270,53 @@ class EnhancedCamera:
             return False
     
     def _setup_high_performance_parameters(self):
-        """Yüksek performans kamera parametreleri."""
+        """
+        DÜZELTME: Ultra yüksek performans kamera parametreleri
+        """
         try:
-            # TEMEL AYARLAR
+            # TEMEL AYARLAR - Akıcılık için optimize
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-            self.cap.set(cv2.CAP_PROP_FPS, self.target_fps)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal latency
+            self.cap.set(cv2.CAP_PROP_FPS, 30)  # Max FPS
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer - KRITIK!
             
-            # PERFORMANS OPTİMİZASYONU
+            # DÜZELTME: Codec optimizasyonu
+            # MJPEG daha hızlı decode
             self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
             
-            # PARLAKLIK VE KONTRAST KONTROLLERI
+            # DÜZELTME: Windows optimizasyonları
             if platform.system() == "Windows":
-                # Windows spesifik ayarlar
+                # DirectShow optimizasyonları
                 self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manuel exposure
-                self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure_adjustment)
-                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)  # Başlangıç parlaklığı
-                self.cap.set(cv2.CAP_PROP_CONTRAST, 0.5)    # Başlangıç kontrast
-                self.cap.set(cv2.CAP_PROP_SATURATION, 0.5)  # Renk doygunluğu
-                self.cap.set(cv2.CAP_PROP_GAIN, 0)         # Gain kontrolü
-                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)    # Manuel focus
+                self.cap.set(cv2.CAP_PROP_EXPOSURE, -6)          # Sabit exposure
+                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)
+                self.cap.set(cv2.CAP_PROP_CONTRAST, 0.5)
+                self.cap.set(cv2.CAP_PROP_SATURATION, 0.5)
+                self.cap.set(cv2.CAP_PROP_GAIN, 0)               # Auto gain off
+                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)          # Manuel focus
+                
+                # DÜZELTME: Frame grabbing optimizasyonu
+                try:
+                    self.cap.set(cv2.CAP_PROP_SETTINGS, 0)       # Settings dialog off
+                    self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)    # Direct RGB conversion
+                except:
+                    pass
             
-            # Gerçek ayarları kontrol et
+            # DÜZELTME: Gerçek ayarları logla
             actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            actual_buffer = self.cap.get(cv2.CAP_PROP_BUFFERSIZE)
             
-            logging.info(f"Kamera {self.camera_index} gerçek ayarlar: {actual_width}x{actual_height} @ {actual_fps}fps")
+            logging.info(f"Kamera {self.camera_index} OPTIMIZE ayarlar:")
+            logging.info(f"  📏 Boyut: {actual_width}x{actual_height}")
+            logging.info(f"  🎬 FPS: {actual_fps}")
+            logging.info(f"  📦 Buffer: {actual_buffer}")
             
         except Exception as e:
             logging.warning(f"Kamera {self.camera_index} parametre ayarlama hatası: {e}")
-    
+
+
     def _test_initial_frame(self):
         """İlk frame testi - hızlı."""
         try:
@@ -326,12 +341,30 @@ class EnhancedCamera:
         except Exception as e:
             logging.error(f"Kamera {self.camera_index} ilk frame test hatası: {e}")
             return False
+   
+   
+   
     
     def _high_performance_capture_loop(self):
-        """Yüksek performanslı frame yakalama döngüsü."""
+        """
+        DÜZELTME: Ultra akıcı video için optimize edilmiş döngü
+        """
         consecutive_failures = 0
-        max_failures = 10
-        frame_interval = 1.0 / self.target_fps
+        max_failures = 5
+        
+        # DÜZELTME: Sabit FPS için optimize edilmiş parametreler
+        target_fps = 30
+        frame_interval = 1.0 / target_fps
+        
+        # DÜZELTME: Double buffering sistemi
+        buffer_a = None
+        buffer_b = None
+        current_buffer = 'a'
+        
+        # Performance tracking
+        fps_counter = 0
+        fps_start_time = time.time()
+        last_frame_time = time.time()
         
         while self.is_running:
             loop_start = time.time()
@@ -342,74 +375,79 @@ class EnhancedCamera:
                         break
                     continue
                 
-                # Frame yakala
+                # DÜZELTME: Continuous frame capture
                 ret, frame = self.cap.read()
                 
                 if not ret or frame is None:
                     consecutive_failures += 1
                     if consecutive_failures >= max_failures:
-                        logging.error(f"Kamera {self.camera_index}: Maksimum hata, thread sonlandırılıyor")
+                        logging.error(f"Kamera {self.camera_index}: Maksimum hata")
                         break
-                    time.sleep(0.01)
+                    time.sleep(0.001)  # Çok kısa bekleme
                     continue
                 
                 # Başarılı frame
                 consecutive_failures = 0
+                fps_counter += 1
                 
-                # Parlaklık ayarı (gerekirse)
+                # DÜZELTME: Parlaklık ayarı (hızlı)
                 if self.auto_brightness:
                     adjusted_frame = self._apply_brightness_adjustments(frame)
                 else:
                     adjusted_frame = frame
                 
-                # Frame buffer'a ekle (non-blocking)
+                # DÜZELTME: Double buffer system
+                if current_buffer == 'a':
+                    buffer_a = adjusted_frame.copy()
+                    current_buffer = 'b'
+                else:
+                    buffer_b = adjusted_frame.copy()
+                    current_buffer = 'a'
+                
+                # DÜZELTME: Queue management - sadece en güncel frame'i tut
                 try:
                     # Eski frame'leri temizle
-                    while self.frame_buffer.qsize() >= 2:
+                    while not self.frame_buffer.empty():
                         try:
                             self.frame_buffer.get_nowait()
                         except queue.Empty:
                             break
                     
-                    self.frame_buffer.put_nowait(adjusted_frame)
+                    # En güncel frame'i ekle
+                    latest_frame = buffer_a if buffer_a is not None else buffer_b
+                    if latest_frame is not None:
+                        self.frame_buffer.put_nowait(latest_frame)
+                    
                 except queue.Full:
-                    # Buffer dolu, en eski frame'i at
-                    try:
-                        self.frame_buffer.get_nowait()
-                        self.frame_buffer.put_nowait(adjusted_frame)
-                    except queue.Empty:
-                        pass
+                    pass
                 
-                # FPS hesaplama
-                self.frame_count += 1
-                if time.time() - self.fps_start_time >= 1.0:
-                    self.actual_fps = self.frame_count / (time.time() - self.fps_start_time)
-                    self.frame_count = 0
-                    self.fps_start_time = time.time()
+                # DÜZELTME: FPS calculation
+                current_time = time.time()
+                if current_time - fps_start_time >= 1.0:
+                    self.actual_fps = fps_counter / (current_time - fps_start_time)
+                    fps_counter = 0
+                    fps_start_time = current_time
                 
-                # Frame rate kontrolü - dinamik
+                # DÜZELTME: Precise timing control
                 elapsed_time = time.time() - loop_start
-                sleep_time = max(0, frame_interval - elapsed_time)
+                sleep_time = frame_interval - elapsed_time
                 
-                # Performans optimizasyonu
-                if elapsed_time > frame_interval * 1.5:  # Yavaş işleme
-                    self.skip_frames = min(2, self.skip_frames + 1)
-                else:
-                    self.skip_frames = max(0, self.skip_frames - 1)
-                
-                if sleep_time > 0 and self.skip_frames == 0:
+                if sleep_time > 0.001:  # Minimum 1ms
                     time.sleep(sleep_time)
                 
             except Exception as e:
-                logging.error(f"Kamera {self.camera_index} capture loop HATA: {e}")
+                logging.error(f"Kamera {self.camera_index} capture error: {e}")
                 consecutive_failures += 1
                 if consecutive_failures >= max_failures:
                     break
-                time.sleep(0.1)
+                time.sleep(0.005)
         
         self.is_running = False
         self.connection_stable = False
         logging.info(f"Kamera {self.camera_index} capture loop SONLANDI")
+
+   
+   
     
     def _analyze_and_adjust_brightness(self, frame):
         """Frame parlaklığını analiz et ve gerekirse ayarla."""
@@ -492,26 +530,32 @@ class EnhancedCamera:
         except Exception as e:
             logging.error(f"Kamera {self.camera_index} fast reconnect HATA: {e}")
             return False
+   
+   
     
     def get_frame(self):
-        """En güncel frame'i al - non-blocking."""
+        """
+        DÜZELTME: Ultra hızlı frame alma
+        """
         try:
-            # En güncel frame'i al
+            # DÜZELTME: En güncel frame'i hemen al
             frame = None
-            while not self.frame_buffer.empty():
-                try:
+            try:
+                while not self.frame_buffer.empty():
                     frame = self.frame_buffer.get_nowait()
-                except queue.Empty:
-                    break
+            except queue.Empty:
+                pass
             
             if frame is not None:
-                return frame.copy()
+                return frame  # Copy yapmaya gerek yok, zaten unique
             else:
                 return self._create_placeholder_frame()
-                
+                    
         except Exception as e:
             logging.debug(f"get_frame hatası: {e}")
             return self._create_placeholder_frame()
+    
+    
     
     def set_brightness(self, brightness):
         """Manuel parlaklık ayarı (-100 ile +100 arası)."""

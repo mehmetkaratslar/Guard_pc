@@ -576,13 +576,22 @@ class DashboardFrame(tk.Frame):
         self.processing_thread = threading.Thread(target=self._process_frames, daemon=True)
         self.processing_thread.start()
 
+
+
+
     def _process_frames(self):
-        """TEK KAMERA için optimize edilmiş frame işleme."""
+        """
+        DÜZELTME: Optimize edilmiş AI processing
+        """
         try:
             fall_detector = FallDetector.get_instance()
         except Exception as e:
             logging.error(f"FallDetector başlatma hatası: {e}")
             return
+        
+        # DÜZELTME: AI processing her 5. frame'de
+        detection_interval = 5
+        frame_counter = 0
         
         while not self.is_destroyed:
             try:
@@ -590,80 +599,101 @@ class DashboardFrame(tk.Frame):
                     time.sleep(0.1)
                     continue
                 
-                if self.selected_camera_index < len(self.cameras):
-                    camera = self.cameras[self.selected_camera_index]
-                    
-                    if not camera.is_running:
-                        time.sleep(0.1)
-                        continue
-                    
-                    frame = camera.get_frame()
-                    if frame is None:
-                        time.sleep(0.05)
-                        continue
-                    
-                    with self.frame_lock:
-                        self.current_frame = frame.copy()
-                    
-                    annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
-                    
-                    self.tracking_stats['active_tracks'] = len(tracks)
-                    if tracks:
-                        self.tracking_stats['total_detections'] += len(tracks)
-                    
-                    current_time = time.time()
-                    if hasattr(self, 'last_fps_time'):
-                        fps = 1.0 / (current_time - self.last_fps_time)
-                        self.tracking_stats['current_fps'] = int(fps)
-                    self.last_fps_time = current_time
-                    
-                    is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
-                    
-                    if is_fall and confidence > 0.6:
-                        self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
-                    
-                    with self.frame_lock:
-                        self.processed_frame = annotated_frame
+                if self.selected_camera_index >= len(self.cameras):
+                    time.sleep(0.1)
+                    continue
                 
-                time.sleep(0.03)  # ~33 FPS
+                camera = self.cameras[self.selected_camera_index]
                 
+                if not camera.is_running:
+                    time.sleep(0.1)
+                    continue
+                
+                # DÜZELTME: Frame al
+                frame = camera.get_frame()
+                if frame is None:
+                    time.sleep(0.02)
+                    continue
+                
+                # DÜZELTME: Current frame'i güncelle
+                with self.frame_lock:
+                    self.current_frame = frame
+                
+                frame_counter += 1
+                
+                # DÜZELTME: AI processing sadece belirli aralıklarla
+                if frame_counter % detection_interval == 0:
+                    try:
+                        annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+                        
+                        # DÜZELTME: Stats update
+                        self.tracking_stats['active_tracks'] = len(tracks)
+                        if tracks:
+                            self.tracking_stats['total_detections'] += len(tracks)
+                        
+                        # DÜZELTME: Fall detection
+                        is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
+                        
+                        if is_fall and confidence > 0.4:
+                            self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
+                        
+                        # DÜZELTME: Processed frame'i güncelle
+                        with self.frame_lock:
+                            self.processed_frame = annotated_frame
+                    
+                    except Exception as ai_error:
+                        logging.error(f"AI işleme hatası: {ai_error}")
+                
+                # DÜZELTME: FPS calculation
+                current_time = time.time()
+                if hasattr(self, 'last_fps_time'):
+                    fps = 1.0 / max(0.001, current_time - self.last_fps_time)
+                    self.tracking_stats['current_fps'] = int(fps)
+                self.last_fps_time = current_time
+                
+                # DÜZELTME: Sabit sleep
+                time.sleep(0.02)  # 50 FPS processing
+            
             except Exception as e:
                 logging.error(f"Frame işleme hatası: {e}")
                 time.sleep(0.1)
+
+
+
 
     def _start_camera_updates(self):
         """Kamera güncellemelerini başlatır."""
         self._update_camera_display()
 
+
+
     def _update_camera_display(self):
-        """TEK KAMERA görüntüsünü günceller."""
+        """
+        DÜZELTME: Video gibi akıcı kamera display
+        """
         if self.is_destroyed:
             return
         
-        current_time = time.time()
-        
-        if current_time - self.last_update_time < self.min_update_interval:
-            self.update_id = self.after(10, self._update_camera_display)
-            return
-        
-        self.last_update_time = current_time
-        
         try:
+            # DÜZELTME: Frame'i hemen al ve göster
             frame = None
             with self.frame_lock:
                 if self.processed_frame is not None:
-                    frame = self.processed_frame.copy()
+                    frame = self.processed_frame
+                    self.processed_frame = None  # Bir kere kullan
                 elif self.current_frame is not None:
-                    frame = self.current_frame.copy()
+                    frame = self.current_frame
             
             if frame is not None:
+                # DÜZELTME: Hızlı boyutlandırma
                 display_width = self.main_camera_label.winfo_width() or 1200
                 display_height = self.main_camera_label.winfo_height() or 800
                 
                 if display_width > 50 and display_height > 50:
                     h, w = frame.shape[:2]
-                    aspect = w / h
                     
+                    # DÜZELTME: Aspect ratio korunarak resize
+                    aspect = w / h
                     if display_width / display_height > aspect:
                         new_height = display_height
                         new_width = int(new_height * aspect)
@@ -671,26 +701,158 @@ class DashboardFrame(tk.Frame):
                         new_width = display_width
                         new_height = int(new_width / aspect)
                     
-                    resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+                    # DÜZELTME: INTER_AREA daha hızlı
+                    resized = cv2.resize(frame, (new_width, new_height), 
+                                    interpolation=cv2.INTER_AREA)
                     
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    cv2.putText(resized, timestamp, (20, 40), cv2.FONT_HERSHEY_SIMPLEX,
-                               0.8, (0, 255, 136), 2, cv2.LINE_AA)
+                    # DÜZELTME: Minimal overlay
+                    self._add_fast_overlay(resized)
                     
-                    if self.selected_camera_index < len(self.cameras):
-                        camera = self.cameras[self.selected_camera_index]
-                        info_text = f"Kamera {camera.camera_index}"
-                        cv2.putText(resized, info_text, (20, new_height - 20), cv2.FONT_HERSHEY_SIMPLEX,
-                                   0.7, (240, 246, 252), 2, cv2.LINE_AA)
-                    
-                    self._update_main_camera_display(resized)
+                    # DÜZELTME: Direct display update
+                    self._direct_update_display(resized)
             
-            self._update_ui_info()
+            # DÜZELTME: UI info güncelle (daha az sıklıkla)
+            current_time = time.time()
+            if not hasattr(self, 'last_ui_update') or (current_time - self.last_ui_update) > 1.0:
+                self._update_ui_info()
+                self.last_ui_update = current_time
+        
+        except Exception as e:
+            logging.error(f"Display update hatası: {e}")
+        
+        # DÜZELTME: Sabit 30 FPS için 33ms
+        self.update_id = self.after(33, self._update_camera_display)
+
+    def _add_fast_overlay(self, frame):
+        """
+        DÜZELTME: Minimal overlay - maksimum hız
+        """
+        try:
+            h, w = frame.shape[:2]
+            
+            # DÜZELTME: Sadece timestamp
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            # DÜZELTME: Direct text - overlay yok
+            cv2.putText(frame, timestamp, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7, (0, 255, 136), 2, cv2.LINE_AA)
+            
+            # DÜZELTME: Kamera ID sağ alt
+            if self.selected_camera_index < len(self.cameras):
+                camera = self.cameras[self.selected_camera_index]
+                cam_text = f"CAM {camera.camera_index}"
+                cv2.putText(frame, cam_text, (w-100, h-15), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        
+        except Exception as e:
+            logging.debug(f"Overlay hatası: {e}")
+
+    def _direct_update_display(self, frame):
+        """
+        DÜZELTME: En hızlı display update
+        """
+        try:
+            # DÜZELTME: Direct BGR to RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # DÜZELTME: PIL conversion
+            pil_image = Image.fromarray(frame_rgb)
+            
+            # DÜZELTME: PhotoImage oluştur
+            tk_image = ImageTk.PhotoImage(pil_image)
+            
+            # DÜZELTME: Label güncelle
+            self.main_camera_label.configure(image=tk_image)
+            self.main_camera_label.image = tk_image
             
         except Exception as e:
-            logging.error(f"Kamera display güncelleme hatası: {e}")
+            logging.error(f"Direct display update hatası: {e}")
+
+
+
+
+    def _calculate_optimal_size(self, orig_w, orig_h, display_w, display_h):
+        """
+        DÜZELTME: Optimal boyut hesaplama
+        """
+        aspect = orig_w / orig_h
         
-        self.update_id = self.after(33, self._update_camera_display)
+        if display_w / display_h > aspect:
+            new_height = display_h
+            new_width = int(new_height * aspect)
+        else:
+            new_width = display_w
+            new_height = int(new_width / aspect)
+        
+        # DÜZELTME: Minimum ve maksimum sınırları
+        new_width = max(320, min(1920, new_width))
+        new_height = max(240, min(1080, new_height))
+        
+        return (new_width, new_height)
+
+    def _add_minimal_overlay(self, frame):
+        """
+        DÜZELTME: Minimal overlay - performans için
+        """
+        try:
+            h, w = frame.shape[:2]
+            
+            # DÜZELTME: Sadece timestamp - diğer bilgiler gereksiz
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            # DÜZELTME: Semi-transparent overlay
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (200, 35), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            
+            # DÜZELTME: Minimal text
+            cv2.putText(frame, timestamp, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7, (0, 255, 136), 2, cv2.LINE_AA)
+            
+            # DÜZELTME: Kamera ID sadece köşede
+            if self.selected_camera_index < len(self.cameras):
+                camera = self.cameras[self.selected_camera_index]
+                cam_text = f"CAM {camera.camera_index}"
+                cv2.putText(frame, cam_text, (w-100, h-15), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (240, 246, 252), 1, cv2.LINE_AA)
+        
+        except Exception as e:
+            logging.debug(f"Overlay ekleme hatası: {e}")
+
+    def _fast_update_main_camera_display(self, frame):
+        """
+        DÜZELTME: Hızlı display güncelleme
+        """
+        try:
+            # DÜZELTME: Direct BGR to RGB conversion
+            if len(frame.shape) == 3 and frame.shape[2] == 3:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = frame
+            
+            # DÜZELTME: Fast PIL conversion
+            pil_image = Image.fromarray(frame_rgb)
+            
+            # DÜZELTME: Skip enhancement for performance
+            # enhancer = ImageEnhance.Brightness(pil_image)
+            # pil_image = enhancer.enhance(1.05)
+            
+            # DÜZELTME: Direct PhotoImage creation
+            tk_image = ImageTk.PhotoImage(pil_image)
+            
+            # DÜZELTME: Update label
+            self.main_camera_label.configure(image=tk_image)
+            self.main_camera_label.image = tk_image  # Keep reference
+            
+        except Exception as e:
+            logging.error(f"Fast camera display güncelleme hatası: {e}")
+
+
+
+
+
+
+
 
     def _update_main_camera_display(self, frame):
         """Ana kamera display'ini günceller."""

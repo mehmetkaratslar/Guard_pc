@@ -455,6 +455,15 @@ class GuardApp:
         self.content_frame.pack(fill=tk.BOTH, expand=True)
 
         self.show_login()
+        
+        # Header frame oluştur ve API bilgisi butonunu ekle
+        header_frame = tk.Frame(self.main_frame, bg="#f8f9fa")
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        api_btn = tk.Button(header_frame, text="📱 Mobil API", 
+                        font=("Segoe UI", 12, "bold"),
+                        bg="#17a2b8", fg="white", 
+                        command=self.show_api_info)
+        api_btn.pack(side=tk.RIGHT, padx=5)
 
     def show_login(self):
         """Enhanced giriş ekranını gösterir."""
@@ -608,7 +617,139 @@ class GuardApp:
             logging.error(f"❌ Enhanced login success hatası: {str(e)}")
             messagebox.showerror("Login Hatası", f"Giriş işlemi tamamlanamadı:\n{str(e)}")
 
+
+
     def start_enhanced_detection(self):
+        """
+        DÜZELTME: Ultra Enhanced Detection - Optimized başlatma
+        """
+        if self.system_state['running']:
+            logging.warning("⚠️ Sistem zaten çalışıyor")
+            if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(True)
+            return
+
+        try:
+            logging.info("🚀 Ultra Enhanced Detection sistemi başlatılıyor...")
+            
+            # DÜZELTME: Kameraları sırayla başlat
+            camera_start_count = 0
+            failed_cameras = []
+            
+            for i, camera in enumerate(self.cameras):
+                try:
+                    logging.info(f"Kamera {camera.camera_index} başlatılıyor...")
+                    
+                    # DÜZELTME: Validation önce
+                    if hasattr(camera, '_validate_camera_with_fallback'):
+                        if not camera._validate_camera_with_fallback():
+                            logging.error(f"❌ Kamera {camera.camera_index} doğrulanamadı")
+                            failed_cameras.append(camera.camera_index)
+                            continue
+                    
+                    # DÜZELTME: Start with timeout
+                    start_success = False
+                    try:
+                        # Timeout ile başlatma
+                        import signal
+                        
+                        def timeout_handler(signum, frame):
+                            raise TimeoutError("Kamera başlatma timeout")
+                        
+                        signal.signal(signal.SIGALRM, timeout_handler)
+                        signal.alarm(5)  # 5 saniye timeout
+                        
+                        start_success = camera.start()
+                        
+                        signal.alarm(0)  # Timeout iptal
+                        
+                    except TimeoutError:
+                        logging.error(f"❌ Kamera {camera.camera_index} başlatma timeout")
+                        failed_cameras.append(camera.camera_index)
+                        continue
+                    except:
+                        start_success = camera.start()  # Fallback
+                    
+                    if start_success:
+                        camera_start_count += 1
+                        logging.info(f"✅ Kamera {camera.camera_index} başlatıldı")
+                        
+                        # DÜZELTME: Kısa test
+                        time.sleep(0.2)  # 0.5 -> 0.2 saniye
+                        test_frame = camera.get_frame()
+                        if test_frame is not None and test_frame.size > 0:
+                            logging.info(f"✅ Kamera {camera.camera_index} frame testi başarılı: {test_frame.shape}")
+                        else:
+                            logging.warning(f"⚠️ Kamera {camera.camera_index} frame testi başarısız")
+                    else:
+                        logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
+                        failed_cameras.append(camera.camera_index)
+                        
+                except Exception as camera_error:
+                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(camera_error)}")
+                    failed_cameras.append(camera.camera_index)
+
+            # DÜZELTME: Sonuç değerlendirmesi
+            if camera_start_count == 0:
+                error_msg = "Hiçbir kamera başlatılamadı!\n\n"
+                error_msg += "Başarısız kameralar:\n"
+                for cam_id in failed_cameras:
+                    error_msg += f"• Kamera {cam_id}\n"
+                error_msg += "\nÖneriler:\n"
+                error_msg += "• Kamera bağlantılarını kontrol edin\n"
+                error_msg += "• Başka uygulamalar kamerayı kullanıyor olabilir\n"
+                error_msg += "• USB portlarını değiştirin\n"
+                error_msg += "• Bilgisayarı yeniden başlatın"
+                
+                messagebox.showerror("Kamera Hatası", error_msg)
+                return
+
+            # DÜZELTME: Sistem durumunu güncelle
+            self.system_state['running'] = True
+            self.system_state['cameras_active'] = camera_start_count
+            self.system_state['detection_active'] = self.system_state['ai_model_loaded']
+            self.system_state['last_activity'] = time.time()
+            
+            # DÜZELTME: Optimized detection threads
+            for camera in self.cameras:
+                if hasattr(camera, 'is_running') and camera.is_running:
+                    camera_id = f"camera_{camera.camera_index}"
+                    
+                    if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
+                        logging.warning(f"⚠️ Kamera {camera_id} detection thread zaten çalışıyor")
+                    else:
+                        # DÜZELTME: High priority thread
+                        self.detection_threads[camera_id] = threading.Thread(
+                            target=self._enhanced_detection_loop,
+                            args=(camera,),
+                            daemon=True,
+                            name=f"EnhancedDetection-{camera_id}"
+                        )
+                        
+                        # DÜZELTME: Thread priority (Windows için)
+                        try:
+                            import os
+                            if os.name == 'nt':  # Windows
+                                import win32api, win32process, win32con
+                                handle = win32api.GetCurrentThread()
+                                win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_ABOVE_NORMAL)
+                        except:
+                            pass
+                        
+                        self.detection_threads[camera_id].start()
+                        logging.info(f"🧵 Enhanced detection thread başlatıldı: {camera_id}")
+
+            # DÜZELTME: Dashboard güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                self.dashboard_frame.update_system_status(True)
+
+            logging.info("✅ Ultra Enhanced Detection sistemi başarıyla başlatıldı!")
+            logging.info(f"📹 Aktif kameralar: {camera_start_count}/{len(self.cameras)}")
+            logging.info(f"🤖 AI Algılama: {'Aktif' if self.system_state['detection_active'] else 'Deaktif'}")
+
+        except Exception as e:
+            logging.error(f"❌ Enhanced detection başlatma hatası: {str(e)}")
+            messagebox.showerror("Sistem Hatası", f"Gelişmiş algılama sistemi başlatılamadı:\n{str(e)}")
         """Ultra gelişmiş düşme algılama sistemini başlatır."""
         if self.system_state['running']:
             logging.warning("⚠️ Sistem zaten çalışıyor")
@@ -720,6 +861,8 @@ class GuardApp:
         except Exception as e:
             logging.error(f"❌ Enhanced detection başlatma hatası: {str(e)}")
             messagebox.showerror("Sistem Hatası", f"Gelişmiş algılama sistemi başlatılamadı:\n{str(e)}")
+
+
 
     def stop_enhanced_detection(self):
         """Ultra gelişmiş düşme algılama sistemini durdurur."""
@@ -1490,6 +1633,102 @@ class GuardApp:
             sys.exit(1)
 
 
+
+
+
+    # =======================================================================================
+
+    def get_api_server_info(self):
+        """API server bilgilerini döndür - mobil için."""
+        import socket
+        
+        # Local IP adresini bul
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            local_ip = s.getsockname()[0]
+        except:
+            local_ip = '127.0.0.1'
+        finally:
+            s.close()
+        
+        api_port = 5000  # stream_server.py'deki port
+        
+        return {
+            "server_ip": local_ip,
+            "api_port": api_port,
+            "base_url": f"http://{local_ip}:{api_port}",
+            "endpoints": {
+                "mobile_cameras": f"http://{local_ip}:{api_port}/api/mobile/cameras",
+                "mobile_health": f"http://{local_ip}:{api_port}/api/mobile/health",
+                "mobile_server_info": f"http://{local_ip}:{api_port}/api/mobile/server/info",
+                "stream_base": f"http://{local_ip}:{api_port}/mobile/stream"
+            },
+            "usage": {
+                "camera_list": f"GET http://{local_ip}:{api_port}/api/mobile/cameras",
+                "basic_stream": f"GET http://{local_ip}:{api_port}/mobile/stream/camera_0",
+                "pose_stream": f"GET http://{local_ip}:{api_port}/mobile/stream/camera_0/pose",
+                "detection_stream": f"GET http://{local_ip}:{api_port}/mobile/stream/camera_0/detection"
+            }
+        }
+
+    # Dashboard'a API bilgisi gösterme butonu ekle
+    def show_api_info(self):
+        """API bilgilerini göster."""
+        api_info = self.get_api_server_info()
+        
+        info_window = tk.Toplevel(self.root)
+        info_window.title("📱 Mobil API Bilgileri")
+        info_window.geometry("600x500")
+        info_window.configure(bg="#f8f9fa")
+        
+        # Başlık
+        title_label = tk.Label(info_window, text="📱 Mobil Canlı Yayın API'si", 
+                            font=("Segoe UI", 16, "bold"),
+                            bg="#f8f9fa", fg="#2c3e50")
+        title_label.pack(pady=10)
+        
+        # Bilgi metni
+        info_text = f"""
+    🌐 Server IP: {api_info['server_ip']}
+    🔌 Port: {api_info['api_port']}
+    📡 Base URL: {api_info['base_url']}
+
+    📱 MOBİL KULLANIM:
+
+    1️⃣ Kamera Listesi:
+    GET {api_info['endpoints']['mobile_cameras']}
+
+    2️⃣ Canlı Yayın (Temel):
+    {api_info['usage']['basic_stream']}
+
+    3️⃣ Pose Detection Yayını:
+    {api_info['usage']['pose_stream']}
+
+    4️⃣ Düşme Algılama Yayını:
+    {api_info['usage']['detection_stream']}
+
+    5️⃣ Server Durumu:
+    GET {api_info['endpoints']['mobile_health']}
+
+    🔗 Mobil uygulamanızda bu URL'leri kullanın!
+        """
+        
+        # Text widget
+        text_widget = tk.Text(info_window, wrap=tk.WORD, font=("Consolas", 10),
+                            bg="white", fg="#2c3e50", padx=10, pady=10)
+        text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        text_widget.insert("1.0", info_text)
+        text_widget.config(state=tk.DISABLED)
+        
+        # Kapat butonu
+        close_btn = tk.Button(info_window, text="Kapat", font=("Segoe UI", 12),
+                            bg="#dc3545", fg="white", command=info_window.destroy)
+        close_btn.pack(pady=10)
+
+
+
+
 if __name__ == "__main__":
     # Enhanced logging setup
     logging.basicConfig(
@@ -1514,3 +1753,5 @@ if __name__ == "__main__":
         logging.error(f"❌ Ultra Guard AI başlatma hatası: {str(e)}")
         messagebox.showerror("Kritik Hata", f"Uygulama başlatılamadı:\n{str(e)}")
         sys.exit(1)
+    
+    

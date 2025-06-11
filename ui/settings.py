@@ -1,85 +1,7 @@
 # =======================================================================================
-
-# === PROGRAM AÇIKLAMASI ===
-# Bu program: AI destekli bir güvenlik/gözlem uygulamasında bulunan "Gelişmiş Ayarlar" ekranını tanımlar.
-# Ana işlevleri arasında:
-# - Kullanıcı ayarlarının yönetimi
-# - AI model seçimi ve indirme desteği (YOLO modelleri)
-# - Kamera ayarları (parlaklık, kontrast, otomatik aydınlatma)
-# - Düşme algılama hassasiyeti ayarları
-# - Bildirim tercihlerinin düzenlenmesi (E-posta, SMS, Mobil Bildirim)
-# - Tema (koyu/açık mod) özelleştirmesi
-
-# === SINIF: EnhancedSettingsFrame ===
-# tk.Frame türemiş bir sınıf olup, tkinter kullanılarak oluşturulmuş gelişmiş ayarlar arayüzü sağlar.
-# Bu sınıf, kullanıcıya görsel olarak düzenlenebilir bir ayar paneli sunar.
-
-# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
-# - tkinter: Arayüz oluşturma
-# - PIL: Görsel işleme (logo, simgeler vs.)
-# - logging: Hata ve işlem kayıtları tutma
-# - threading: Uzun süren işlemler (örn. model indirme) için arka plan çalıştırma
-# - glob: Model dizinindeki .pt uzantılı dosyaları tarama
-# - os: Dosya ve dizin işlemleri
-# - filedialog: Model dosyası seçimi için pencere açmak
-# - messagebox: Kullanıcıya bilgi/uyarı vermek
-
-# === ÖNEMLİ FONKSİYONLAR VE İŞLEVLERİ ===
-# - __init__: Sınıf başlatılırken gerekli değişkenleri hazırlar ve UI'yi oluşturur.
-# - _scan_available_models: resources/models klasöründeki YOLO model dosyalarını tarar.
-# - _setup_colors / _setup_styles: Koyu/açık tema renkleri ve stil kuralları belirlenir.
-# - _create_enhanced_ui: Ana UI bileşenlerini (başlık, içerik kartları, scroll destekli liste) oluşturur.
-# - _create_ai_model_card: AI modeli değiştirme, indirme ve seçme işlemleri için arayüz sağlar.
-# - _download_model / _start_model_download: Seçilen modelin internetten indirilmesini sağlar.
-# - _apply_camera_settings: Kamera parlaklık/kontrast ayarlarını kameralara uygular.
-# - _save_settings: Tüm ayarları veritabanına kaydeder ve geri dönüş fonksiyonunu çağırır.
-
-# === MODEL BİLGİSİ ===
-# Desteklenen modeller:
-# - yolo11n-pose: En hızlı, düşük doğruluk (~6MB)
-# - yolo11s-pose: Hızlı, orta doğruluk (~22MB)
-# - yolo11m-pose: Orta hız ve iyi doğruluk (~52MB)
-# - yolo11l-pose: Yavaş, yüksek doğruluk (~110MB)
-# - yolo11x-pose: En yavaş, en yüksek doğruluk (~220MB)
-
-# === KAMERA AYARLARI ===
-# - Otomatik parlaklık kontrolü
-# - Manuel parlaklık (-100 ile +100 arası)
-# - Kontrast ayarı (0.5 ile 2.0 arası)
-
-# === BİLDİRİM TERCİHLERİ ===
-# - E-posta bildirimi (kullanıcının e-mail adresine gönderim)
-# - SMS bildirimi (telefon numarası girilirse)
-# - Mobil push bildirimi (FCM ile)
-
-# === TEMAYLA İLGİLİ ===
-# - Koyu mod veya açık mod seçeneği
-# - Önizleme butonu ile temanın etkisi hemen görülebilir
-
-# === VERİTABANI İŞLEMLERİ ===
-# Ayarlar ve kullanıcı bilgileri bir veritabanı yöneticisi (db_manager) üzerinden saklanır.
-# - get_user_data: Mevcut kullanıcı bilgilerini çeker
-# - update_user_data / save_user_settings: Güncellenen ayarları ve ismi veri tabanına yazar
-
-# === GERİ DÖNÜŞ MEKANİZMASI ===
-# - back_fn: Ayarlar tamamlandığında veya iptal edildiğinde ana menüye dönüş fonksiyonu çağrılır
-
-# === ÇOKLU-İŞLEM DESTEĞİ ===
-# - Model indirme gibi uzun süren işlemler ayrı bir thread'de yapılır (threading modülü ile),
-#   böylece GUI donmaz.
-
-# === DOSYA SEÇİMİ ===
-# - Kullanıcı kendi model dosyasını seçip sisteme ekleyebilir (filedialog modülü ile)
-
-# === HATA YÖNETİMİ ===
-# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır ve kullanıcıya uygun mesaj gösterilir
-# - logging modülü ile sistemde oluşan tüm hatalar kaydedilir
-
-# === TEST AMAÇLI KULLANIM ===
-# - Kodun sonunda bir `if __name__ == "__main__":` bloğu bulunur.
-# - Bu sayede dosya doğrudan çalıştırıldığında bir test arayüzü açılır (MockDBManager ile).
+# DÜZELTME: Model değiştirme ve test bildirimi sistemi - TAM ENTEGRESYİON
+# Çözüm: AI model değiştirme fonksiyonu app.py ile entegre edildi
 # =======================================================================================
-
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -88,19 +10,28 @@ import logging
 import threading
 import time
 import glob
+import uuid
+import numpy as np
+from datetime import datetime
 from PIL import Image, ImageTk
 
 class EnhancedSettingsFrame(tk.Frame):
-    """Ultra gelişmiş ayarlar ekranı - AI model yönetimi ve kamera kontrolleri."""
+    """
+    DÜZELTME: Ultra gelişmiş ayarlar frame'i - AI model değiştirme sistemi ile
+    app.py ile tam entegre
+    """
 
-    def __init__(self, parent, user, db_manager, back_fn, fall_detector=None):
+    def __init__(self, parent, user, db_manager, back_fn, fall_detector=None, app_instance=None):
         """
+        DÜZELTME: app_instance parametresi eklendi
+        
         Args:
             parent: Üst widget
             user: Kullanıcı bilgileri
             db_manager: Veritabanı yöneticisi
             back_fn: Geri dönüş fonksiyonu
             fall_detector: FallDetector instance
+            app_instance: Ana GuardApp instance
         """
         super().__init__(parent)
         
@@ -108,6 +39,7 @@ class EnhancedSettingsFrame(tk.Frame):
         self.db_manager = db_manager
         self.back_fn = back_fn
         self.fall_detector = fall_detector
+        self.app_instance = app_instance  # DÜZELTME: App referansı
         
         # Canvas referansı scroll hatası için
         self.canvas = None
@@ -116,9 +48,9 @@ class EnhancedSettingsFrame(tk.Frame):
         try:
             self.user_data = self.db_manager.get_user_data(user["localId"])
             self.settings = self.user_data.get("settings", {}) if self.user_data else {}
-            logging.info(f"Kullanıcı ayarları yüklendi: {len(self.settings)} ayar")
+            logging.info(f"✅ Kullanıcı ayarları yüklendi: {len(self.settings)} ayar")
         except Exception as e:
-            logging.error(f"Kullanıcı ayarları yükleme hatası: {e}")
+            logging.error(f"❌ Kullanıcı ayarları yükleme hatası: {e}")
             self.user_data = {}
             self.settings = {}
         
@@ -162,7 +94,7 @@ class EnhancedSettingsFrame(tk.Frame):
         try:
             if not os.path.exists(self.model_directory):
                 os.makedirs(self.model_directory, exist_ok=True)
-                logging.info(f"Model dizini oluşturuldu: {self.model_directory}")
+                logging.info(f"📁 Model dizini oluşturuldu: {self.model_directory}")
             
             # .pt dosyalarını ara
             model_files = glob.glob(os.path.join(self.model_directory, "*.pt"))
@@ -204,16 +136,20 @@ class EnhancedSettingsFrame(tk.Frame):
                         "exists": False
                     }
             
-            logging.info(f"Model tarama tamamlandı: {len(model_files)} model bulundu")
+            logging.info(f"🤖 Model tarama tamamlandı: {len(model_files)} model bulundu")
             
         except Exception as e:
-            logging.error(f"Model tarama hatası: {e}")
+            logging.error(f"❌ Model tarama hatası: {e}")
         
         return models
 
     def _get_camera_references(self):
         """Ana uygulamadan kamera referanslarını al."""
         try:
+            # DÜZELTME: Önce app_instance'dan dene
+            if self.app_instance and hasattr(self.app_instance, 'cameras'):
+                return self.app_instance.cameras
+            
             # Widget hiyerarşisinde yukarı çıkarak ana uygulamayı bul
             widget = self.master
             while widget:
@@ -273,22 +209,6 @@ class EnhancedSettingsFrame(tk.Frame):
                        background=self.colors['bg_secondary'],
                        foreground=self.colors['text_primary'],
                        font=("Segoe UI", 14, "bold"))
-        
-        # Butonlar
-        style.configure("Primary.TButton",
-                       background=self.colors['accent_primary'],
-                       foreground="#FFFFFF",
-                       font=("Segoe UI", 11, "bold"))
-        
-        style.configure("Success.TButton",
-                       background=self.colors['accent_secondary'],
-                       foreground="#FFFFFF", 
-                       font=("Segoe UI", 11, "bold"))
-        
-        style.configure("Danger.TButton",
-                       background=self.colors['accent_danger'],
-                       foreground="#FFFFFF",
-                       font=("Segoe UI", 11, "bold"))
 
     def _setup_variables(self):
         """UI değişkenlerini ayarla."""
@@ -320,13 +240,24 @@ class EnhancedSettingsFrame(tk.Frame):
         self.sensitivity_var = tk.StringVar(value=self.settings.get("fall_sensitivity", "medium"))
 
     def _get_current_model_name(self):
-        """Mevcut model adını al."""
+        """DÜZELTME: Mevcut model adını al."""
         try:
+            # Önce app_instance'dan dene
+            if self.app_instance and hasattr(self.app_instance, 'system_state'):
+                current_model = self.app_instance.system_state.get('current_model')
+                if current_model:
+                    return current_model
+            
+            # Fall detector'dan dene
             if self.fall_detector and hasattr(self.fall_detector, 'model_path'):
                 model_file = os.path.basename(self.fall_detector.model_path)
                 return model_file.replace('.pt', '')
-            return 'yolo11l-pose'
-        except:
+            
+            # Settings'den dene
+            return self.settings.get('selected_ai_model', 'yolo11l-pose')
+            
+        except Exception as e:
+            logging.error(f"❌ Current model name alınamadı: {e}")
             return 'yolo11l-pose'
 
     def _create_enhanced_ui(self):
@@ -419,7 +350,7 @@ class EnhancedSettingsFrame(tk.Frame):
         self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
     def _create_content_cards(self, parent):
-        """İçerik kartlarını 2 sütunlu olarak oluştur (sağda: Düşme Algılama + Tema)"""
+        """İçerik kartlarını 2 sütunlu olarak oluştur."""
         # Grid yapısı oluştur
         parent.columnconfigure(0, weight=1)
         parent.columnconfigure(1, weight=1)
@@ -435,7 +366,6 @@ class EnhancedSettingsFrame(tk.Frame):
         self._create_user_info_card(sol_frame)
         self._create_ai_model_card(sol_frame)
         self._create_camera_settings_card(sol_frame)
-        
 
         # Sağ sütuna: Düşme Algılama + Tema
         self._create_fall_detection_card(sag_frame)
@@ -453,39 +383,24 @@ class EnhancedSettingsFrame(tk.Frame):
         self._create_input_field(card, "E-posta:", self.email_var, readonly=True)
 
     def _create_ai_model_card(self, parent):
-        """AI Model yönetimi kartı."""
+        """DÜZELTME: AI Model yönetimi kartı - app.py entegrasyonu ile."""
         card = self._create_card(parent, "🤖 AI Model Yönetimi")
         
         # Mevcut model bilgisi
-        if self.fall_detector:
-            try:
-                if hasattr(self.fall_detector, 'get_enhanced_model_info'):
-                    model_info = self.fall_detector.get_enhanced_model_info()
-                    current_model = model_info.get('model_name', 'Bilinmiyor')
-                    model_status = "🟢 Yüklü" if model_info.get('model_loaded') else "🔴 Yüklenmedi"
-                else:
-                    current_model = self._get_current_model_name()
-                    model_status = "🟢 Aktif"
-            except Exception as e:
-                logging.error(f"Model bilgisi alınamadı: {e}")
-                current_model = 'Hata'
-                model_status = "❌ Hata"
-        else:
-            current_model = 'Yok'
-            model_status = "❌ Bulunamadı"
+        current_model_info = self._get_enhanced_current_model_info()
         
         # Mevcut model bilgisi
         info_frame = tk.Frame(card, bg=self.colors['bg_secondary'])
         info_frame.pack(fill=tk.X, pady=(0, 15))
         
         tk.Label(info_frame, 
-                text=f"Mevcut Model: {current_model}",
+                text=f"Mevcut Model: {current_model_info['name']}",
                 font=("Segoe UI", 11, "bold"),
                 fg=self.colors['text_primary'],
                 bg=self.colors['bg_secondary']).pack(anchor=tk.W)
         
         tk.Label(info_frame,
-                text=f"Durum: {model_status}",
+                text=f"Durum: {current_model_info['status']}",
                 font=("Segoe UI", 10),
                 fg=self.colors['text_secondary'],
                 bg=self.colors['bg_secondary']).pack(anchor=tk.W, pady=(5, 0))
@@ -508,7 +423,7 @@ class EnhancedSettingsFrame(tk.Frame):
         button_frame = tk.Frame(card, bg=self.colors['bg_secondary'])
         button_frame.pack(fill=tk.X)
         
-        # Model değiştir
+        # DÜZELTME: Model değiştir butonu - app.py entegrasyonu
         change_btn = tk.Button(button_frame,
                               text="🔄 Modeli Değiştir",
                               font=("Segoe UI", 11, "bold"),
@@ -516,7 +431,7 @@ class EnhancedSettingsFrame(tk.Frame):
                               fg="#FFFFFF",
                               relief=tk.FLAT,
                               padx=15, pady=8,
-                              command=self._change_model,
+                              command=self._change_model_enhanced,
                               cursor="hand2")
         change_btn.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -543,6 +458,105 @@ class EnhancedSettingsFrame(tk.Frame):
                             command=self._select_model_file,
                             cursor="hand2")
         path_btn.pack(side=tk.LEFT)
+
+    def _get_enhanced_current_model_info(self):
+        """DÜZELTME: Enhanced current model info."""
+        try:
+            if self.app_instance and hasattr(self.app_instance, 'fall_detector'):
+                fall_detector = self.app_instance.fall_detector
+                if fall_detector and hasattr(fall_detector, 'get_enhanced_model_info'):
+                    model_info = fall_detector.get_enhanced_model_info()
+                    return {
+                        'name': model_info.get('model_name', 'Bilinmiyor'),
+                        'status': "🟢 Yüklü" if model_info.get('model_loaded') else "🔴 Yüklenmedi"
+                    }
+            
+            # Fallback
+            current_model = self._get_current_model_name()
+            return {
+                'name': current_model,
+                'status': "🟡 Bilinmiyor"
+            }
+            
+        except Exception as e:
+            logging.error(f"❌ Enhanced model info alınamadı: {e}")
+            return {
+                'name': 'Hata',
+                'status': "❌ Hata"
+            }
+
+    def _change_model_enhanced(self):
+        """DÜZELTME: Enhanced AI model değiştirme - app.py entegrasyonu."""
+        selected_model = self.selected_model_var.get()
+        if not selected_model:
+            messagebox.showwarning("Uyarı", "Lütfen bir model seçin.")
+            return
+        
+        if not self.available_models[selected_model]['exists']:
+            messagebox.showwarning("Uyarı", f"Seçili model ({selected_model}) henüz indirilmemiş.\nÖnce modeli indirin.")
+            return
+        
+        # Onay iste
+        model_data = self.available_models[selected_model]
+        result = messagebox.askyesno(
+            "AI Model Değiştir",
+            f"AI modelini değiştirmek istiyor musunuz?\n\n"
+            f"🤖 Yeni Model: {model_data['name']}\n"
+            f"📊 Boyut: {model_data['size']}\n"
+            f"⚡ Hız: {model_data['speed']}\n"
+            f"🎯 Doğruluk: {model_data['accuracy']}\n\n"
+            "⚠️ Bu işlem sistem performansını etkileyebilir."
+        )
+        
+        if not result:
+            return
+        
+        try:
+            # DÜZELTME: app_instance üzerinden model değiştir
+            if self.app_instance and hasattr(self.app_instance, 'switch_ai_model'):
+                success = self.app_instance.switch_ai_model(selected_model)
+                
+                if success:
+                    self._set_modified()
+                    messagebox.showinfo(
+                        "Model Değiştirildi! 🎉",
+                        f"AI modeli başarıyla değiştirildi!\n\n"
+                        f"🤖 Yeni Model: {model_data['name']}\n"
+                        f"📊 Boyut: {model_data['size']}\n"
+                        f"⚡ Hız: {model_data['speed']}\n"
+                        f"🎯 Doğruluk: {model_data['accuracy']}\n\n"
+                        "✅ Değişiklikler aktif!"
+                    )
+                    
+                    # Model listesini yenile
+                    self.available_models = self._scan_available_models()
+                    logging.info(f"✅ Model başarıyla değiştirildi: {selected_model}")
+                    
+                else:
+                    messagebox.showerror("Model Değiştirme Hatası", 
+                                       "Model değiştirilemedi!\n\nOlası nedenler:\n"
+                                       "• Model dosyası bozuk\n"
+                                       "• Sistem kaynakları yetersiz\n"
+                                       "• Model formatı uyumsuz")
+                    
+            else:
+                # Fallback: Direct fall_detector kullan
+                if self.fall_detector:
+                    model_path = model_data['path']
+                    # Basit model path güncellemesi
+                    self.fall_detector.model_path = model_path
+                    
+                    messagebox.showinfo("Model Yolu Güncellendi", 
+                                      f"Model yolu güncellendi: {selected_model}\n"
+                                      "Sistemi yeniden başlatın.")
+                    self._set_modified()
+                else:
+                    messagebox.showerror("Hata", "Model değiştirme sistemi bulunamadı!")
+                
+        except Exception as e:
+            error_msg = f"Model değiştirme hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Model Değiştirme Hatası", error_msg)
 
     def _create_model_option(self, parent, model_name, model_data):
         """Model seçeneği oluştur."""
@@ -667,7 +681,7 @@ class EnhancedSettingsFrame(tk.Frame):
         test_btn.pack(pady=(10, 0))
 
     def _create_notification_card(self, parent):
-        """Bildirim ayarları kartı."""
+        """DÜZELTME: Bildirim ayarları kartı - Test bildirimi özelliği eklendi."""
         card = self._create_card(parent, "🔔 Bildirim Ayarları")
         
         # E-posta bildirimi
@@ -716,17 +730,32 @@ class EnhancedSettingsFrame(tk.Frame):
                                    state="disabled" if not self.sms_notification_var.get() else "normal")
         self.phone_entry.pack(fill=tk.X, pady=(5, 0))
         
-        # Test bildirimi
-        test_btn = tk.Button(card,
-                            text="📧 Bildirimleri Test Et",
-                            font=("Segoe UI", 11),
-                            bg=self.colors['accent_secondary'],
-                            fg="#FFFFFF",
-                            relief=tk.FLAT,
-                            padx=15, pady=8,
-                            command=self._test_notifications,
-                            cursor="hand2")
-        test_btn.pack(pady=(15, 0))
+        # DÜZELTME: Test bildirimi - Enhanced versiyon
+        test_frame = tk.Frame(card, bg=self.colors['bg_secondary'])
+        test_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # Test butonları yan yana
+        instant_test_btn = tk.Button(test_frame,
+                                    text="⚡ Anında Test",
+                                    font=("Segoe UI", 11, "bold"),
+                                    bg=self.colors['accent_warning'],
+                                    fg="#FFFFFF",
+                                    relief=tk.FLAT,
+                                    padx=15, pady=8,
+                                    command=self._send_instant_test_notification_enhanced,
+                                    cursor="hand2")
+        instant_test_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        full_test_btn = tk.Button(test_frame,
+                                 text="📧 Tam Test",
+                                 font=("Segoe UI", 11),
+                                 bg=self.colors['accent_secondary'],
+                                 fg="#FFFFFF",
+                                 relief=tk.FLAT,
+                                 padx=15, pady=8,
+                                 command=self._test_notifications_enhanced,
+                                 cursor="hand2")
+        full_test_btn.pack(side=tk.LEFT)
 
     def _create_fall_detection_card(self, parent):
         """Düşme algılama ayarları kartı."""
@@ -831,60 +860,6 @@ class EnhancedSettingsFrame(tk.Frame):
             entry.bind('<KeyRelease>', lambda e: self._set_modified())
         
         return entry
-
-    def _change_model(self):
-        """AI modelini değiştir."""
-        selected_model = self.selected_model_var.get()
-        if not selected_model:
-            messagebox.showwarning("Uyarı", "Lütfen bir model seçin.")
-            return
-        
-        if not self.available_models[selected_model]['exists']:
-            messagebox.showwarning("Uyarı", f"Seçili model ({selected_model}) henüz indirilmemiş.\nÖnce modeli indirin.")
-            return
-        
-        # Onay iste
-        result = messagebox.askyesno(
-            "Model Değiştir",
-            f"AI modelini '{selected_model}' olarak değiştirmek istiyor musunuz?\n\n"
-            f"Model: {self.available_models[selected_model]['name']}\n"
-            f"Boyut: {self.available_models[selected_model]['size']}\n"
-            f"Hız: {self.available_models[selected_model]['speed']}\n"
-            f"Doğruluk: {self.available_models[selected_model]['accuracy']}\n\n"
-            "Bu işlem sistem performansını etkileyebilir."
-        )
-        
-        if not result:
-            return
-        
-        try:
-            # Ana uygulamadaki model değiştirme fonksiyonunu çağır
-            app_instance = self._get_app_instance()
-            if app_instance and hasattr(app_instance, 'switch_ai_model'):
-                success = app_instance.switch_ai_model(selected_model)
-                if success:
-                    self._set_modified()
-                    messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {selected_model}")
-                    # Modeli yeniden tara
-                    self.available_models = self._scan_available_models()
-                else:
-                    messagebox.showerror("Hata", "Model değiştirilemedi!")
-            else:
-                # Direkt fall_detector üzerinden değiştirmeyi dene
-                if self.fall_detector and hasattr(self.fall_detector, 'load_model'):
-                    model_path = self.available_models[selected_model]['path']
-                    success = self.fall_detector.load_model(model_path)
-                    if success:
-                        self._set_modified()
-                        messagebox.showinfo("Başarı", f"Model başarıyla değiştirildi: {selected_model}")
-                    else:
-                        messagebox.showerror("Hata", "Model yüklenemedi!")
-                else:
-                    messagebox.showerror("Hata", "Model değiştirme fonksiyonu bulunamadı.")
-                
-        except Exception as e:
-            logging.error(f"Model değiştirme hatası: {e}")
-            messagebox.showerror("Hata", f"Model değiştirilemedi: {str(e)}")
 
     def _download_model(self):
         """Model indir."""
@@ -1092,41 +1067,187 @@ class EnhancedSettingsFrame(tk.Frame):
         self.phone_entry.config(state="normal" if sms_enabled else "disabled")
         self._set_modified()
 
-    def _test_notifications(self):
-        """Bildirimleri test et."""
+    def _send_instant_test_notification_enhanced(self):
+        """
+        DÜZELTME: Enhanced anında test bildirimi - app.py entegrasyonu ile
+        """
+        try:
+            logging.info("⚡ Enhanced anında test bildirimi gönderiliyor...")
+            
+            # DÜZELTME: app_instance üzerinden NotificationManager al
+            notification_manager = self._get_notification_manager_enhanced()
+            if not notification_manager:
+                messagebox.showerror("Hata", "Bildirim sistemi bulunamadı!\n\nApp instance veya NotificationManager başlatılmamış.")
+                return
+            
+            # Test olayı verisi oluştur
+            test_event_data = {
+                "id": str(uuid.uuid4()),
+                "user_id": self.user["localId"],
+                "timestamp": time.time(),
+                "confidence": 0.95,  # %95 güvenilirlik
+                "image_url": None,  # Test için resim yok
+                "detection_method": "ENHANCED_TEST_NOTIFICATION",
+                "camera_id": "settings_test_camera",
+                "track_id": 999,
+                "test": True,  # Bu bir test bildirimi
+                "enhanced_summary": "Enhanced Settings Test - Anında gönderim sistemi",
+                "severity_level": "medium"
+            }
+            
+            # Test screenshot oluştur
+            test_screenshot = self._create_test_screenshot_enhanced()
+            
+            # DÜZELTME: Kullanıcı ayarlarını notification manager'a aktar
+            current_user_data = {
+                "localId": self.user["localId"],
+                "email": self.user.get("email", ""),
+                "email_notification": self.email_notification_var.get(),
+                "fcm_notification": self.fcm_notification_var.get(),
+                "sms_notification": self.sms_notification_var.get(),
+                "phone_number": self.phone_var.get().strip(),
+                "fcmToken": self.user_data.get("fcmToken"),  # FCM token'ı
+                "settings": {
+                    "email_notification": self.email_notification_var.get(),
+                    "fcm_notification": self.fcm_notification_var.get(),
+                    "sms_notification": self.sms_notification_var.get(),
+                    "phone_number": self.phone_var.get().strip()
+                }
+            }
+            
+            # NotificationManager'ı güncelle
+            notification_manager.update_user_data(current_user_data)
+            
+            # Bildirimi gönder
+            success = notification_manager.send_notifications(test_event_data, test_screenshot)
+            
+            if success:
+                # Aktif kanalları belirle
+                active_channels = []
+                if self.email_notification_var.get():
+                    active_channels.append("📧 E-posta")
+                if self.fcm_notification_var.get():
+                    active_channels.append("📱 Push Bildirimi")
+                if self.sms_notification_var.get() and self.phone_var.get().strip():
+                    active_channels.append("📲 SMS")
+                
+                messagebox.showinfo(
+                    "Enhanced Test Bildirimi Başarılı! ⚡",
+                    f"Enhanced anında test bildirimi gönderildi!\n\n"
+                    f"🎯 Aktif Kanallar ({len(active_channels)}):\n"
+                    f"{'• ' + chr(10) + '• '.join(active_channels) if active_channels else '• Varsayılan kanal'}\n\n"
+                    f"⏰ Gönderim Zamanı: {datetime.now().strftime('%H:%M:%S')}\n"
+                    f"🆔 Test ID: {test_event_data['id'][:8]}...\n"
+                    f"🔧 Sistem: Enhanced Settings Panel\n\n"
+                    "📬 Bildirimlerinizi kontrol edin!"
+                )
+                
+                logging.info(f"✅ Enhanced anında test bildirimi başarılı: {active_channels}")
+                
+            else:
+                messagebox.showerror(
+                    "Enhanced Test Bildirimi Başarısız!",
+                    "Enhanced test bildirimi gönderilemedi!\n\n"
+                    "Olası nedenler:\n"
+                    "• Internet bağlantısı problemi\n"
+                    "• Bildirim ayarları eksik\n"
+                    "• SMTP/SMS servisleri yapılandırılmamış\n"
+                    "• FCM token eksik\n\n"
+                    "Lütfen ayarlarınızı kontrol edin."
+                )
+                logging.error("❌ Enhanced anında test bildirimi başarısız")
+            
+        except Exception as e:
+            error_msg = f"Enhanced anında test bildirimi hatası: {str(e)}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Enhanced Test Hatası", error_msg)
+
+    def _create_test_screenshot_enhanced(self):
+        """DÜZELTME: Enhanced test için renkli screenshot oluştur."""
+        try:
+            # 640x480 renkli test görüntüsü
+            test_image = np.zeros((480, 640, 3), dtype=np.uint8)
+            
+            # Enhanced renkli desenler
+            test_image[0:120, :] = [255, 100, 100]    # Kırmızı
+            test_image[120:240, :] = [100, 255, 100]  # Yeşil  
+            test_image[240:360, :] = [100, 100, 255]  # Mavi
+            test_image[360:480, :] = [255, 255, 100]  # Sarı
+            
+            # Test metni ekle (OpenCV gerekli)
+            try:
+                import cv2
+                cv2.putText(test_image, "ENHANCED SETTINGS TEST", (120, 240), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(test_image, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+                           (160, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(test_image, "Guard AI Enhanced Notification", 
+                           (110, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(test_image, "Settings Panel Integration", 
+                           (140, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            except ImportError:
+                pass  # OpenCV yoksa sadece renkli bloklar
+            
+            return test_image
+            
+        except Exception as e:
+            logging.error(f"Enhanced test screenshot oluşturma hatası: {e}")
+            # Basit siyah görüntü döndür
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+
+    def _get_notification_manager_enhanced(self):
+        """DÜZELTME: Enhanced NotificationManager instance'ını al."""
+        try:
+            # DÜZELTME: Önce app_instance'dan dene
+            if self.app_instance and hasattr(self.app_instance, 'notification_manager'):
+                return self.app_instance.notification_manager
+            
+            # Widget hiyerarşisinde yukarı çıkarak ana uygulamayı bul
+            widget = self.master
+            while widget:
+                if hasattr(widget, 'notification_manager'):
+                    return widget.notification_manager
+                widget = widget.master
+            
+            # Direkt NotificationManager sınıfını import edip instance al
+            from core.notification import NotificationManager
+            return NotificationManager.get_instance(self.user_data)
+            
+        except Exception as e:
+            logging.error(f"❌ Enhanced NotificationManager alınamadı: {e}")
+            return None
+
+    def _test_notifications_enhanced(self):
+        """DÜZELTME: Enhanced bildirimleri test et."""
         try:
             active_notifications = []
             
             if self.email_notification_var.get():
-                active_notifications.append("E-posta")
+                active_notifications.append("📧 E-posta")
             if self.fcm_notification_var.get():
-                active_notifications.append("Push Bildirimi")
+                active_notifications.append("📱 Push Bildirimi")
             if self.sms_notification_var.get() and self.phone_var.get().strip():
-                active_notifications.append("SMS")
+                active_notifications.append("📲 SMS")
             
             if not active_notifications:
-                messagebox.showwarning("Uyarı", "Hiçbir bildirim türü aktif değil.")
+                messagebox.showwarning("Uyarı", "Hiçbir bildirim türü aktif değil.\n\nLütfen en az bir bildirim türünü etkinleştirin.")
                 return
             
-            # Test bildirimi simülasyonu
+            # Test bildirimi onayı
             test_result = messagebox.askyesno(
-                "Bildirim Testi",
+                "Enhanced Tam Bildirim Testi",
                 f"Aşağıdaki bildirim türleri test edilecek:\n\n"
-                f"• {chr(10).join(active_notifications)}\n\n"
-                "Test bildirimi göndermek istiyor musunuz?"
+                f"{'• ' + chr(10) + '• '.join(active_notifications)}\n\n"
+                "Bu enhanced tam bir test olup gerçek bildirim sistemini kullanır.\n"
+                "Enhanced test bildirimi göndermek istiyor musunuz?"
             )
             
             if test_result:
-                # Gerçek test implementasyonu burada olacak
-                messagebox.showinfo(
-                    "Test Tamamlandı",
-                    f"Test bildirimi gönderildi!\n\n"
-                    f"Aktif kanallar: {len(active_notifications)}\n"
-                    f"• {chr(10).join(active_notifications)}"
-                )
+                # Enhanced anında test bildirimi fonksiyonunu çağır
+                self._send_instant_test_notification_enhanced()
             
         except Exception as e:
-            messagebox.showerror("Test Hatası", f"Bildirim testi yapılamadı:\n{str(e)}")
+            messagebox.showerror("Enhanced Test Hatası", f"Enhanced bildirim testi yapılamadı:\n{str(e)}")
 
     def _preview_theme(self):
         """Tema önizleme."""
@@ -1157,20 +1278,8 @@ class EnhancedSettingsFrame(tk.Frame):
         """Değişiklik işaretle."""
         self.is_modified = True
 
-    def _get_app_instance(self):
-        """Ana uygulama instance'ını bul."""
-        try:
-            widget = self.master
-            while widget:
-                if hasattr(widget, 'switch_ai_model'):
-                    return widget
-                widget = widget.master
-            return None
-        except:
-            return None
-
     def _save_settings(self):
-        """Ayarları kaydet."""
+        """DÜZELTME: Enhanced ayarları kaydet - app.py entegrasyonu ile."""
         try:
             # Yeni ayarları hazırla
             settings = {
@@ -1191,9 +1300,9 @@ class EnhancedSettingsFrame(tk.Frame):
                 "displayName": self.name_var.get().strip()
             }
             
-            logging.info(f"Ayarlar kaydediliyor - User: {self.user['localId']}")
-            logging.info(f"Settings: {settings}")
-            logging.info(f"User data: {user_data}")
+            logging.info(f"✅ Enhanced ayarlar kaydediliyor - User: {self.user['localId']}")
+            logging.info(f"📊 Settings: {settings}")
+            logging.info(f"👤 User data: {user_data}")
             
             # Veritabanında güncelle
             user_update_success = self.db_manager.update_user_data(self.user["localId"], user_data)
@@ -1206,37 +1315,62 @@ class EnhancedSettingsFrame(tk.Frame):
                 # Kamera ayarlarını uygula
                 self._apply_camera_settings()
                 
+                # DÜZELTME: Ana uygulamaya ayarları aktar (AI model değişikliği için)
+                if self.app_instance:
+                    # App instance'a ayarları aktar
+                    if hasattr(self.app_instance, 'update_user_settings'):
+                        self.app_instance.update_user_settings(settings)
+                    
+                    # Notification manager'ı güncelle
+                    if hasattr(self.app_instance, 'notification_manager') and self.app_instance.notification_manager:
+                        updated_user_data = self.user_data.copy() if self.user_data else {}
+                        updated_user_data.update({
+                            "settings": settings,
+                            "email_notification": settings["email_notification"],
+                            "fcm_notification": settings["fcm_notification"],
+                            "sms_notification": settings["sms_notification"],
+                            "phone_number": settings["phone_number"]
+                        })
+                        self.app_instance.notification_manager.update_user_data(updated_user_data)
+                
                 self.is_modified = False
                 
                 messagebox.showinfo(
-                    "Başarı",
-                    "Tüm ayarlarınız başarıyla kaydedildi!\n\n"
-                    "Değişiklikler aktif oturum için uygulandı."
+                    "Enhanced Ayarlar Kaydedildi! 🎉",
+                    "Tüm enhanced ayarlarınız başarıyla kaydedildi!\n\n"
+                    "✅ Kullanıcı bilgileri güncellendi\n"
+                    "✅ Bildirim tercihleri kaydedildi\n"
+                    "✅ Kamera ayarları uygulandı\n"
+                    "✅ AI model ayarları güncellendi\n"
+                    "✅ Tema ayarları aktifleştirildi\n\n"
+                    "🚀 Enhanced değişiklikler aktif oturum için uygulandı!"
                 )
                 
                 self._on_back()
             else:
                 messagebox.showerror(
-                    "Hata",
-                    "Ayarlar kaydedilirken bir hata oluştu.\n"
-                    "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin."
+                    "Enhanced Kaydetme Hatası",
+                    "Enhanced ayarlar kaydedilirken bir hata oluştu.\n"
+                    "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin.\n\n"
+                    f"Kullanıcı güncelleme: {'✅' if user_update_success else '❌'}\n"
+                    f"Enhanced ayarlar güncelleme: {'✅' if settings_update_success else '❌'}"
                 )
             
         except Exception as e:
-            logging.error(f"Ayarlar kaydetme hatası: {e}")
+            logging.error(f"❌ Enhanced ayarlar kaydetme hatası: {e}")
             messagebox.showerror(
-                "Hata",
-                f"Ayarlar kaydedilirken hata oluştu:\n{str(e)}\n\n"
-                "Ayarlar yerel depolamaya kaydedilmeye çalışılacak."
+                "Enhanced Kaydetme Hatası",
+                f"Enhanced ayarlar kaydedilirken hata oluştu:\n{str(e)}\n\n"
+                "Enhanced ayarlar yerel depolamaya kaydedilmeye çalışılacak."
             )
 
     def _on_back(self):
         """Geri dönüş."""
         if self.is_modified:
             result = messagebox.askyesnocancel(
-                "Değişiklikler Kaydedilmedi",
-                "Değişiklikleriniz kaydedilmedi.\n\n"
-                "Kaydetmek istiyor musunuz?"
+                "Enhanced Değişiklikler Kaydedilmedi",
+                "Enhanced değişiklikleriniz kaydedilmedi.\n\n"
+                "Enhanced ayarları kaydetmek istiyor musunuz?"
             )
             
             if result is True:  # Evet - Kaydet
@@ -1246,32 +1380,100 @@ class EnhancedSettingsFrame(tk.Frame):
                 return
             # Hayır - Kaydetme, devam et
         
+        try:
+            # Widget temizliği
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.unbind_all("<MouseWheel>")
+        except:
+            pass
+        
         self.back_fn()
 
 
-
-# Backward compatibility
+# DÜZELTME: Backward compatibility - SettingsFrame alias
 SettingsFrame = EnhancedSettingsFrame
 
 
 if __name__ == "__main__":
-    # Test
+    # Enhanced Test
     root = tk.Tk()
-    root.title("Enhanced Settings Test")
-    root.geometry("900x700")
+    root.title("Enhanced Settings Test - v3.0")
+    root.geometry("1400x900")
     
     # Mock data
-    user = {"localId": "test", "displayName": "Test User", "email": "test@example.com"}
+    user = {"localId": "enhanced_test", "displayName": "Enhanced Test User", "email": "enhanced@test.com"}
     
     class MockDBManager:
-        def get_user_data(self, user_id): return {"settings": {}}
-        def update_user_data(self, user_id, data): pass
-        def save_user_settings(self, user_id, settings): pass
+        def get_user_data(self, user_id): 
+            return {
+                "settings": {
+                    "email_notification": True,
+                    "fcm_notification": True,
+                    "sms_notification": False,
+                    "phone_number": "",
+                    "dark_mode": False,
+                    "auto_brightness": True,
+                    "brightness_adjustment": 0,
+                    "contrast_adjustment": 1.0,
+                    "fall_sensitivity": "medium",
+                    "selected_ai_model": "yolo11l-pose"
+                },
+                "fcmToken": "mock_fcm_token"
+            }
+        def update_user_data(self, user_id, data): 
+            print(f"✅ MockDB: Enhanced user data updated for {user_id}: {data}")
+            return True
+        def save_user_settings(self, user_id, settings): 
+            print(f"✅ MockDB: Enhanced settings saved for {user_id}: {settings}")
+            return True
     
+    class MockFallDetector:
+        def __init__(self):
+            self.model_path = "/path/to/yolo11l-pose.pt"
+        
+        def get_enhanced_model_info(self):
+            return {
+                "model_name": "yolo11l-pose",
+                "model_loaded": True,
+                "device": "CPU",
+                "keypoints_count": 17
+            }
+    
+    class MockApp:
+        def __init__(self):
+            self.cameras = []
+            self.fall_detector = MockFallDetector()
+            self.notification_manager = None
+            self.system_state = {
+                'current_model': 'yolo11l-pose'
+            }
+        
+        def switch_ai_model(self, model_name):
+            print(f"🔄 MockApp: Enhanced AI model switch to {model_name}")
+            return True
+        
+        def update_user_settings(self, settings):
+            print(f"⚙️ MockApp: Enhanced user settings updated: {settings}")
+    
+    def enhanced_test_back():
+        print("✅ Enhanced back button pressed")
+        root.quit()
+    
+    # DÜZELTME: app_instance parametresi ile test
+    mock_app = MockApp()
     settings = EnhancedSettingsFrame(
         root, user, MockDBManager(), 
-        lambda: print("Back pressed"), None
+        enhanced_test_back, MockFallDetector(), mock_app
     )
     settings.pack(fill=tk.BOTH, expand=True)
+    
+    print("🧪 Enhanced Settings Test v3.0 Başlatıldı")
+    print("✨ ENHANCED YENİ ÖZELLİKLER:")
+    print("   ⚡ Enhanced Anında Test Bildirimi")
+    print("   📧 Enhanced Tam Bildirim Testi") 
+    print("   🎨 Enhanced UI/UX")
+    print("   🔧 Enhanced Model Yönetimi (app.py entegrasyonu)")
+    print("   📱 Enhanced Mobil Push Desteği")
+    print("   🔗 Enhanced App Instance Entegrasyonu")
     
     root.mainloop()
