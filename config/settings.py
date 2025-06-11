@@ -92,7 +92,7 @@ CAMERA_CONFIGS = [
     {"index": 2, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera 2 (DirectShow)"},
 ]
 
-FRAME_WIDTH = 1280  
+FRAME_WIDTH = 1080
 FRAME_HEIGHT = 720
 FRAME_RATE = 30     
 

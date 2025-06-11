@@ -1,110 +1,16 @@
 # =======================================================================================
-# === PROGRAM AÇIKLAMASI ===
-# Dosya Adı: dashboard.py 
-# Konum: pc/ui/dashboard.py
-# Açıklama:
-# Guard AI uygulamasının ana kontrol paneli olan DashboardFrame sınıfını içerir.
-# Gerçek zamanlı kamera görüntüsünü gösterir, sistem durumunu takip eder,
-# düşme algılandığında kullanıcıyı bilgilendirir ve temel ayarları sağlar.
-#
-# Bu dosya, AI destekli güvenlik sisteminin en kritik UI bileşenlerinden biridir.
-
-# === ÖZELLİKLER ===
-# - Gerçek zamanlı kamera görüntüsü
-# - Düşme algılama bildirimleri
-# - Sistem durumu göstergeleri (FPS, bağlantı durumu)
-# - Kamera seçimi ve tam ekran mod desteği
-# - Performans izleme (uptime, bellek kullanımı)
-# - Ayarlar ve çıkış butonları
-
-# === BAŞLICA MODÜLLER VE KULLANIM AMACI ===
-# - tkinter: Arayüz oluşturma (kamera görüntüleri, durum panelleri)
-# - OpenCV (cv2): Kamera görüntüsünü işleme ve gösterme
-# - NumPy: Görsel verilerin manipülasyonu
-# - threading: Uzun süren işlemler için arka plan çalıştırma
-# - logging: Hata ve işlem kayıtları tutma
-# - datetime / time: Zaman damgası ve performans ölçümü
-# - collections.deque: FPS ve işlem süresi hesaplaması
-
-# === SINIFLAR ===
-# - DashboardFrame: Ana kontrol paneli sınıfı (tk.Frame türemiştir)
-
-# === TEMEL FONKSİYONLAR ===
-# - __init__: UI bileşenlerini başlatır, stil tanımlar, kamera bağlantısını kurar
-# - _create_enhanced_ui: Ana UI elemanlarını oluşturur (kamera alanı, menü, istatistikler)
-# - _update_camera_display: Kamera görüntüsünü güncellemek için çalışan asenkron fonksiyon
-# - _ultra_update_camera_display: Ultra yüksek performanslı kamera güncelleme motoru
-# - _handle_fall_detection: Düşme algılandığında çağrılır, uyarı gösterir
-# - _toggle_system: Sistemi başlatır/durdurur
-# - _select_camera / _next_camera / _previous_camera: Kamera geçişleri
-# - toggle_fullscreen: Tam ekran moduna geçiş
-# - _create_enhanced_card: UI kartları oluşturmak için yardımcı fonksiyon
-# - _update_enhanced_ui_info: FPS, bağlantı durumu gibi bilgileri günceller
-# - _add_enhanced_overlay: Görüntü üzerine ekstra bilgi yazısı ekler
-# - _create_enhanced_last_event_section: Son düşme olayı bilgisini gösterir
-# - on_destroy: Temizlik işlemleri (kamerayı durdurma, thread'leri sonlandırma)
-
-# === GÖRSEL İŞLEME ===
-# - Kamera görüntüsünün boyutunu optimize eder
-# - En yüksek kaliteli yeniden boyutlandırmayı kullanır (INTER_LINEAR)
-# - Üzerine overlay bilgileri (FPS, kamera ID, tarih/saat) eklenir
-
-# === DÜŞME ALGILAMA ===
-# - Düşme algılandığında kırmızı uyarı mesajı gösterilir
-# - 5 saniye sonra otomatik olarak kaybolur
-# - Her algılama sonrası sayaç artırılır
-
-# === PERFORMANS İZLEME ===
-# - Ortalama FPS
-# - Bellek kullanımı
-# - Çalışma süresi (uptime)
-# - Toplam düşme sayısı
-# - Aktif kamera sayısı
-
-# === TAM EKRAN DESTEĞİ ===
-# - F11 tuşu ile tam ekran moduna geçebilir
-# - Yeniden boyutlandırma sırasında görüntü kalitesi korunur
-
-# === MENÜ VE AYARLAR ===
-# - Güvenli çıkış butonu
-# - Ayarlar menüsüne hızlı erişim
-# - Geçmiş olaylara erişim
-
-# === KAMERA DESTEĞİ ===
-# - Çoklu kamera yönetimi
-# - Otomatik bağlantı kontrolü
-# - Kamera seçim butonları
-# - Bağlantı durumu göstergesi (Bağlı/Red)
-
-# === THREAD VE GERÇEK ZAMANLI İŞLEME ===
-# - Kamera görüntüsünü ayrı bir thread'de işler
-# - AI modeli yüklüyse gerçek zamanlı analiz yapılır
-# - Display hızı (~40 FPS) dinamik olarak kontrol edilir
-
-# === HATA YÖNETİMİ ===
-# - Tüm işlemlerde try-except bloklarıyla hatalar loglanır
-# - Kullanıcıya anlamlı mesajlar gösterilir
-# - Kamera bağlantısı kesildiğinde bilgilendirme yapılır
-
-# === LOGGING ===
-# - Tüm işlemler log dosyasına yazılır (guard_ai_v3.log)
-# - Log formatı: Tarih/Zaman [Seviye] Mesaj
-
-# === TEST AMAÇLI KULLANIM ===
-# - `if __name__ == "__main__":` bloğu ile bağımsız çalıştırılabilir
-# - Mock DB veya test ortamı ile çalıştırılabilir
-
-# === NOTLAR ===
-# - Bu dosya, app.py ve settings.py ile entegre çalışır
-# - UI stilleri temasına göre değişkenlik gösterebilir
-# - FallDetector sınıfı ile AI entegrasyonu sağlanmıştır
+# DÜZELTME: Dashboard görüntü stabilitesi
+# Sorunlar:
+# 1. Çok sık frame update → Stabil güncelleme
+# 2. Gereksiz image enhancement → Doğal görüntü kalitesi
+# 3. Buffer yönetimi karmaşık → Basit ve stabil
 # =======================================================================================
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
 import cv2
-from PIL import Image, ImageTk, ImageEnhance, ImageFilter, ImageDraw
+from PIL import Image, ImageTk
 import numpy as np
 import threading
 import time
@@ -118,8 +24,7 @@ import queue
 
 class DashboardFrame(tk.Frame):
     """
-    gelişmiş YOLOv11 Pose Estimation + DeepSORT dashboard arayüzü.
-    TEK KAMERA ALANI - Kameralar liste halinde seçilir.
+    DÜZELTME: Stabil video display ile dashboard
     """
 
     def __init__(self, parent, user, cameras, start_fn, stop_fn, settings_fn, history_fn, logout_fn):
@@ -135,25 +40,20 @@ class DashboardFrame(tk.Frame):
         # Sistem durumları
         self.system_running = False
         self.is_fullscreen = False
-        self.selected_camera_index = 0  # Varsayılan olarak ilk kamera seçili
+        self.selected_camera_index = 0
         
-        # Performans optimizasyonu
-        self.frame_skip_counter = 0
-        self.frame_skip_rate = 1  # Her frame'i işle (daha yüksek kalite)
-        self.last_update_time = time.time()
-        self.target_fps = 30
-        self.min_update_interval = 1.0 / self.target_fps
-        
-        # Frame yönetimi - TEK KAMERA İÇİN
+        # DÜZELTME: Stabil frame yönetimi
         self.current_frame = None
-        self.processed_frame = None
         self.frame_lock = threading.Lock()
+        self.is_destroyed = False
+        
+        # DÜZELTME: Display optimizasyonu
+        self.last_display_update = 0
+        self.display_update_interval = 1.0 / 25  # 25 FPS display (stabil)
         
         # UI elementleri
         self.main_camera_label = None
-        self.camera_selector = None
         self.update_id = None
-        self.is_destroyed = False
         
         # UI değişkenleri
         self.camera_info_var = tk.StringVar(value="Kamera seçilmedi")
@@ -172,22 +72,22 @@ class DashboardFrame(tk.Frame):
         
         self.bind("<Destroy>", self._on_widget_destroy)
 
-        # Modern dark tema
+        # Modern tema - aynı
         self.colors = {
-            'bg_primary': "#0D1117",      # GitHub dark background
-            'bg_secondary': "#161B22",    # Sidebar background
-            'bg_tertiary': "#2A2F3A",     # Card background (daha açık ton)
-            'accent_primary': "#238636",  # Success green
-            'accent_danger': "#DA3633",   # Danger red
-            'accent_warning': "#FB8500",  # Warning orange
-            'accent_info': "#1F6FEB",     # Info blue
-            'text_primary': "#FFFFFF",    # Primary text (daha parlak)
-            'text_secondary': "#8B949E",  # Secondary text
-            'border': "#30363D",          # Border color
-            'hover': "#30363D"            # Hover effect
+            'bg_primary': "#0D1117",
+            'bg_secondary': "#161B22",
+            'bg_tertiary': "#2A2F3A",
+            'accent_primary': "#238636",
+            'accent_danger': "#DA3633",
+            'accent_warning': "#FB8500",
+            'accent_info': "#1F6FEB",
+            'text_primary': "#FFFFFF",
+            'text_secondary': "#8B949E",
+            'border': "#30363D",
+            'hover': "#30363D"
         }
 
-        # Tracking bilgileri için değişkenler
+        # Tracking bilgileri değişkenleri
         self.tracking_info_vars = {
             'active_tracks': tk.StringVar(value="0"),
             'total_detections': tk.StringVar(value="0"),
@@ -207,11 +107,11 @@ class DashboardFrame(tk.Frame):
         # UI oluştur
         self._create_ultra_modern_ui()
         
-        # İşleme thread'ini başlat
-        self._start_processing_thread()
+        # DÜZELTME: Basit processing başlat
+        self._start_simple_processing()
         
-        # Kamera güncellemelerini başlat
-        self._start_camera_updates()
+        # DÜZELTME: Stabil display güncellemesi
+        self._start_stable_display_updates()
 
     def _create_ultra_modern_ui(self):
         """Ultra modern UI yapısını oluşturur."""
@@ -221,15 +121,15 @@ class DashboardFrame(tk.Frame):
         self.main_container = tk.Frame(self, bg=self.colors['bg_primary'])
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Grid layout - sol panel küçük, sağ panel büyük
+        # Grid layout
         self.main_container.grid_rowconfigure(0, weight=1)
-        self.main_container.grid_columnconfigure(0, weight=1, minsize=350)  # Sol panel sabit genişlik
-        self.main_container.grid_columnconfigure(1, weight=5)  # Kamera alanı çok büyük
+        self.main_container.grid_columnconfigure(0, weight=1, minsize=350)
+        self.main_container.grid_columnconfigure(1, weight=5)
         
         # Sol kontrol paneli
         self._create_control_panel()
         
-        # Ana kamera alanı (TEK ALAN)
+        # Ana kamera alanı
         self._create_single_camera_area()
         
         # Keyboard shortcuts
@@ -242,8 +142,6 @@ class DashboardFrame(tk.Frame):
         """Sol kontrol panelini oluşturur."""
         self.control_panel = tk.Frame(self.main_container, bg=self.colors['bg_secondary'])
         self.control_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
- 
-
         
         # Scroll edilebilir içerik
         canvas = tk.Canvas(self.control_panel, bg=self.colors['bg_secondary'], highlightthickness=0)
@@ -272,11 +170,11 @@ class DashboardFrame(tk.Frame):
         # Son olay bilgisi
         self._create_last_event_section(scrollable_frame)
         
-        # Menü butonları (sadece Çıkış kalacak, diğerleri header’a taşındı)
+        # Menü butonları
         self._create_menu_section(scrollable_frame)
 
     def _create_header_section(self, parent):
-        """Header section - Ayarlar ve Olay Geçmişi sağ üst köşede."""
+        """Header section."""
         header_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], height=100)
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         header_frame.pack_propagate(False)
@@ -287,7 +185,7 @@ class DashboardFrame(tk.Frame):
                               fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'])
         title_label.pack(pady=10)
         
-        subtitle_label = tk.Label(header_frame, text="YOLOv11 Düşme Algılama", 
+        subtitle_label = tk.Label(header_frame, text="Doğal Kalite Düşme Algılama", 
                                  font=("Segoe UI", 12),
                                  fg=self.colors['text_secondary'], bg=self.colors['bg_tertiary'])
         subtitle_label.pack()
@@ -315,7 +213,6 @@ class DashboardFrame(tk.Frame):
                                padx=10, pady=6, command=self.history_fn,
                                activebackground="#1A5ACF", cursor="hand2")
         history_btn.pack(side=tk.LEFT, padx=5)
-        
 
     def _create_system_control_section(self, parent):
         """Sistem kontrolü section."""
@@ -454,7 +351,7 @@ class DashboardFrame(tk.Frame):
             label.pack(anchor="w", pady=2)
 
     def _create_menu_section(self, parent):
-        """Menü section - Sadece Çıkış butonu kalacak."""
+        """Menü section."""
         menu_frame = tk.LabelFrame(parent, text="⚙️ Menü", 
                                   font=("Segoe UI", 14, "bold"),
                                   fg=self.colors['text_primary'], bg=self.colors['bg_secondary'],
@@ -525,8 +422,8 @@ class DashboardFrame(tk.Frame):
             color_intensity = int(20 + (i / 720) * 30)
             placeholder[i, :] = [color_intensity, color_intensity, color_intensity]
         
-        cv2.putText(placeholder, "GUARD AI", (480, 300), cv2.FONT_HERSHEY_SIMPLEX,
-                   3, (56, 134, 54), 4, cv2.LINE_AA)
+        cv2.putText(placeholder, "GUARD AI - DOGAL KALITE", (380, 300), cv2.FONT_HERSHEY_SIMPLEX,
+                   2.5, (56, 134, 54), 4, cv2.LINE_AA)
         cv2.putText(placeholder, "Dusme Algilama Sistemi", (420, 380), cv2.FONT_HERSHEY_SIMPLEX,
                    1.5, (240, 246, 252), 2, cv2.LINE_AA)
         
@@ -535,8 +432,8 @@ class DashboardFrame(tk.Frame):
         cv2.putText(placeholder, "Sistemi baslatmak icin 'SISTEMI BASLAT' butonuna tiklayin", (280, 500), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (139, 148, 158), 2, cv2.LINE_AA)
         
-        cv2.putText(placeholder, "F11: Tam Ekran | <- ->: Kamera Degistir | ESC: Cikis", (320, 600), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (139, 148, 158), 1, cv2.LINE_AA)
+        cv2.putText(placeholder, "DOGAL AYARLAR - STABLE GORUNTULER", (380, 600), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 136), 2, cv2.LINE_AA)
         
         cv2.rectangle(placeholder, (50, 50), (1230, 670), (56, 134, 54), 3)
         
@@ -549,7 +446,7 @@ class DashboardFrame(tk.Frame):
             camera = self.cameras[camera_index]
             
             self.current_camera_var.set(f"Kamera {camera.camera_index}")
-            self.camera_info_var.set(f"📹 Kamera {camera.camera_index}")
+            self.camera_info_var.set(f"📹 Kamera {camera.camera_index} - Doğal Kalite")
             
             for i, btn in enumerate(self.camera_buttons):
                 if i == camera_index:
@@ -557,7 +454,7 @@ class DashboardFrame(tk.Frame):
                 else:
                     btn.config(bg=self.colors['bg_tertiary'], fg=self.colors['text_primary'])
             
-            logging.info(f"Kamera {camera_index} seçildi")
+            logging.info(f"Kamera {camera_index} seçildi - doğal ayarlar")
 
     def _previous_camera(self):
         """Önceki kameraya geç."""
@@ -571,194 +468,204 @@ class DashboardFrame(tk.Frame):
             new_index = (self.selected_camera_index + 1) % len(self.cameras)
             self._select_camera(new_index)
 
-    def _start_processing_thread(self):
-        """Frame işleme thread'ini başlatır."""
-        self.processing_thread = threading.Thread(target=self._process_frames, daemon=True)
+    def _start_simple_processing(self):
+        """DÜZELTME: Basit AI processing thread."""
+        def simple_processing():
+            try:
+                fall_detector = FallDetector.get_instance()
+            except Exception as e:
+                logging.error(f"FallDetector başlatma hatası: {e}")
+                return
+            
+            # DÜZELTME: Daha az sıklıkta AI processing
+            ai_process_interval = 10  # Her 10. frame'de AI
+            frame_counter = 0
+            
+            while not self.is_destroyed:
+                try:
+                    if not self.system_running or not self.cameras:
+                        time.sleep(0.1)
+                        continue
+                    
+                    if self.selected_camera_index >= len(self.cameras):
+                        time.sleep(0.1)
+                        continue
+                    
+                    camera = self.cameras[self.selected_camera_index]
+                    
+                    if not camera.is_running:
+                        time.sleep(0.1)
+                        continue
+                    
+                    # DÜZELTME: Doğal frame al
+                    frame = camera.get_frame()
+                    if frame is None:
+                        time.sleep(0.05)
+                        continue
+                    
+                    # DÜZELTME: Frame'i direkt kaydet
+                    with self.frame_lock:
+                        self.current_frame = frame.copy()
+                    
+                    frame_counter += 1
+                    
+                    # DÜZELTME: AI processing sadece bazen
+                    if frame_counter % ai_process_interval == 0:
+                        try:
+                            annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
+                            
+                            # Stats update
+                            self.tracking_stats['active_tracks'] = len(tracks)
+                            if tracks:
+                                self.tracking_stats['total_detections'] += len(tracks)
+                            
+                            # Fall detection
+                            is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
+                            
+                            if is_fall and confidence > 0.5:
+                                self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
+                            
+                            # DÜZELTME: Annotated frame'i kaydet
+                            with self.frame_lock:
+                                self.current_frame = annotated_frame.copy()
+                        
+                        except Exception as ai_error:
+                            logging.error(f"AI işleme hatası: {ai_error}")
+                    
+                    # DÜZELTME: FPS calculation
+                    current_time = time.time()
+                    if hasattr(self, 'last_fps_time'):
+                        fps = 1.0 / max(0.001, current_time - self.last_fps_time)
+                        self.tracking_stats['current_fps'] = int(fps)
+                    self.last_fps_time = current_time
+                    
+                    # DÜZELTME: Stabil sleep
+                    time.sleep(0.04)  # 25 FPS processing
+                
+                except Exception as e:
+                    logging.error(f"Simple processing hatası: {e}")
+                    time.sleep(0.1)
+        
+        self.processing_thread = threading.Thread(target=simple_processing, daemon=True)
         self.processing_thread.start()
 
+    def _start_stable_display_updates(self):
+        """DÜZELTME: Stabil display güncelleme başlat."""
+        self._stable_display_update()
 
-
-
-    def _process_frames(self):
+    def _stable_display_update(self):
         """
-        DÜZELTME: Optimize edilmiş AI processing
-        """
-        try:
-            fall_detector = FallDetector.get_instance()
-        except Exception as e:
-            logging.error(f"FallDetector başlatma hatası: {e}")
-            return
-        
-        # DÜZELTME: AI processing her 5. frame'de
-        detection_interval = 5
-        frame_counter = 0
-        
-        while not self.is_destroyed:
-            try:
-                if not self.system_running or not self.cameras:
-                    time.sleep(0.1)
-                    continue
-                
-                if self.selected_camera_index >= len(self.cameras):
-                    time.sleep(0.1)
-                    continue
-                
-                camera = self.cameras[self.selected_camera_index]
-                
-                if not camera.is_running:
-                    time.sleep(0.1)
-                    continue
-                
-                # DÜZELTME: Frame al
-                frame = camera.get_frame()
-                if frame is None:
-                    time.sleep(0.02)
-                    continue
-                
-                # DÜZELTME: Current frame'i güncelle
-                with self.frame_lock:
-                    self.current_frame = frame
-                
-                frame_counter += 1
-                
-                # DÜZELTME: AI processing sadece belirli aralıklarla
-                if frame_counter % detection_interval == 0:
-                    try:
-                        annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
-                        
-                        # DÜZELTME: Stats update
-                        self.tracking_stats['active_tracks'] = len(tracks)
-                        if tracks:
-                            self.tracking_stats['total_detections'] += len(tracks)
-                        
-                        # DÜZELTME: Fall detection
-                        is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
-                        
-                        if is_fall and confidence > 0.4:
-                            self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
-                        
-                        # DÜZELTME: Processed frame'i güncelle
-                        with self.frame_lock:
-                            self.processed_frame = annotated_frame
-                    
-                    except Exception as ai_error:
-                        logging.error(f"AI işleme hatası: {ai_error}")
-                
-                # DÜZELTME: FPS calculation
-                current_time = time.time()
-                if hasattr(self, 'last_fps_time'):
-                    fps = 1.0 / max(0.001, current_time - self.last_fps_time)
-                    self.tracking_stats['current_fps'] = int(fps)
-                self.last_fps_time = current_time
-                
-                # DÜZELTME: Sabit sleep
-                time.sleep(0.02)  # 50 FPS processing
-            
-            except Exception as e:
-                logging.error(f"Frame işleme hatası: {e}")
-                time.sleep(0.1)
-
-
-
-
-    def _start_camera_updates(self):
-        """Kamera güncellemelerini başlatır."""
-        self._update_camera_display()
-
-
-
-    def _update_camera_display(self):
-        """
-        DÜZELTME: Video gibi akıcı kamera display
+        DÜZELTME: Çok stabil display update - titreme yok
         """
         if self.is_destroyed:
             return
         
-        try:
-            # DÜZELTME: Frame'i hemen al ve göster
-            frame = None
-            with self.frame_lock:
-                if self.processed_frame is not None:
-                    frame = self.processed_frame
-                    self.processed_frame = None  # Bir kere kullan
-                elif self.current_frame is not None:
-                    frame = self.current_frame
-            
-            if frame is not None:
-                # DÜZELTME: Hızlı boyutlandırma
-                display_width = self.main_camera_label.winfo_width() or 1200
-                display_height = self.main_camera_label.winfo_height() or 800
+        current_time = time.time()
+        
+        # DÜZELTME: Stabil güncelleme aralığı
+        if current_time - self.last_display_update >= self.display_update_interval:
+            try:
+                # DÜZELTME: Frame'i al
+                display_frame = None
+                with self.frame_lock:
+                    if self.current_frame is not None:
+                        display_frame = self.current_frame.copy()
                 
-                if display_width > 50 and display_height > 50:
-                    h, w = frame.shape[:2]
-                    
-                    # DÜZELTME: Aspect ratio korunarak resize
-                    aspect = w / h
-                    if display_width / display_height > aspect:
-                        new_height = display_height
-                        new_width = int(new_height * aspect)
-                    else:
-                        new_width = display_width
-                        new_height = int(new_width / aspect)
-                    
-                    # DÜZELTME: INTER_AREA daha hızlı
-                    resized = cv2.resize(frame, (new_width, new_height), 
-                                    interpolation=cv2.INTER_AREA)
-                    
-                    # DÜZELTME: Minimal overlay
-                    self._add_fast_overlay(resized)
-                    
-                    # DÜZELTME: Direct display update
-                    self._direct_update_display(resized)
+                if display_frame is not None:
+                    # DÜZELTME: Boyutlandır ve göster
+                    self._natural_display_update(display_frame)
+                
+                # DÜZELTME: UI info güncelle (daha az sıklıkla)
+                if int(current_time) % 2 == 0:  # 2 saniyede bir
+                    self._update_ui_info()
+                
+                self.last_display_update = current_time
             
-            # DÜZELTME: UI info güncelle (daha az sıklıkla)
-            current_time = time.time()
-            if not hasattr(self, 'last_ui_update') or (current_time - self.last_ui_update) > 1.0:
-                self._update_ui_info()
-                self.last_ui_update = current_time
+            except Exception as e:
+                logging.error(f"Stable display update hatası: {e}")
+        
+        # DÜZELTME: Sabit 25 FPS için 40ms
+        self.update_id = self.after(40, self._stable_display_update)
+
+    def _natural_display_update(self, frame):
+        """
+        DÜZELTME: Doğal görüntü kalitesi ile display update
+        """
+        try:
+            # DÜZELTME: Label boyutlarını al
+            display_width = self.main_camera_label.winfo_width() or 1200
+            display_height = self.main_camera_label.winfo_height() or 800
+            
+            if display_width > 50 and display_height > 50:
+                h, w = frame.shape[:2]
+                
+                # DÜZELTME: Aspect ratio korunarak resize
+                aspect = w / h
+                if display_width / display_height > aspect:
+                    new_height = display_height
+                    new_width = int(new_height * aspect)
+                else:
+                    new_width = display_width
+                    new_height = int(new_width / aspect)
+                
+                # DÜZELTME: Yumuşak resize
+                resized = cv2.resize(frame, (new_width, new_height), 
+                                   interpolation=cv2.INTER_LINEAR)
+                
+                # DÜZELTME: Minimal overlay - doğal kalite
+                self._add_natural_overlay(resized)
+                
+                # DÜZELTME: Doğal display
+                self._direct_natural_display(resized)
         
         except Exception as e:
-            logging.error(f"Display update hatası: {e}")
-        
-        # DÜZELTME: Sabit 30 FPS için 33ms
-        self.update_id = self.after(33, self._update_camera_display)
+            logging.error(f"Natural display update hatası: {e}")
 
-    def _add_fast_overlay(self, frame):
+    def _add_natural_overlay(self, frame):
         """
-        DÜZELTME: Minimal overlay - maksimum hız
+        DÜZELTME: Çok minimal overlay - doğal kalite korunur
         """
         try:
             h, w = frame.shape[:2]
             
-            # DÜZELTME: Sadece timestamp
+            # DÜZELTME: Sadece timestamp - minimal müdahale
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
             
-            # DÜZELTME: Direct text - overlay yok
-            cv2.putText(frame, timestamp, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7, (0, 255, 136), 2, cv2.LINE_AA)
+            # DÜZELTME: Şeffaf overlay
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (150, 30), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
             
-            # DÜZELTME: Kamera ID sağ alt
+            # DÜZELTME: Minimal text
+            cv2.putText(frame, timestamp, (5, 20), cv2.FONT_HERSHEY_SIMPLEX,
+                       0.6, (0, 255, 136), 2, cv2.LINE_AA)
+            
+            # DÜZELTME: Kamera ID - köşede, küçük
             if self.selected_camera_index < len(self.cameras):
                 camera = self.cameras[self.selected_camera_index]
-                cam_text = f"CAM {camera.camera_index}"
-                cv2.putText(frame, cam_text, (w-100, h-15), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                cam_text = f"CAM{camera.camera_index}"
+                cv2.putText(frame, cam_text, (w-80, h-10), cv2.FONT_HERSHEY_SIMPLEX,
+                           0.4, (255, 255, 255), 1, cv2.LINE_AA)
         
         except Exception as e:
-            logging.debug(f"Overlay hatası: {e}")
+            logging.debug(f"Natural overlay hatası: {e}")
 
-    def _direct_update_display(self, frame):
+    def _direct_natural_display(self, frame):
         """
-        DÜZELTME: En hızlı display update
+        DÜZELTME: Doğal kalite display - enhancement yok
         """
         try:
-            # DÜZELTME: Direct BGR to RGB
+            # DÜZELTME: Direct BGR to RGB - enhancement yok
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-            # DÜZELTME: PIL conversion
+            # DÜZELTME: PIL conversion - doğal kalite
             pil_image = Image.fromarray(frame_rgb)
             
-            # DÜZELTME: PhotoImage oluştur
+            # DÜZELTME: Enhancement YOK - doğal kalite korunuyor
+            # enhancer = ImageEnhance.Brightness(pil_image)
+            # pil_image = enhancer.enhance(1.05)  # KALDIRILDI
+            
+            # DÜZELTME: PhotoImage
             tk_image = ImageTk.PhotoImage(pil_image)
             
             # DÜZELTME: Label güncelle
@@ -766,108 +673,24 @@ class DashboardFrame(tk.Frame):
             self.main_camera_label.image = tk_image
             
         except Exception as e:
-            logging.error(f"Direct display update hatası: {e}")
-
-
-
-
-    def _calculate_optimal_size(self, orig_w, orig_h, display_w, display_h):
-        """
-        DÜZELTME: Optimal boyut hesaplama
-        """
-        aspect = orig_w / orig_h
-        
-        if display_w / display_h > aspect:
-            new_height = display_h
-            new_width = int(new_height * aspect)
-        else:
-            new_width = display_w
-            new_height = int(new_width / aspect)
-        
-        # DÜZELTME: Minimum ve maksimum sınırları
-        new_width = max(320, min(1920, new_width))
-        new_height = max(240, min(1080, new_height))
-        
-        return (new_width, new_height)
-
-    def _add_minimal_overlay(self, frame):
-        """
-        DÜZELTME: Minimal overlay - performans için
-        """
-        try:
-            h, w = frame.shape[:2]
-            
-            # DÜZELTME: Sadece timestamp - diğer bilgiler gereksiz
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-            
-            # DÜZELTME: Semi-transparent overlay
-            overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (200, 35), (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-            
-            # DÜZELTME: Minimal text
-            cv2.putText(frame, timestamp, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7, (0, 255, 136), 2, cv2.LINE_AA)
-            
-            # DÜZELTME: Kamera ID sadece köşede
-            if self.selected_camera_index < len(self.cameras):
-                camera = self.cameras[self.selected_camera_index]
-                cam_text = f"CAM {camera.camera_index}"
-                cv2.putText(frame, cam_text, (w-100, h-15), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (240, 246, 252), 1, cv2.LINE_AA)
-        
-        except Exception as e:
-            logging.debug(f"Overlay ekleme hatası: {e}")
-
-    def _fast_update_main_camera_display(self, frame):
-        """
-        DÜZELTME: Hızlı display güncelleme
-        """
-        try:
-            # DÜZELTME: Direct BGR to RGB conversion
-            if len(frame.shape) == 3 and frame.shape[2] == 3:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            else:
-                frame_rgb = frame
-            
-            # DÜZELTME: Fast PIL conversion
-            pil_image = Image.fromarray(frame_rgb)
-            
-            # DÜZELTME: Skip enhancement for performance
-            # enhancer = ImageEnhance.Brightness(pil_image)
-            # pil_image = enhancer.enhance(1.05)
-            
-            # DÜZELTME: Direct PhotoImage creation
-            tk_image = ImageTk.PhotoImage(pil_image)
-            
-            # DÜZELTME: Update label
-            self.main_camera_label.configure(image=tk_image)
-            self.main_camera_label.image = tk_image  # Keep reference
-            
-        except Exception as e:
-            logging.error(f"Fast camera display güncelleme hatası: {e}")
-
-
-
-
-
-
-
+            logging.error(f"Natural display hatası: {e}")
 
     def _update_main_camera_display(self, frame):
-        """Ana kamera display'ini günceller."""
+        """DÜZELTME: Ana kamera display - doğal kalite."""
         try:
             if len(frame.shape) == 3:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             else:
                 frame_rgb = frame
             
+            # DÜZELTME: PIL conversion - enhancement YOK
             pil_image = Image.fromarray(frame_rgb)
             
-            enhancer = ImageEnhance.Brightness(pil_image)
-            pil_image = enhancer.enhance(1.05)
-            enhancer = ImageEnhance.Contrast(pil_image)
-            pil_image = enhancer.enhance(1.1)
+            # DÜZELTME: Enhancement KALDIRILDI - doğal kalite
+            # enhancer = ImageEnhance.Brightness(pil_image)
+            # pil_image = enhancer.enhance(1.05)
+            # enhancer = ImageEnhance.Contrast(pil_image)
+            # pil_image = enhancer.enhance(1.1)
             
             tk_image = ImageTk.PhotoImage(pil_image)
             
@@ -1020,15 +843,19 @@ class DashboardFrame(tk.Frame):
             self._cleanup_resources()
 
     def _cleanup_resources(self):
-        """Kaynakları temizler."""
+        """DÜZELTME: Stabil kaynak temizleme."""
         try:
+            self.is_destroyed = True
+            
             if hasattr(self, 'update_id') and self.update_id:
                 self.after_cancel(self.update_id)
                 self.update_id = None
             
-            self.is_destroyed = True
+            # Processing thread temizle
+            if hasattr(self, 'processing_thread') and self.processing_thread.is_alive():
+                self.processing_thread.join(timeout=1.0)
             
-            logging.info("Dashboard kaynakları temizlendi")
+            logging.info("Dashboard kaynakları güvenli şekilde temizlendi")
         except Exception as e:
             logging.error(f"Kaynak temizleme hatası: {e}")
 

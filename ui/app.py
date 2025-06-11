@@ -620,249 +620,282 @@ class GuardApp:
 
 
     def start_enhanced_detection(self):
-        """
-        DÜZELTME: Ultra Enhanced Detection - Optimized başlatma
-        """
-        if self.system_state['running']:
-            logging.warning("⚠️ Sistem zaten çalışıyor")
-            if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
-                self.dashboard_frame.update_system_status(True)
-            return
+            """
+            DÜZELTME: Stabil detection başlatma - titreme yok
+            """
+            if self.system_state['running']:
+                logging.warning("⚠️ Sistem zaten çalışıyor")
+                if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
+                    self.dashboard_frame.update_system_status(True)
+                return
 
-        try:
-            logging.info("🚀 Ultra Enhanced Detection sistemi başlatılıyor...")
-            
-            # DÜZELTME: Kameraları sırayla başlat
-            camera_start_count = 0
-            failed_cameras = []
-            
-            for i, camera in enumerate(self.cameras):
-                try:
-                    logging.info(f"Kamera {camera.camera_index} başlatılıyor...")
-                    
-                    # DÜZELTME: Validation önce
-                    if hasattr(camera, '_validate_camera_with_fallback'):
-                        if not camera._validate_camera_with_fallback():
-                            logging.error(f"❌ Kamera {camera.camera_index} doğrulanamadı")
-                            failed_cameras.append(camera.camera_index)
-                            continue
-                    
-                    # DÜZELTME: Start with timeout
-                    start_success = False
+            try:
+                logging.info("🚀 Stabil Detection sistemi başlatılıyor...")
+                
+                # DÜZELTME: Kameraları doğal ayarlarla başlat
+                camera_start_count = 0
+                failed_cameras = []
+                
+                for i, camera in enumerate(self.cameras):
                     try:
-                        # Timeout ile başlatma
-                        import signal
+                        logging.info(f"Kamera {camera.camera_index} başlatılıyor - doğal ayarlar...")
                         
-                        def timeout_handler(signum, frame):
-                            raise TimeoutError("Kamera başlatma timeout")
+                        # DÜZELTME: Hızlı validation
+                        if hasattr(camera, '_validate_camera_with_fallback'):
+                            if not camera._validate_camera_with_fallback():
+                                logging.error(f"❌ Kamera {camera.camera_index} doğrulanamadı")
+                                failed_cameras.append(camera.camera_index)
+                                continue
                         
-                        signal.signal(signal.SIGALRM, timeout_handler)
-                        signal.alarm(5)  # 5 saniye timeout
-                        
-                        start_success = camera.start()
-                        
-                        signal.alarm(0)  # Timeout iptal
-                        
-                    except TimeoutError:
-                        logging.error(f"❌ Kamera {camera.camera_index} başlatma timeout")
-                        failed_cameras.append(camera.camera_index)
-                        continue
-                    except:
-                        start_success = camera.start()  # Fallback
-                    
-                    if start_success:
-                        camera_start_count += 1
-                        logging.info(f"✅ Kamera {camera.camera_index} başlatıldı")
-                        
-                        # DÜZELTME: Kısa test
-                        time.sleep(0.2)  # 0.5 -> 0.2 saniye
-                        test_frame = camera.get_frame()
-                        if test_frame is not None and test_frame.size > 0:
-                            logging.info(f"✅ Kamera {camera.camera_index} frame testi başarılı: {test_frame.shape}")
+                        # DÜZELTME: Doğal ayarlarla başlat
+                        if camera.start():
+                            camera_start_count += 1
+                            logging.info(f"✅ Kamera {camera.camera_index} başlatıldı - doğal kalite")
+                            
+                            # DÜZELTME: Kısa test
+                            time.sleep(0.2)
+                            test_frame = camera.get_frame()
+                            if test_frame is not None and test_frame.size > 0:
+                                logging.info(f"✅ Kamera {camera.camera_index} frame testi başarılı: {test_frame.shape}")
+                            else:
+                                logging.warning(f"⚠️ Kamera {camera.camera_index} frame testi başarısız")
                         else:
-                            logging.warning(f"⚠️ Kamera {camera.camera_index} frame testi başarısız")
-                    else:
-                        logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
-                        failed_cameras.append(camera.camera_index)
-                        
-                except Exception as camera_error:
-                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(camera_error)}")
-                    failed_cameras.append(camera.camera_index)
-
-            # DÜZELTME: Sonuç değerlendirmesi
-            if camera_start_count == 0:
-                error_msg = "Hiçbir kamera başlatılamadı!\n\n"
-                error_msg += "Başarısız kameralar:\n"
-                for cam_id in failed_cameras:
-                    error_msg += f"• Kamera {cam_id}\n"
-                error_msg += "\nÖneriler:\n"
-                error_msg += "• Kamera bağlantılarını kontrol edin\n"
-                error_msg += "• Başka uygulamalar kamerayı kullanıyor olabilir\n"
-                error_msg += "• USB portlarını değiştirin\n"
-                error_msg += "• Bilgisayarı yeniden başlatın"
-                
-                messagebox.showerror("Kamera Hatası", error_msg)
-                return
-
-            # DÜZELTME: Sistem durumunu güncelle
-            self.system_state['running'] = True
-            self.system_state['cameras_active'] = camera_start_count
-            self.system_state['detection_active'] = self.system_state['ai_model_loaded']
-            self.system_state['last_activity'] = time.time()
-            
-            # DÜZELTME: Optimized detection threads
-            for camera in self.cameras:
-                if hasattr(camera, 'is_running') and camera.is_running:
-                    camera_id = f"camera_{camera.camera_index}"
-                    
-                    if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
-                        logging.warning(f"⚠️ Kamera {camera_id} detection thread zaten çalışıyor")
-                    else:
-                        # DÜZELTME: High priority thread
-                        self.detection_threads[camera_id] = threading.Thread(
-                            target=self._enhanced_detection_loop,
-                            args=(camera,),
-                            daemon=True,
-                            name=f"EnhancedDetection-{camera_id}"
-                        )
-                        
-                        # DÜZELTME: Thread priority (Windows için)
-                        try:
-                            import os
-                            if os.name == 'nt':  # Windows
-                                import win32api, win32process, win32con
-                                handle = win32api.GetCurrentThread()
-                                win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_ABOVE_NORMAL)
-                        except:
-                            pass
-                        
-                        self.detection_threads[camera_id].start()
-                        logging.info(f"🧵 Enhanced detection thread başlatıldı: {camera_id}")
-
-            # DÜZELTME: Dashboard güncelle
-            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-                self.dashboard_frame.update_system_status(True)
-
-            logging.info("✅ Ultra Enhanced Detection sistemi başarıyla başlatıldı!")
-            logging.info(f"📹 Aktif kameralar: {camera_start_count}/{len(self.cameras)}")
-            logging.info(f"🤖 AI Algılama: {'Aktif' if self.system_state['detection_active'] else 'Deaktif'}")
-
-        except Exception as e:
-            logging.error(f"❌ Enhanced detection başlatma hatası: {str(e)}")
-            messagebox.showerror("Sistem Hatası", f"Gelişmiş algılama sistemi başlatılamadı:\n{str(e)}")
-        """Ultra gelişmiş düşme algılama sistemini başlatır."""
-        if self.system_state['running']:
-            logging.warning("⚠️ Sistem zaten çalışıyor")
-            if hasattr(self, 'dashboard_frame') and self.dashboard_frame:
-                self.dashboard_frame.update_system_status(True)
-            return
-
-        try:
-            logging.info("🚀 Ultra Enhanced Detection sistemi başlatılıyor...")
-            
-            # Kameraları başlat
-            camera_start_count = 0
-            failed_cameras = []
-            
-            for i, camera in enumerate(self.cameras):
-                try:
-                    logging.info(f"Kamera {camera.camera_index} başlatılıyor...")
-                    
-                    # Kamera doğrulaması
-                    if hasattr(camera, '_validate_camera_with_fallback'):
-                        if not camera._validate_camera_with_fallback():
-                            logging.error(f"❌ Kamera {camera.camera_index} doğrulanamadı")
+                            logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
                             failed_cameras.append(camera.camera_index)
-                            continue
-                    
-                    # Kamerayı başlat
-                    if camera.start():
-                        camera_start_count += 1
-                        logging.info(f"✅ Kamera {camera.camera_index} başlatıldı")
-                        
-                        # Kısa test
-                        time.sleep(0.5)
-                        test_frame = camera.get_frame()
-                        if test_frame is not None and test_frame.size > 0:
-                            logging.info(f"✅ Kamera {camera.camera_index} frame testi başarılı: {test_frame.shape}")
-                        else:
-                            logging.warning(f"⚠️ Kamera {camera.camera_index} frame testi başarısız")
-                    else:
-                        logging.error(f"❌ Kamera {camera.camera_index} başlatılamadı")
+                            
+                    except Exception as camera_error:
+                        logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(camera_error)}")
                         failed_cameras.append(camera.camera_index)
-                        
-                except Exception as camera_error:
-                    logging.error(f"❌ Kamera {camera.camera_index} başlatma hatası: {str(camera_error)}")
-                    failed_cameras.append(camera.camera_index)
 
-            # Sonuçları değerlendir
-            if camera_start_count == 0:
-                error_msg = "Hiçbir kamera başlatılamadı!\n\n"
-                error_msg += "Başarısız kameralar:\n"
-                for cam_id in failed_cameras:
-                    error_msg += f"• Kamera {cam_id}\n"
-                error_msg += "\nÖneriler:\n"
-                error_msg += "• Kamera bağlantılarını kontrol edin\n"
-                error_msg += "• Başka uygulamalar kamerayı kullanıyor olabilir\n"
-                error_msg += "• Kamera sürücülerini güncelleyin\n"
-                error_msg += "• Yönetici olarak çalıştırın"
-                
-                messagebox.showerror("Kamera Hatası", error_msg)
-                return
-            
-            # Başarılı kameralar varsa devam et
-            if failed_cameras:
-                warning_msg = f"{len(failed_cameras)} kamera başlatılamadı:\n"
-                for cam_id in failed_cameras:
-                    warning_msg += f"• Kamera {cam_id}\n"
-                warning_msg += f"\n{camera_start_count} kamera başarıyla başlatıldı."
-                messagebox.showwarning("Kamera Uyarısı", warning_msg)
-
-            # AI Model kontrolü
-            if not self.fall_detector or not self.system_state['ai_model_loaded']:
-                messagebox.showwarning(
-                    "AI Model Uyarısı",
-                    "Ultra Enhanced AI düşme algılama modeli yüklü değil.\n"
-                    "Sistem kamera görüntülerini gösterecek ancak AI algılama çalışmayacak.\n\n"
-                    "Ayarlar menüsünden model yükleyebilirsiniz."
-                )
-
-            # Sistem durumunu güncelle
-            self.system_state['running'] = True
-            self.system_state['cameras_active'] = camera_start_count
-            self.system_state['detection_active'] = self.system_state['ai_model_loaded']
-            self.system_state['last_activity'] = time.time()
-            
-            # Detection thread'lerini başlat
-            for camera in self.cameras:
-                if hasattr(camera, 'is_running') and camera.is_running:
-                    camera_id = f"camera_{camera.camera_index}"
+                # DÜZELTME: Sonuç değerlendirmesi
+                if camera_start_count == 0:
+                    error_msg = "Hiçbir kamera başlatılamadı!\n\n"
+                    error_msg += "Başarısız kameralar:\n"
+                    for cam_id in failed_cameras:
+                        error_msg += f"• Kamera {cam_id}\n"
+                    error_msg += "\nÖneriler:\n"
+                    error_msg += "• Kamera bağlantılarını kontrol edin\n"
+                    error_msg += "• Başka uygulamalar kamerayı kullanıyor olabilir\n"
+                    error_msg += "• USB portlarını değiştirin\n"
+                    error_msg += "• Bilgisayarı yeniden başlatın"
                     
-                    if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
-                        logging.warning(f"⚠️ Kamera {camera_id} detection thread zaten çalışıyor")
-                    else:
-                        self.detection_threads[camera_id] = threading.Thread(
-                            target=self._enhanced_detection_loop,
-                            args=(camera,),
-                            daemon=True,
-                            name=f"EnhancedDetection-{camera_id}"
-                        )
-                        self.detection_threads[camera_id].start()
-                        logging.info(f"🧵 Enhanced detection thread başlatıldı: {camera_id}")
+                    messagebox.showerror("Kamera Hatası", error_msg)
+                    return
 
-            # Dashboard güncelle
-            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-                self.dashboard_frame.update_system_status(True)
+                # DÜZELTME: Sistem durumunu güncelle
+                self.system_state['running'] = True
+                self.system_state['cameras_active'] = camera_start_count
+                self.system_state['detection_active'] = self.system_state['ai_model_loaded']
+                self.system_state['last_activity'] = time.time()
+                
+                # DÜZELTME: Stabil detection threads - daha az müdahale
+                for camera in self.cameras:
+                    if hasattr(camera, 'is_running') and camera.is_running:
+                        camera_id = f"camera_{camera.camera_index}"
+                        
+                        if camera_id in self.detection_threads and self.detection_threads[camera_id].is_alive():
+                            logging.warning(f"⚠️ Kamera {camera_id} detection thread zaten çalışıyor")
+                        else:
+                            self.detection_threads[camera_id] = threading.Thread(
+                                target=self._stable_detection_loop,  # DÜZELTME: Stabil loop
+                                args=(camera,),
+                                daemon=True,
+                                name=f"StableDetection-{camera_id}"
+                            )
+                            self.detection_threads[camera_id].start()
+                            logging.info(f"🧵 Stabil detection thread başlatıldı: {camera_id}")
 
-            logging.info("✅ Ultra Enhanced Detection sistemi başarıyla başlatıldı!")
-            logging.info(f"📹 Aktif kameralar: {camera_start_count}/{len(self.cameras)}")
-            logging.info(f"🤖 AI Algılama: {'Aktif' if self.system_state['detection_active'] else 'Deaktif'}")
+                # DÜZELTME: Dashboard güncelle
+                if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                    self.dashboard_frame.update_system_status(True)
 
-        except Exception as e:
-            logging.error(f"❌ Enhanced detection başlatma hatası: {str(e)}")
-            messagebox.showerror("Sistem Hatası", f"Gelişmiş algılama sistemi başlatılamadı:\n{str(e)}")
+                logging.info("✅ Stabil Detection sistemi başarıyla başlatıldı!")
+                logging.info(f"📹 Aktif kameralar: {camera_start_count}/{len(self.cameras)}")
+                logging.info(f"🤖 AI Algılama: {'Aktif' if self.system_state['detection_active'] else 'Deaktif'}")
+                logging.info("🎨 Doğal kalite ayarları aktif")
+
+            except Exception as e:
+                logging.error(f"❌ Stabil detection başlatma hatası: {str(e)}")
+                messagebox.showerror("Sistem Hatası", f"Stabil algılama sistemi başlatılamadı:\n{str(e)}")
 
 
+    def _stable_detection_loop(self, camera):
+            """
+            DÜZELTME: Çok stabil AI detection loop - minimum titreme
+            
+            Args:
+                camera: İşlenecek kamera nesnesi
+            """
+            try:
+                camera_id = f"camera_{camera.camera_index}"
+                logging.info(f"🎥 Stabil Detection Loop başlatıldı: {camera_id}")
+                
+                # DÜZELTME: Stabil loop configuration
+                config = {
+                    'ai_process_interval': 8,  # Her 8. frame'de AI (daha az yük)
+                    'max_errors': 20,
+                    'min_detection_interval': 3.0,  # 3 saniye ara
+                    'ai_enabled': self.system_state['ai_model_loaded']
+                }
+                
+                # Statistics
+                stats = {
+                    'frame_count': 0,
+                    'detection_count': 0,
+                    'fall_detection_count': 0,
+                    'error_count': 0,
+                    'session_start': time.time(),
+                    'last_detection_time': 0
+                }
+                
+                frame_counter = 0
+                
+                # Model durumu kontrolü
+                if not self.fall_detector or not config['ai_enabled']:
+                    logging.warning(f"⚠️ {camera_id}: AI model yüklü değil, temel tracking modunda çalışıyor")
+                
+                while self.system_state['running']:
+                    try:
+                        # Camera status check
+                        if not camera or not hasattr(camera, 'is_running') or not camera.is_running:
+                            time.sleep(0.5)
+                            continue
+                        
+                        # DÜZELTME: Doğal frame acquisition - müdahale yok
+                        frame = camera.get_frame()
+                        if frame is None or frame.size == 0:
+                            stats['error_count'] += 1
+                            if stats['error_count'] % 20 == 0:
+                                logging.warning(f"⚠️ {camera_id}: {stats['error_count']} frame hatası")
+                            time.sleep(0.1)
+                            continue
+                        
+                        stats['frame_count'] += 1
+                        frame_counter += 1
+                        
+                        # DÜZELTME: AI processing sadece belirli aralıklarla
+                        if config['ai_enabled'] and self.fall_detector and (frame_counter % config['ai_process_interval'] == 0):
+                            try:
+                                # DÜZELTME: AI detection - minimal
+                                if hasattr(self.fall_detector, 'get_detection_visualization'):
+                                    annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
+                                else:
+                                    annotated_frame, tracks = frame, []
+                            except Exception as detection_error:
+                                logging.error(f"❌ {camera_id} AI detection hatası: {detection_error}")
+                                annotated_frame, tracks = frame, []
+                            
+                            # Update detection count
+                            if tracks:
+                                stats['detection_count'] += len(tracks)
+                                self.system_state['total_detections'] += len(tracks)
+                                self.system_state['last_activity'] = time.time()
+                            
+                            # DÜZELTME: Fall Detection - stabil threshold
+                            try:
+                                if hasattr(self.fall_detector, 'detect_fall'):
+                                    is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
+                                else:
+                                    is_fall, confidence, track_id = False, 0.0, None
+                            except Exception as fall_error:
+                                logging.error(f"❌ {camera_id} fall detection hatası: {fall_error}")
+                                is_fall, confidence, track_id = False, 0.0, None
+                            
+                            # DÜZELTME: Fall event processing - stabil aralık
+                            current_time = time.time()
+                            if (is_fall and confidence > 0.6 and  # Stabil threshold
+                                (current_time - stats['last_detection_time']) > config['min_detection_interval']):
+                                
+                                stats['last_detection_time'] = current_time
+                                stats['fall_detection_count'] += 1
+                                self.system_state['fall_events'] += 1
+                                
+                                # DÜZELTME: Stabil fall event processing
+                                logging.warning(f"🚨 {camera_id} STABIL FALL DETECTED!")
+                                logging.info(f"   📍 Track ID: {track_id}")
+                                logging.info(f"   📊 Confidence: {confidence:.4f}")
+                                
+                                # DÜZELTME: Thread-safe UI çağrısı
+                                def handle_fall():
+                                    try:
+                                        result = self._handle_enhanced_fall_detection(
+                                            annotated_frame, confidence, camera_id, track_id, None
+                                        )
+                                        logging.info(f"🎯 Stabil fall handling result: {result}")
+                                    except Exception as handle_error:
+                                        logging.error(f"❌ Fall handling hatası: {handle_error}")
+                                
+                                # UI thread'de çalıştır
+                                self.root.after(0, handle_fall)
+                        
+                        # DÜZELTME: Performance stats - daha az sıklıkla
+                        if stats['frame_count'] % 300 == 0:  # 300 frame'de bir
+                            self._log_stable_performance_stats(camera_id, stats)
+                        
+                        # DÜZELTME: Stabil timing
+                        time.sleep(0.04)  # 25 FPS - stabil
+                        
+                        # Reset error count on success
+                        stats['error_count'] = 0
+                        
+                    except Exception as inner_e:
+                        stats['error_count'] += 1
+                        logging.error(f"❌ {camera_id} stable detection inner hatası ({stats['error_count']}/{config['max_errors']}): {str(inner_e)}")
+                        
+                        if stats['error_count'] >= config['max_errors']:
+                            logging.error(f"💥 {camera_id} maksimum hata sayısına ulaştı. Loop sonlandırılıyor.")
+                            self.root.after(0, self.stop_enhanced_detection)
+                            break
+                        
+                        time.sleep(1.0)
+                
+                # Final statistics
+                self._log_stable_session_summary(camera_id, stats)
+                
+            except Exception as e:
+                logging.error(f"💥 {camera_id} Stabil detection loop kritik hatası: {str(e)}")
+                self.root.after(0, self.stop_enhanced_detection)
+            finally:
+                logging.info(f"🧹 {camera_id} stabil detection thread temizlendi")
+
+
+
+    def _log_stable_performance_stats(self, camera_id: str, stats: Dict):
+            """Stabil performans istatistiklerini logla."""
+            try:
+                current_time = time.time()
+                elapsed_time = current_time - stats['session_start']
+                
+                avg_fps = stats['frame_count'] / elapsed_time if elapsed_time > 0 else 0
+                detection_rate = (stats['detection_count'] / stats['frame_count'] 
+                                if stats['frame_count'] > 0 else 0)
+                
+                logging.info(f"📊 {camera_id} Stabil Performance Stats:")
+                logging.info(f"   🎬 Frames: {stats['frame_count']}")
+                logging.info(f"   👥 Detections: {stats['detection_count']}")
+                logging.info(f"   🚨 Fall Events: {stats['fall_detection_count']}")
+                logging.info(f"   📈 Avg FPS: {avg_fps:.1f}")
+                logging.info(f"   🎯 Detection Rate: {detection_rate:.3f}")
+                logging.info(f"   ❌ Error Count: {stats['error_count']}")
+                logging.info(f"   🎨 Natural Quality: Aktif")
+                
+            except Exception as e:
+                logging.error(f"Stabil stats log hatası: {e}")
+                
+                
+    def _log_stable_session_summary(self, camera_id: str, stats: Dict):
+        """Stabil session özeti logla."""
+        total_time = time.time() - stats['session_start']
+        avg_fps = stats['frame_count'] / total_time if total_time > 0 else 0
+        
+        logging.info(f"🏁 {camera_id} Stabil Session Summary:")
+        logging.info(f"   ⏱️ Total Time: {total_time:.1f}s")
+        logging.info(f"   🎬 Total Frames: {stats['frame_count']}")
+        logging.info(f"   👥 Total Detections: {stats['detection_count']}")
+        logging.info(f"   🚨 Fall Events: {stats['fall_detection_count']}")
+        logging.info(f"   📊 Average FPS: {avg_fps:.1f}")
+        logging.info(f"   ❌ Final Error Count: {stats['error_count']}")
+        logging.info(f"   🎨 Natural Quality: Korundu")
 
     def stop_enhanced_detection(self):
         """Ultra gelişmiş düşme algılama sistemini durdurur."""
