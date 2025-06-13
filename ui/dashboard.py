@@ -468,124 +468,199 @@ class DashboardFrame(tk.Frame):
             new_index = (self.selected_camera_index + 1) % len(self.cameras)
             self._select_camera(new_index)
 
+
+
     def _start_simple_processing(self):
-        """DÜZELTME: Basit AI processing thread."""
-        def simple_processing():
+        """DÜZELTME: Ultra hassas AI processing thread."""
+        def ultra_sensitive_processing():
             try:
                 fall_detector = FallDetector.get_instance()
+                logging.info("🎯 Ultra hassas processing başlatıldı")
             except Exception as e:
                 logging.error(f"FallDetector başlatma hatası: {e}")
                 return
             
-            # DÜZELTME: Daha az sıklıkta AI processing
-            ai_process_interval = 10  # Her 10. frame'de AI
+            # DÜZELTME: Çok daha sık AI processing
+            ai_process_interval = 2  # Her 2. frame'de AI (ultra responsive)
             frame_counter = 0
+            last_stats_update = time.time()
             
-            while not self.is_destroyed:
+            while not self.is_destroyed and self.system_running:
                 try:
-                    if not self.system_running or not self.cameras:
-                        time.sleep(0.1)
-                        continue
-                    
-                    if self.selected_camera_index >= len(self.cameras):
+                    if not self.cameras or self.selected_camera_index >= len(self.cameras):
                         time.sleep(0.1)
                         continue
                     
                     camera = self.cameras[self.selected_camera_index]
                     
-                    if not camera.is_running:
+                    if not hasattr(camera, 'is_running') or not camera.is_running:
                         time.sleep(0.1)
                         continue
                     
-                    # DÜZELTME: Doğal frame al
+                    # Frame al
                     frame = camera.get_frame()
-                    if frame is None:
-                        time.sleep(0.05)
+                    if frame is None or frame.size == 0:
+                        time.sleep(0.02)
                         continue
-                    
-                    # DÜZELTME: Frame'i direkt kaydet
-                    with self.frame_lock:
-                        self.current_frame = frame.copy()
                     
                     frame_counter += 1
                     
-                    # DÜZELTME: AI processing sadece bazen
+                    # DÜZELTME: Çok sık AI processing
                     if frame_counter % ai_process_interval == 0:
                         try:
+                            # Enhanced AI detection
                             annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
                             
-                            # Stats update
+                            # Stats güncelle
                             self.tracking_stats['active_tracks'] = len(tracks)
                             if tracks:
                                 self.tracking_stats['total_detections'] += len(tracks)
                             
-                            # Fall detection
+                            # DÜZELTME: Ultra hassas fall detection
                             is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
                             
-                            if is_fall and confidence > 0.5:
+                            # DÜZELTME: Çok düşük threshold - 0.15!
+                            if is_fall and confidence > 0.15:
+                                logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI! Confidence: {confidence:.3f}")
                                 self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
                             
-                            # DÜZELTME: Annotated frame'i kaydet
+                            # Enhanced frame'i kaydet
                             with self.frame_lock:
                                 self.current_frame = annotated_frame.copy()
                         
                         except Exception as ai_error:
                             logging.error(f"AI işleme hatası: {ai_error}")
+                            # AI hatası durumunda ham frame
+                            with self.frame_lock:
+                                self.current_frame = frame.copy()
+                    else:
+                        # AI olmadan ham frame
+                        with self.frame_lock:
+                            self.current_frame = frame.copy()
                     
-                    # DÜZELTME: FPS calculation
+                    # DÜZELTME: FPS calculation - daha sık
                     current_time = time.time()
-                    if hasattr(self, 'last_fps_time'):
-                        fps = 1.0 / max(0.001, current_time - self.last_fps_time)
+                    if current_time - last_stats_update >= 2.0:  # 2 saniyede bir
+                        elapsed = current_time - last_stats_update
+                        fps = frame_counter / elapsed if elapsed > 0 else 0
                         self.tracking_stats['current_fps'] = int(fps)
-                    self.last_fps_time = current_time
+                        
+                        # Debug log
+                        logging.debug(f"📊 Ultra Processing Stats: FPS={fps:.1f}, Tracks={self.tracking_stats['active_tracks']}")
+                        
+                        frame_counter = 0
+                        last_stats_update = current_time
                     
-                    # DÜZELTME: Stabil sleep
-                    time.sleep(0.04)  # 25 FPS processing
-                
+                    # DÜZELTME: Daha hızlı processing
+                    time.sleep(0.025)  # 40 FPS processing (çok hızlı)
+                    
                 except Exception as e:
-                    logging.error(f"Simple processing hatası: {e}")
+                    logging.error(f"Ultra processing hatası: {e}")
                     time.sleep(0.1)
         
-        self.processing_thread = threading.Thread(target=simple_processing, daemon=True)
+        # Thread başlat
+        self.processing_thread = threading.Thread(target=ultra_sensitive_processing, daemon=True)
         self.processing_thread.start()
+        logging.info("🧵 Ultra hassas processing thread başlatıldı")
 
     def _start_stable_display_updates(self):
         """DÜZELTME: Stabil display güncelleme başlat."""
         self._stable_display_update()
 
     def _stable_display_update(self):
-        """
-        DÜZELTME: Çok stabil display update - titreme yok
-        """
+        """DÜZELTME: Çok stabil display update - tek timer."""
         if self.is_destroyed:
             return
         
-        current_time = time.time()
-        
-        # DÜZELTME: Stabil güncelleme aralığı
-        if current_time - self.last_display_update >= self.display_update_interval:
-            try:
-                # DÜZELTME: Frame'i al
-                display_frame = None
-                with self.frame_lock:
-                    if self.current_frame is not None:
-                        display_frame = self.current_frame.copy()
-                
-                if display_frame is not None:
-                    # DÜZELTME: Boyutlandır ve göster
-                    self._natural_display_update(display_frame)
-                
-                # DÜZELTME: UI info güncelle (daha az sıklıkla)
-                if int(current_time) % 2 == 0:  # 2 saniyede bir
-                    self._update_ui_info()
-                
-                self.last_display_update = current_time
+        try:
+            # Frame'i al
+            display_frame = None
+            with self.frame_lock:
+                if self.current_frame is not None:
+                    display_frame = self.current_frame.copy()
             
-            except Exception as e:
-                logging.error(f"Stable display update hatası: {e}")
+            if display_frame is not None:
+                # Sadece boyutlandır ve göster - enhancement yok
+                self._direct_stable_display(display_frame)
+            
+            # UI bilgilerini güncelle - 2 saniyede bir
+            if int(time.time()) % 2 == 0:
+                self._update_ui_info()
         
-        # DÜZELTME: Sabit 25 FPS için 40ms
+        except Exception as e:
+            logging.error(f"Display update hatası: {e}")
+        
+        # Sabit 25 FPS için 40ms
         self.update_id = self.after(40, self._stable_display_update)
+
+    def _direct_stable_display(self, frame):
+        """DÜZELTME: Direkt ve stabil display - minimum işlem."""
+        try:
+            # Label boyutunu al
+            label_width = self.main_camera_label.winfo_width() or 1200
+            label_height = self.main_camera_label.winfo_height() or 800
+            
+            if label_width > 50 and label_height > 50:
+                h, w = frame.shape[:2]
+                
+                # Aspect ratio korunarak resize
+                scale = min(label_width / w, label_height / h)
+                new_width = int(w * scale)
+                new_height = int(h * scale)
+                
+                # Resize - INTER_LINEAR daha hızlı
+                resized = cv2.resize(frame, (new_width, new_height), 
+                                interpolation=cv2.INTER_LINEAR)
+                
+                # Minimal overlay
+                self._add_minimal_overlay(resized)
+                
+                # BGR to RGB
+                frame_rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                
+                # PIL ve PhotoImage
+                from PIL import Image, ImageTk
+                pil_image = Image.fromarray(frame_rgb)
+                tk_image = ImageTk.PhotoImage(pil_image)
+                
+                # GUI update
+                self.main_camera_label.configure(image=tk_image)
+                self.main_camera_label.image = tk_image
+        
+        except Exception as e:
+            logging.error(f"Direct display hatası: {e}")
+
+    def _add_minimal_overlay(self, frame):
+        """DÜZELTME: Ultra sensitive mode göstergesi ile overlay."""
+        try:
+            h, w = frame.shape[:2]
+            
+            # Timestamp
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            # Şeffaf alan - daha büyük
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (5, 5), (200, 45), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            
+            # Timestamp
+            cv2.putText(frame, timestamp, (8, 20), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
+            
+            # DÜZELTME: Ultra sensitive mode indicator
+            cv2.putText(frame, "ULTRA HASSAS", (8, 35), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4, (0, 255, 255), 1, cv2.LINE_AA)
+            
+            # Kamera ID
+            if self.selected_camera_index < len(self.cameras):
+                camera = self.cameras[self.selected_camera_index]
+                cam_text = f"CAM{camera.camera_index}"
+                cv2.putText(frame, cam_text, (w-60, h-8), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4, (255, 255, 255), 1, cv2.LINE_AA)
+        
+        except Exception as e:
+            logging.debug(f"Ultra overlay hatası: {e}")
+
 
     def _natural_display_update(self, frame):
         """
@@ -649,6 +724,10 @@ class DashboardFrame(tk.Frame):
         
         except Exception as e:
             logging.debug(f"Natural overlay hatası: {e}")
+
+
+
+
 
     def _direct_natural_display(self, frame):
         """
@@ -722,29 +801,93 @@ class DashboardFrame(tk.Frame):
             logging.error(f"UI info güncelleme hatası: {e}")
 
     def _handle_fall_detection(self, camera_index, confidence, track_id):
-        """Düşme algılandığında çağrılır."""
+        """DÜZELTME: Enhanced fall detection handler."""
         try:
             now = datetime.datetime.now()
             
+            # Stats güncelle
             self.tracking_stats['fall_alerts'] += 1
             
+            # UI güncelle
             self.event_time_var.set(f"🕐 {now.strftime('%H:%M:%S')}")
             self.event_conf_var.set(f"🎯 Güven: {confidence:.3f}")
             self.event_id_var.set(f"🔍 ID: {track_id}")
             
+            # DÜZELTME: Enhanced logging
+            logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI!")
+            logging.info(f"   📍 Kamera: {camera_index}")
+            logging.info(f"   🆔 Track ID: {track_id}")
+            logging.info(f"   📊 Confidence: {confidence:.4f}")
+            logging.info(f"   🕐 Zaman: {now.strftime('%H:%M:%S')}")
+            
+            # Sesli uyarı
             try:
                 threading.Thread(target=lambda: winsound.PlaySound("SystemExclamation", 
-                                                                  winsound.SND_ALIAS), 
-                               daemon=True).start()
+                                                                winsound.SND_ALIAS), 
+                            daemon=True).start()
             except:
                 pass
             
-            self._show_fall_alert(confidence)
-            
-            logging.info(f"🚨 DÜŞME ALGILANDI! Kamera: {camera_index}, ID: {track_id}, Güven: {confidence:.3f}")
+            # Enhanced popup
+            self._show_enhanced_fall_alert(confidence, track_id, now)
             
         except Exception as e:
-            logging.error(f"Düşme algılama işleme hatası: {e}")
+            logging.error(f"Enhanced fall detection handler hatası: {e}")
+
+
+    def _show_enhanced_fall_alert(self, confidence, track_id, timestamp):
+        """DÜZELTME: Gelişmiş düşme uyarısı popup'ı."""
+        try:
+            alert_frame = tk.Toplevel(self)
+            alert_frame.title("🚨 ULTRA HASSAS DÜŞME ALGILANDI!")
+            alert_frame.geometry("500x300")
+            alert_frame.configure(bg=self.colors['accent_danger'])
+            alert_frame.transient(self.winfo_toplevel())
+            alert_frame.grab_set()
+            
+            # Ana başlık
+            tk.Label(alert_frame, text="🚨 DÜŞME ALGILANDI!", 
+                    font=("Segoe UI", 20, "bold"), fg="white", 
+                    bg=self.colors['accent_danger']).pack(pady=20)
+            
+            # Detay bilgiler
+            info_frame = tk.Frame(alert_frame, bg=self.colors['accent_danger'])
+            info_frame.pack(pady=10)
+            
+            details = [
+                f"🎯 Güven Oranı: {confidence:.4f}",
+                f"🆔 Track ID: {track_id}",
+                f"🕐 Zaman: {timestamp.strftime('%H:%M:%S')}",
+                f"📅 Tarih: {timestamp.strftime('%d/%m/%Y')}",
+                f"🤖 Ultra Hassas Mod: AKTIF"
+            ]
+            
+            for detail in details:
+                tk.Label(info_frame, text=detail, 
+                        font=("Segoe UI", 12), fg="white", 
+                        bg=self.colors['accent_danger']).pack(pady=2)
+            
+            # Butonlar
+            button_frame = tk.Frame(alert_frame, bg=self.colors['accent_danger'])
+            button_frame.pack(pady=20)
+            
+            tk.Button(button_frame, text="✅ TAMAM", font=("Segoe UI", 14, "bold"),
+                    bg="white", fg=self.colors['accent_danger'],
+                    command=alert_frame.destroy, padx=20, pady=10).pack(side=tk.LEFT, padx=10)
+            
+            tk.Button(button_frame, text="📋 KAYDET", font=("Segoe UI", 14, "bold"),
+                    bg="yellow", fg="black",
+                    command=lambda: self._save_fall_log(confidence, track_id, timestamp),
+                    padx=20, pady=10).pack(side=tk.LEFT, padx=10)
+            
+            # 7 saniye sonra otomatik kapat
+            alert_frame.after(7000, alert_frame.destroy)
+            
+        except Exception as e:
+            logging.error(f"Enhanced fall alert gösterme hatası: {e}")
+
+
+
 
     def _show_fall_alert(self, confidence):
         """Düşme uyarısı popup'ı gösterir."""

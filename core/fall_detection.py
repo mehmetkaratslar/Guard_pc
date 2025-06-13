@@ -400,16 +400,9 @@ class FallDetector:
 
 
 
-
     def get_detection_visualization(self, frame):
         """
-        Thread-safe pose estimation ile insan tespiti ve görselleştirme.
-        
-        Args:
-            frame (np.ndarray): Giriş görüntüsü
-            
-        Returns:
-            tuple: (görselleştirilmiş_frame, track_listesi)
+        DÜZELTME: Enhanced detection visualization - keypoint'ler görünür
         """
         if not self.is_model_loaded or self.model is None:
             logging.warning("Model yüklü değil, orijinal frame döndürülüyor")
@@ -419,13 +412,13 @@ class FallDetector:
         
         with self.detection_lock:
             try:
-                # Frame'i yeniden boyutlandır
+                # Frame'i resize et
                 frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
                 
-                # YOLO ile pose estimation
+                # YOLO ile pose estimation - düşük confidence
                 results = self.model.predict(
                     frame_resized, 
-                    conf=self.conf_threshold, 
+                    conf=0.15,  # 0.50 -> 0.15 (çok düşük threshold)
                     classes=[0],  # sadece person class
                     verbose=False
                 )
@@ -435,15 +428,15 @@ class FallDetector:
                 pose_data = []
                 
                 for result in results:
-                    # Boxes kontrolü - None olabilir
                     if result.boxes is not None and hasattr(result.boxes, 'xyxy'):
                         try:
-                            # Tensor'ü numpy'ye güvenli dönüştür
+                            # DÜZELTME: Güvenli tensor handling
                             boxes = result.boxes.xyxy
                             if boxes is not None:
-                                # CPU'ya taşı ve numpy'ye dönüştür
                                 if hasattr(boxes, 'cpu'):
                                     boxes = boxes.cpu().numpy()
+                                elif hasattr(boxes, 'detach'):
+                                    boxes = boxes.detach().numpy()
                                 elif hasattr(boxes, 'numpy'):
                                     boxes = boxes.numpy()
                                 else:
@@ -451,11 +444,13 @@ class FallDetector:
                             else:
                                 continue
                             
-                            # Confidence değerlerini al
+                            # Confidence değerleri
                             confs = result.boxes.conf
                             if confs is not None:
                                 if hasattr(confs, 'cpu'):
                                     confs = confs.cpu().numpy()
+                                elif hasattr(confs, 'detach'):
+                                    confs = confs.detach().numpy()
                                 elif hasattr(confs, 'numpy'):
                                     confs = confs.numpy()
                                 else:
@@ -463,26 +458,28 @@ class FallDetector:
                             else:
                                 continue
                             
-                            # Keypoints varsa al
+                            # DÜZELTME: Keypoints güvenli alma
                             keypoints = None
                             keypoint_confs = None
                             if hasattr(result, 'keypoints') and result.keypoints is not None:
                                 try:
-                                    # Keypoints xy koordinatları
                                     if hasattr(result.keypoints, 'xy') and result.keypoints.xy is not None:
                                         kp_xy = result.keypoints.xy
                                         if hasattr(kp_xy, 'cpu'):
                                             keypoints = kp_xy.cpu().numpy()
+                                        elif hasattr(kp_xy, 'detach'):
+                                            keypoints = kp_xy.detach().numpy()
                                         elif hasattr(kp_xy, 'numpy'):
                                             keypoints = kp_xy.numpy()
                                         else:
                                             keypoints = np.array(kp_xy)
                                     
-                                    # Keypoints confidence değerleri
                                     if hasattr(result.keypoints, 'conf') and result.keypoints.conf is not None:
                                         kp_conf = result.keypoints.conf
                                         if hasattr(kp_conf, 'cpu'):
                                             keypoint_confs = kp_conf.cpu().numpy()
+                                        elif hasattr(kp_conf, 'detach'):
+                                            keypoint_confs = kp_conf.detach().numpy()
                                         elif hasattr(kp_conf, 'numpy'):
                                             keypoint_confs = kp_conf.numpy()
                                         else:
@@ -520,7 +517,7 @@ class FallDetector:
                 # İstatistikleri güncelle
                 self.detection_stats['total_detections'] += len(detections)
 
-                # DeepSORT ile tracking (eğer mevcut ise)
+                # DeepSORT ile tracking
                 tracks = []
                 if self.tracker is not None and len(detections) > 0:
                     try:
@@ -532,122 +529,8 @@ class FallDetector:
                 # Tracking bilgilerini güncelle
                 self._update_person_tracks(tracks, pose_data)
                 
-                # Görselleştirme
-                annotated_frame = self._draw_visualizations(frame, tracks)
-                
-                # Track listesi oluştur
-                track_list = []
-                for track in tracks:
-                    if hasattr(track, 'is_confirmed') and track.is_confirmed():
-                        track_id = track.track_id
-                        bbox = track.to_ltrb()
-                        
-                        # Frame boyutlarına ölçeklendir
-                        scale_x = frame.shape[1] / self.frame_size
-                        scale_y = frame.shape[0] / self.frame_size
-                        
-                        x1 = int(bbox[0] * scale_x)
-                        y1 = int(bbox[1] * scale_y)
-                        x2 = int(bbox[2] * scale_x)
-                        y2 = int(bbox[3] * scale_y)
-                        
-                        track_list.append({
-                            'track_id': track_id,
-                            'bbox': [x1, y1, x2, y2],
-                            'confidence': getattr(track, 'confidence', 0.0)
-                        })
-                
-                # İşlem süresini kaydet
-                processing_time = time.time() - start_time
-                self.detection_stats['processing_times'].append(processing_time)
-                
-                return annotated_frame, track_list
-                
-            except Exception as e:
-                logging.error(f"Detection visualization hatası: {str(e)}")
-                return frame, []
-            
-        """
-        Thread-safe pose estimation ile insan tespiti ve görselleştirme.
-        
-        Args:
-            frame (np.ndarray): Giriş görüntüsü
-            
-        Returns:
-            tuple: (görselleştirilmiş_frame, track_listesi)
-        """
-        if not self.is_model_loaded or self.model is None:
-            logging.warning("Model yüklü değil, orijinal frame döndürülüyor")
-            return frame, []
-        
-        start_time = time.time()
-        
-        with self.detection_lock:
-            try:
-                # Frame'i yeniden boyutlandır
-                frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
-                
-                # YOLO ile pose estimation
-                results = self.model.predict(
-                    frame_resized, 
-                    conf=self.conf_threshold, 
-                    classes=[0],  # sadece person class
-                    verbose=False
-                )
-                
-                # Detections'ı hazırla
-                detections = []
-                pose_data = []
-                
-                for result in results:
-                    if result.boxes is not None:
-                        boxes = result.boxes.xyxy.cpu().numpy()
-                        confs = result.boxes.conf.cpu().numpy()
-                        
-                        # Keypoints varsa al
-                        keypoints = None
-                        keypoint_confs = None
-                        if hasattr(result, 'keypoints') and result.keypoints is not None:
-                            keypoints = result.keypoints.xy.cpu().numpy()
-                            keypoint_confs = result.keypoints.conf.cpu().numpy()
-                        
-                        for i, (box, conf) in enumerate(zip(boxes, confs)):
-                            x1, y1, x2, y2 = map(int, box)
-                            
-                            # Detection formatı: [x, y, w, h]
-                            detection = [x1, y1, x2-x1, y2-y1]
-                            detections.append((detection, conf, 0))  # class_id = 0 (person)
-                            
-                            # Pose data ekle
-                            person_keypoints = None
-                            person_keypoint_confs = None
-                            if keypoints is not None and i < len(keypoints):
-                                person_keypoints = keypoints[i]
-                                person_keypoint_confs = keypoint_confs[i] if keypoint_confs is not None else None
-                            
-                            pose_data.append({
-                                'keypoints': person_keypoints,
-                                'keypoint_confs': person_keypoint_confs,
-                                'bbox': [x1, y1, x2, y2]
-                            })
-
-                # İstatistikleri güncelle
-                self.detection_stats['total_detections'] += len(detections)
-
-                # DeepSORT ile tracking (eğer mevcut ise)
-                tracks = []
-                if self.tracker is not None:
-                    try:
-                        tracks = self.tracker.update_tracks(detections, frame=frame_resized)
-                    except Exception as e:
-                        logging.error(f"DeepSORT tracking hatası: {str(e)}")
-                        tracks = []
-                
-                # Tracking bilgilerini güncelle
-                self._update_person_tracks(tracks, pose_data)
-                
-                # Görselleştirme
-                annotated_frame = self._draw_visualizations(frame, tracks)
+                # DÜZELTME: Enhanced görselleştirme - keypoint'ler görünür
+                annotated_frame = self._draw_enhanced_visualizations(frame, tracks)
                 
                 # Track listesi oluştur
                 track_list = []
@@ -681,19 +564,174 @@ class FallDetector:
                 logging.error(f"Detection visualization hatası: {str(e)}")
                 return frame, []
 
+    def _draw_enhanced_visualizations(self, frame, tracks):
+        """
+        DÜZELTME: Enhanced görselleştirme - keypoint'ler çok görünür
+        """
+        annotated_frame = frame.copy()
+        
+        try:
+            # Frame boyut oranları
+            scale_x = frame.shape[1] / self.frame_size
+            scale_y = frame.shape[0] / self.frame_size
+            
+            for track in tracks:
+                if not hasattr(track, 'is_confirmed') or not track.is_confirmed():
+                    continue
+                
+                track_id = track.track_id
+                bbox = track.to_ltrb()
+                
+                # Bbox'ı orijinal frame boyutuna ölçeklendir
+                x1 = int(bbox[0] * scale_x)
+                y1 = int(bbox[1] * scale_y)
+                x2 = int(bbox[2] * scale_x)
+                y2 = int(bbox[3] * scale_y)
+                
+                # Düşme durumu kontrolü
+                is_falling = track_id in self.fall_alerts
+                box_color = (0, 0, 255) if is_falling else (0, 255, 0)  # Kırmızı/Yeşil
+                box_thickness = 4 if is_falling else 2  # Daha kalın
+                
+                # DÜZELTME: Enhanced bounding box
+                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, box_thickness)
+                
+                # DÜZELTME: Enhanced label - daha büyük
+                confidence = getattr(track, 'confidence', 0.0)
+                label = f"ID: {track_id}"
+                if confidence > 0:
+                    label += f" ({confidence:.2f})"
+                
+                # Düşme uyarısı ekle
+                if is_falling:
+                    label += " - FALL DETECTED!"
+                
+                # DÜZELTME: Daha büyük label arka planı
+                label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+                cv2.rectangle(annotated_frame, (x1, y1-40), (x1 + label_size[0] + 10, y1), box_color, -1)
+                
+                # DÜZELTME: Daha büyük label metni
+                text_color = (255, 255, 255)
+                cv2.putText(annotated_frame, label, (x1 + 5, y1-15), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2, cv2.LINE_AA)
+                
+                # DÜZELTME: Enhanced pose keypoints - çok görünür
+                if track_id in self.person_tracks:
+                    person_track = self.person_tracks[track_id]
+                    if person_track.has_valid_pose():
+                        self._draw_enhanced_pose_keypoints(annotated_frame, person_track, scale_x, scale_y, is_falling)
+            
+            return annotated_frame
+            
+        except Exception as e:
+            logging.error(f"Enhanced visualization çizim hatası: {str(e)}")
+            return frame
 
+    def _draw_enhanced_pose_keypoints(self, frame, person_track, scale_x, scale_y, is_falling=False):
+        """
+        DÜZELTME: Enhanced pose keypoints - çok görünür ve renkli
+        """
+        try:
+            keypoints = person_track.latest_keypoints
+            keypoint_confs = person_track.latest_keypoint_confs
+            
+            if keypoints is None or keypoint_confs is None:
+                return
+            
+            # DÜZELTME: Düşük confidence threshold - daha çok keypoint göster
+            conf_threshold = 0.1  # 0.3 -> 0.1
+            
+            # DÜZELTME: Enhanced keypoint colors - çok renkli
+            keypoint_colors = [
+                (255, 0, 0),    # 0: burun - mavi
+                (255, 85, 0),   # 1: sol göz - turuncu
+                (255, 170, 0),  # 2: sağ göz - sarı-turuncu
+                (255, 255, 0),  # 3: sol kulak - sarı
+                (170, 255, 0),  # 4: sağ kulak - yeşil-sarı
+                (85, 255, 0),   # 5: sol omuz - açık yeşil
+                (0, 255, 0),    # 6: sağ omuz - yeşil
+                (0, 255, 85),   # 7: sol dirsek - yeşil-mavi
+                (0, 255, 170),  # 8: sağ dirsek - açık mavi
+                (0, 255, 255),  # 9: sol bilek - cyan
+                (0, 170, 255),  # 10: sağ bilek - mavi
+                (0, 85, 255),   # 11: sol kalça - koyu mavi
+                (0, 0, 255),    # 12: sağ kalça - mavi
+                (85, 0, 255),   # 13: sol diz - mor
+                (170, 0, 255),  # 14: sağ diz - pembe-mor
+                (255, 0, 255),  # 15: sol ayak - magenta
+                (255, 0, 170)   # 16: sağ ayak - pembe
+            ]
+            
+            # DÜZELTME: Keypoint'leri çiz - çok büyük ve görünür
+            for i, (keypoint, conf) in enumerate(zip(keypoints, keypoint_confs)):
+                if conf > conf_threshold:
+                    x = int(keypoint[0] * scale_x)
+                    y = int(keypoint[1] * scale_y)
+                    
+                    # DÜZELTME: Çok büyük keypoint circles
+                    radius = 8 if is_falling else 6  # 4 -> 6/8
+                    color = keypoint_colors[i] if i < len(keypoint_colors) else (255, 255, 255)
+                    
+                    # Outer circle - daha görünür
+                    cv2.circle(frame, (x, y), radius + 2, (0, 0, 0), -1)  # Siyah border
+                    cv2.circle(frame, (x, y), radius, color, -1)
+                    
+                    # DÜZELTME: Keypoint numarası - debug için
+                    cv2.putText(frame, str(i), (x-5, y-10), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            
+            # DÜZELTME: Enhanced skeleton çizgileri - daha kalın
+            skeleton_connections = [
+                # Baş bölgesi
+                [0, 1], [0, 2], [1, 3], [2, 4],  # Burun-göz-kulak
+                # Gövde
+                [5, 6], [5, 11], [6, 12], [11, 12],  # Omuz-kalça çerçevesi
+                # Sol kol
+                [5, 7], [7, 9],  # Sol omuz-dirsek-bilek
+                # Sağ kol
+                [6, 8], [8, 10],  # Sağ omuz-dirsek-bilek
+                # Sol bacak
+                [11, 13], [13, 15],  # Sol kalça-diz-ayak
+                # Sağ bacak
+                [12, 14], [14, 16],  # Sağ kalça-diz-ayak
+            ]
+            
+            for connection in skeleton_connections:
+                pt1_idx, pt2_idx = connection[0], connection[1]
+                
+                if (0 <= pt1_idx < len(keypoints) and 0 <= pt2_idx < len(keypoints) and
+                    keypoint_confs[pt1_idx] > conf_threshold and
+                    keypoint_confs[pt2_idx] > conf_threshold):
+                    
+                    pt1 = (int(keypoints[pt1_idx][0] * scale_x), int(keypoints[pt1_idx][1] * scale_y))
+                    pt2 = (int(keypoints[pt2_idx][0] * scale_x), int(keypoints[pt2_idx][1] * scale_y))
+                    
+                    # DÜZELTME: Çok kalın skeleton lines
+                    line_color = (0, 255, 255) if is_falling else (0, 255, 0)  # Cyan/Yeşil
+                    line_thickness = 4 if is_falling else 3  # 2 -> 3/4
+                    
+                    cv2.line(frame, pt1, pt2, line_color, line_thickness, cv2.LINE_AA)
+            
+            # DÜZELTME: Enhanced pose info overlay
+            if is_falling:
+                # Düşme uyarısı overlay
+                overlay = frame.copy()
+                h, w = frame.shape[:2]
+                cv2.rectangle(overlay, (0, 0), (w, 60), (0, 0, 255), -1)
+                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                
+                cv2.putText(frame, "FALL DETECTED - ENHANCED POSE ANALYSIS", 
+                        (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(frame, f"Valid Keypoints: {np.sum(keypoint_confs > conf_threshold)}/17", 
+                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+                        
+        except Exception as e:
+            logging.error(f"Enhanced pose keypoints çizim hatası: {str(e)}")
 
 
     def detect_fall(self, frame, tracks=None):
         """
-        Thread-safe pose tabanlı düşme algılama.
-        
-        Args:
-            frame (np.ndarray): Giriş görüntüsü
-            tracks (list, optional): Tracking bilgileri
-            
-        Returns:
-            tuple: (düşme_durumu, güven_skoru, track_id)
+        DÜZELTME: Ultra hassas düşme algılama - düşük threshold
         """
         if not self.is_model_loaded or self.model is None:
             return False, 0.0, None
@@ -712,7 +750,7 @@ class FallDetector:
                     fall_detected, confidence = self._analyze_fall_for_person(person_track)
                     
                     if fall_detected:
-                        # Süreklilik kontrolü
+                        # DÜZELTME: Süreklilik kontrolü - çok düşük
                         if person_id not in self.fall_alerts:
                             self.fall_alerts[person_id] = {
                                 'start_time': current_time,
@@ -726,10 +764,10 @@ class FallDetector:
                                 confidence
                             )
                         
-                        # Süreklilik eşiği kontrolü
+                        # DÜZELTME: Süreklilik eşiği - 1 frame yeterli
                         alert = self.fall_alerts[person_id]
-                        if alert['frame_count'] >= self.fall_detection_params['continuity_frames']:
-                            logging.info(f"DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
+                        if alert['frame_count'] >= 1:  # 5 -> 1 (anında algılama)
+                            logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
                             
                             # İstatistikleri güncelle
                             self.detection_stats['fall_detections'] += 1
@@ -746,8 +784,9 @@ class FallDetector:
                 return False, 0.0, None
                 
             except Exception as e:
-                logging.error(f"Fall detection hatası: {str(e)}")
+                logging.error(f"Ultra hassas fall detection hatası: {str(e)}")
                 return False, 0.0, None
+
 
     def get_detection_summary(self):
         """Algılama özetini döndürür."""
@@ -802,7 +841,7 @@ class FallDetector:
 
     def _analyze_fall_for_person(self, person_track):
         """
-        DÜZELTME: Gelişmiş düşme analizi - EKLEMLERİ DAHA HASSAS KONTROL EDER
+        DÜZELTME: Ultra hassas düşme analizi - test edilmiş eşikler
         """
         if not person_track.has_valid_pose():
             return False, 0.0
@@ -811,11 +850,12 @@ class FallDetector:
             keypoints = person_track.latest_keypoints
             keypoint_confs = person_track.latest_keypoint_confs
             
-            # DÜZELTME: Güvenilir keypoint'leri filtrele (daha düşük eşik)
-            conf_mask = keypoint_confs > 0.25  # 0.3 -> 0.25 (daha hassas)
+            # DÜZELTME: Çok düşük eşik - daha hassas
+            conf_mask = keypoint_confs > 0.1  # 0.25 -> 0.1
             valid_keypoints = np.sum(conf_mask)
             
-            if valid_keypoints < 8:  # 10 -> 8 (daha esnek)
+            # DÜZELTME: Minimum keypoint sayısı çok düşürüldü
+            if valid_keypoints < 4:  # 8 -> 4
                 return False, 0.0
             
             # DÜZELTME: Doğru COCO keypoint indeksleri (0-based)
@@ -849,65 +889,28 @@ class FallDetector:
             elif right_ankle is not None:
                 foot_center = right_ankle
             
-            # DÜZELTME: Ana düşme algılama kriterleri
+            # DÜZELTME: Ana düşme algılama kriterleri - çok hassas
             fall_indicators = []
             fall_score = 0.0
             
-            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (50 derece kriteri)
+            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (25 derece kriteri)
             if shoulder_center is not None and hip_center is not None:
-                # Omuz-kalça çizgisinin dikey eksene göre açısı
                 dx = hip_center[0] - shoulder_center[0]
                 dy = hip_center[1] - shoulder_center[1]
                 
-                if abs(dy) > 1:  # Bölme sıfıra yakın değilse
+                if abs(dy) > 1:
                     tilt_angle = abs(math.degrees(math.atan(dx / abs(dy))))
                     
-                    # DÜZELTME: 50 derece eşiği
-                    if tilt_angle > 50:  # 45 -> 50 derece
-                        fall_score += 0.6  # Ağırlık artırıldı
+                    # DÜZELTME: 25 derece eşiği - çok hassas
+                    if tilt_angle > 25:  # 50 -> 25 derece
+                        fall_score += 0.8  # Ağırlık artırıldı
                         fall_indicators.append("omuz_kalca_egim")
                         logging.debug(f"DÜŞME İNDİKATÖRÜ: Omuz-kalça eğimi {tilt_angle:.1f}°")
-                    elif tilt_angle > 35:  # Kısmi risk
-                        fall_score += 0.3
+                    elif tilt_angle > 15:  # Düşük risk
+                        fall_score += 0.4
                         fall_indicators.append("egim_riski")
             
-            # 2. DÜZELTME: DİZ EĞİM AÇISI KONTROLÜ
-            if (left_knee is not None and left_hip is not None and left_ankle is not None):
-                # Sol bacak açısı (kalça-diz-ayak)
-                v1 = left_hip - left_knee
-                v2 = left_ankle - left_knee
-                
-                # Vektörler arası açı
-                dot_product = np.dot(v1, v2)
-                norms = np.linalg.norm(v1) * np.linalg.norm(v2)
-                
-                if norms > 0:
-                    cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
-                    knee_angle = math.degrees(math.acos(cos_angle))
-                    
-                    # DÜZELTME: Diz açısı 50 derece altındaysa düşme riski
-                    if knee_angle < 50:  # Diz büküldüyse
-                        fall_score += 0.4
-                        fall_indicators.append("diz_bukum")
-                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Sol diz açısı {knee_angle:.1f}°")
-            
-            # Sağ bacak için aynı kontrol
-            if (right_knee is not None and right_hip is not None and right_ankle is not None):
-                v1 = right_hip - right_knee
-                v2 = right_ankle - right_knee
-                
-                dot_product = np.dot(v1, v2)
-                norms = np.linalg.norm(v1) * np.linalg.norm(v2)
-                
-                if norms > 0:
-                    cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
-                    knee_angle = math.degrees(math.acos(cos_angle))
-                    
-                    if knee_angle < 50:
-                        fall_score += 0.4
-                        fall_indicators.append("sag_diz_bukum")
-            
-            # 3. DÜZELTME: BAGIRSAK-AYAK DİKEY MESAFE ORANI
+            # 2. DÜZELTME: BAGAS-AYAK DİKEY MESAFE ORANI - çok hassas
             if hip_center is not None and foot_center is not None:
                 hip_foot_distance = abs(hip_center[1] - foot_center[1])
                 bbox_height = person_track.latest_bbox[3] - person_track.latest_bbox[1]
@@ -915,13 +918,16 @@ class FallDetector:
                 if bbox_height > 0:
                     height_ratio = hip_foot_distance / bbox_height
                     
-                    # DÜZELTME: Kalça ayak mesafesi çok azsa düşme
-                    if height_ratio < 0.6:  # 0.8 -> 0.6 (daha hassas)
-                        fall_score += 0.5
+                    # DÜZELTME: Çok hassas oran
+                    if height_ratio < 0.4:  # 0.6 -> 0.4
+                        fall_score += 0.7
                         fall_indicators.append("yukseklik_kaybi")
                         logging.debug(f"DÜŞME İNDİKATÖRÜ: Yükseklik oranı {height_ratio:.3f}")
+                    elif height_ratio < 0.6:  # Orta risk
+                        fall_score += 0.3
+                        fall_indicators.append("yukseklik_riski")
             
-            # 4. DÜZELTME: OMUZ GENİŞLİĞİ VS YÜKSEK ORANI
+            # 3. DÜZELTME: OMUZ GENİŞLİĞİ VS YÜKSEKLIK ORANI - yatay pozisyon
             if (left_shoulder is not None and right_shoulder is not None and 
                 shoulder_center is not None and foot_center is not None):
                 
@@ -931,35 +937,79 @@ class FallDetector:
                 if body_height > 0:
                     width_height_ratio = shoulder_width / body_height
                     
-                    # DÜZELTME: Genişlik/yükseklik oranı çok büyükse yatmış demek
-                    if width_height_ratio > 0.8:  # Yatay pozisyon
-                        fall_score += 0.7
+                    # DÜZELTME: Daha düşük eşik - yatay pozisyon
+                    if width_height_ratio > 0.6:  # 0.8 -> 0.6
+                        fall_score += 0.8
                         fall_indicators.append("yatay_pozisyon")
                         logging.debug(f"DÜŞME İNDİKATÖRÜ: Genişlik/yükseklik oranı {width_height_ratio:.3f}")
+                    elif width_height_ratio > 0.5:  # Orta risk
+                        fall_score += 0.4
+                        fall_indicators.append("yatay_risk")
             
-            # 5. DÜZELTME: DİRSEK YERE YAKIN MI? (Desteklenme hareketi)
+            # 4. DÜZELTME: BURUN KONUMU - baş aşağıda mı?
+            if nose is not None and hip_center is not None:
+                nose_hip_diff = nose[1] - hip_center[1]  # Y farkı
+                
+                # Burun kalçadan aşağıdaysa (ters durum)
+                if nose_hip_diff > 20:  # 20 piksel fark
+                    fall_score += 0.6
+                    fall_indicators.append("bas_asagida")
+                    logging.debug(f"DÜŞME İNDİKATÖRÜ: Baş aşağıda pozisyonu")
+            
+            # 5. DÜZELTME: DİZ BÜKÜLMESİ - oturma/düşme
+            knee_bend_score = 0
+            for knee_name, knee_point, hip_point, ankle_point in [
+                ("sol_diz", left_knee, left_hip, left_ankle),
+                ("sag_diz", right_knee, right_hip, right_ankle)
+            ]:
+                if knee_point is not None and hip_point is not None and ankle_point is not None:
+                    # Kalça-diz-ayak açısı
+                    v1 = hip_point - knee_point
+                    v2 = ankle_point - knee_point
+                    
+                    dot_product = np.dot(v1, v2)
+                    norms = np.linalg.norm(v1) * np.linalg.norm(v2)
+                    
+                    if norms > 0:
+                        cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
+                        knee_angle = math.degrees(math.acos(cos_angle))
+                        
+                        # DÜZELTME: Diz açısı 60 derece altındaysa risk
+                        if knee_angle < 60:  # 50 -> 60
+                            knee_bend_score += 0.3
+                            fall_indicators.append(f"{knee_name}_bukum")
+                            logging.debug(f"DÜŞME İNDİKATÖRÜ: {knee_name} açısı {knee_angle:.1f}°")
+            
+            fall_score += knee_bend_score
+            
+            # 6. DÜZELTME: EL POZİSYONU - desteklenme hareketi
             for elbow_name, elbow_point in [("sol_dirsek", left_elbow), ("sag_dirsek", right_elbow)]:
                 if elbow_point is not None and foot_center is not None:
                     elbow_foot_distance = abs(elbow_point[1] - foot_center[1])
                     
-                    # Dirsek ayağa çok yakınsa (düşme sırasında destek alma)
-                    if elbow_foot_distance < 80:  # piksel cinsinden
-                        fall_score += 0.3
+                    # Dirsek ayağa çok yakınsa (desteklenme)
+                    if elbow_foot_distance < 100:  # 80 -> 100 piksel
+                        fall_score += 0.4
                         fall_indicators.append(f"{elbow_name}_destek")
-                        logging.debug(f"DÜŞME İNDİKATÖRÜ: {elbow_name} destek hareketi")
+                        logging.debug(f"DÜZELTME İNDİKATÖRÜ: {elbow_name} desteklenme")
             
-            # DÜZELTME: DÜŞME KARARI - DÜŞÜK EŞİK
-            fall_threshold = 0.5  # 0.6 -> 0.5 (daha hassas)
+            # DÜZELTME: DÜŞME KARARI - ÇOK DÜŞÜK EŞİK
+            fall_threshold = 0.3  # 0.5 -> 0.3 (ultra hassas)
             is_fall = fall_score >= fall_threshold
             
             if is_fall:
-                logging.warning(f"🚨 DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
+                logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
+                logging.info(f"   📊 Geçerli keypoint sayısı: {valid_keypoints}")
+                logging.info(f"   🎯 Toplam indikatör: {len(fall_indicators)}")
+            elif fall_score > 0.1:  # Düşük riskli durumları da logla
+                logging.debug(f"⚠️ Düşük risk algılandı: Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
             
             return is_fall, fall_score
             
         except Exception as e:
-            logging.error(f"Düşme analizi hatası: {str(e)}")
+            logging.error(f"Ultra hassas düşme analizi hatası: {str(e)}")
             return False, 0.0
+
 
     def _enhanced_detection_loop(self, camera):
         """

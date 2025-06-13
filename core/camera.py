@@ -269,41 +269,42 @@ class EnhancedCamera:
     
     def _setup_natural_parameters(self):
         """
-        DÜZELTME: Doğal kamera parametreleri - minimum müdahale
+        DÜZELTME: Stabil kamera parametreleri - titreme yok
         """
         try:
-            # SADECE TEMEL AYARLAR
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer
+            # DÜZELTME: Buffer boyutu artırıldı
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # 1 -> 2
             
-            # DÜZELTME: Boyut ayarları - mevcut çözünürlüğü koruma
+            # DÜZELTME: Sabit FPS ayarı
+            self.cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            # DÜZELTME: Sabit çözünürlük - gidip gelmeyi önler
+            current_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            current_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            # Eğer çok düşükse 1280x720 yap, yoksa mevcut ayarı koru
+            if current_width < 640 or current_height < 480:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                logging.info(f"Kamera {self.camera_index} çözünürlük ayarlandı: 1280x720")
+            else:
+                logging.info(f"Kamera {self.camera_index} mevcut çözünürlük korundu: {current_width}x{current_height}")
+            
+            # DÜZELTME: Auto ayarları kontrollü aç
             try:
-                current_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-                current_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                
-                # Eğer çok küçükse ayarla, yoksa doğal ayarları koru
-                if current_width < 640 or current_height < 480:
-                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                
-                logging.info(f"Kamera {self.camera_index} çözünürlük: {current_width}x{current_height}")
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Otomatik pozlama hafif
+                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)         # Otomatik focus açık
+            except:
+                pass  # Desteklemiyorsa geç
+            
+            # DÜZELTME: Codec optimizasyonu
+            try:
+                # MJPEG codec daha stabil
+                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
             except:
                 pass
             
-            # DÜZELTME: FPS ayarı - doğal FPS'i koruma
-            try:
-                current_fps = self.cap.get(cv2.CAP_PROP_FPS)
-                if current_fps < 15:  # Çok düşükse ayarla
-                    self.cap.set(cv2.CAP_PROP_FPS, 30)
-                
-                logging.info(f"Kamera {self.camera_index} FPS: {current_fps}")
-            except:
-                pass
-            
-            # DÜZELTME: OTOMATIK AYARLARI KORU - müdahale etme
-            # Auto exposure, auto white balance, auto focus kalsın
-            # Sadece gerekli olanları ayarla
-            
-            logging.info(f"Kamera {self.camera_index} doğal parametreler ayarlandı")
+            logging.info(f"Kamera {self.camera_index} stabil parametreler ayarlandı")
             
         except Exception as e:
             logging.warning(f"Kamera {self.camera_index} parametre ayarlama hatası: {e}")
@@ -330,20 +331,22 @@ class EnhancedCamera:
    
     def _stable_capture_loop(self):
         """
-        DÜZELTME: Stabil capture loop - titreme yok
+        DÜZELTME: Çok stabil capture loop - Windows timeout sorunu çözüldü
         """
         consecutive_failures = 0
-        max_failures = 10
+        max_failures = 15  # 10 -> 15 (daha toleranslı)
         
-        # DÜZELTME: Stabil FPS için
+        # DÜZELTME: Adaptive FPS - sistem yüküne göre ayarlama
         target_fps = 30
         frame_interval = 1.0 / target_fps
+        adaptive_sleep = 0.033  # 30 FPS için başlangıç
         
         # Performance tracking
         fps_counter = 0
         fps_start_time = time.time()
+        last_adaptation = time.time()
         
-        logging.info(f"Kamera {self.camera_index} stable capture loop başlatıldı")
+        logging.info(f"Kamera {self.camera_index} stable capture loop başlatıldı - adaptive FPS")
         
         while self.is_running:
             loop_start = time.time()
@@ -354,14 +357,16 @@ class EnhancedCamera:
                         break
                     continue
                 
-                # DÜZELTME: Frame capture - basit ve stabil
+                # DÜZELTME: Timeout korumalı frame capture
                 ret, frame = self.cap.read()
                 
-                if not ret or frame is None:
+                if not ret or frame is None or frame.size == 0:
                     consecutive_failures += 1
                     if consecutive_failures >= max_failures:
-                        logging.error(f"Kamera {self.camera_index}: Maksimum hata")
+                        logging.error(f"Kamera {self.camera_index}: Maksimum hata sayısına ulaşıldı")
                         break
+                    
+                    # DÜZELTME: Hata durumunda kısa sleep
                     time.sleep(0.01)
                     continue
                 
@@ -369,36 +374,53 @@ class EnhancedCamera:
                 consecutive_failures = 0
                 fps_counter += 1
                 
-                # DÜZELTME: Frame'i direkt kaydet - işlem yapma
+                # DÜZELTME: Frame'i thread-safe kaydet
                 with self.frame_lock:
-                    self.current_frame = frame
+                    self.current_frame = frame.copy()  # Deep copy - referans sorunu yok
                 
-                # DÜZELTME: FPS calculation - basit
+                # DÜZELTME: FPS calculation - 5 saniyede bir
                 current_time = time.time()
-                if current_time - fps_start_time >= 1.0:
-                    self.actual_fps = fps_counter / (current_time - fps_start_time)
+                if current_time - fps_start_time >= 5.0:
+                    elapsed = current_time - fps_start_time
+                    self.actual_fps = fps_counter / elapsed if elapsed > 0 else 0
+                    
+                    # Adaptive sleep adjustment
+                    if current_time - last_adaptation >= 10.0:  # 10 saniyede bir adapt
+                        if self.actual_fps < 25:  # FPS düşükse sleep'i azalt
+                            adaptive_sleep = max(0.01, adaptive_sleep * 0.9)
+                        elif self.actual_fps > 35:  # FPS yüksekse sleep'i artır
+                            adaptive_sleep = min(0.05, adaptive_sleep * 1.1)
+                        
+                        last_adaptation = current_time
+                        logging.debug(f"Kamera {self.camera_index} adaptive sleep: {adaptive_sleep:.3f}s (FPS: {self.actual_fps:.1f})")
+                    
                     fps_counter = 0
                     fps_start_time = current_time
                 
-                # DÜZELTME: Stabil timing
+                # DÜZELTME: Adaptive timing
                 elapsed_time = time.time() - loop_start
-                sleep_time = frame_interval - elapsed_time
+                sleep_time = max(adaptive_sleep, frame_interval - elapsed_time)
                 
                 if sleep_time > 0:
                     time.sleep(sleep_time)
                 else:
-                    time.sleep(0.001)  # Minimum sleep
-                
+                    time.sleep(0.001)  # Minimum sleep - CPU overload önleme
+                    
             except Exception as e:
-                logging.error(f"Kamera {self.camera_index} capture error: {e}")
                 consecutive_failures += 1
+                logging.error(f"Kamera {self.camera_index} capture error: {e}")
+                
                 if consecutive_failures >= max_failures:
+                    logging.error(f"Kamera {self.camera_index}: Kritik hata sayısına ulaşıldı")
                     break
-                time.sleep(0.01)
+                
+                time.sleep(0.05)  # Hata durumunda biraz daha uzun sleep
         
         self.is_running = False
         self.connection_stable = False
-        logging.info(f"Kamera {self.camera_index} capture loop SONLANDI")
+        logging.info(f"Kamera {self.camera_index} stable capture loop SONLANDI")
+
+
 
     def _fast_reconnect(self):
         """Hızlı yeniden bağlantı."""
@@ -430,22 +452,127 @@ class EnhancedCamera:
             logging.error(f"Kamera {self.camera_index} reconnect HATA: {e}")
             return False
     
+    
+    def _fast_reconnect(self):
+        """DÜZELTME: Hızlı ve güvenli yeniden bağlantı."""
+        self.reconnect_attempts += 1
+        
+        if self.reconnect_attempts > self.max_reconnect_attempts:
+            logging.error(f"Kamera {self.camera_index}: Maksimum reconnect aşıldı ({self.max_reconnect_attempts})")
+            return False
+        
+        try:
+            logging.info(f"Kamera {self.camera_index} reconnect deneme {self.reconnect_attempts}/{self.max_reconnect_attempts}")
+            
+            # Eski bağlantıyı temizle
+            if self.cap:
+                try:
+                    self.cap.release()
+                except:
+                    pass
+                self.cap = None
+            
+            # Kısa bekleme
+            time.sleep(0.5)
+            
+            # Yeni bağlantı
+            self.cap = cv2.VideoCapture(self.camera_index, self.backend)
+            
+            if self.cap and self.cap.isOpened():
+                # Parametreleri yeniden ayarla
+                self._setup_natural_parameters()
+                
+                # Test frame
+                ret, test_frame = self.cap.read()
+                if ret and test_frame is not None:
+                    self.reconnect_attempts = 0
+                    self.connection_stable = True
+                    logging.info(f"Kamera {self.camera_index} RECONNECT başarılı!")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logging.error(f"Kamera {self.camera_index} reconnect HATA: {e}")
+            return False
+
+    
     def get_frame(self):
         """
-        DÜZELTME: Stabil frame alma - titreme yok
+        DÜZELTME: Thread-safe ve stabil frame alma
         """
         try:
             with self.frame_lock:
                 if self.current_frame is not None:
-                    # DÜZELTME: Frame'i kopyala ve döndür
+                    # DÜZELTME: Deep copy döndür - referans sorunları yok
                     return self.current_frame.copy()
                 else:
-                    return self._create_placeholder_frame()
+                    # DÜZELTME: Placeholder frame - sistem çökmez
+                    return self._create_stable_placeholder_frame()
                     
         except Exception as e:
             logging.debug(f"get_frame hatası: {e}")
-            return self._create_placeholder_frame()
+            return self._create_stable_placeholder_frame()
     
+    def _create_stable_placeholder_frame(self):
+        """DÜZELTME: Stabil placeholder frame - sistem çökmez."""
+        try:
+            frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+            
+            # Gradient background - görsel olarak hoş
+            for i in range(720):
+                intensity = int(15 + (i / 720) * 25)
+                frame[i, :] = [intensity, intensity, intensity]
+            
+            # Durum mesajları
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            
+            if not self.is_running:
+                message = f"Kamera {self.camera_index} - KAPALI"
+                color = (100, 100, 100)
+                status = "Sistem durduruldu"
+            elif not self.connection_stable:
+                message = f"Kamera {self.camera_index} - BAGLANILIYOR..."
+                color = (0, 255, 255)
+                status = "Baglanti kuruluyor"
+            else:
+                message = f"Kamera {self.camera_index} - HAZIR"
+                color = (0, 255, 0)
+                status = "Sistem hazir"
+            
+            # Ana mesaj
+            text_size = cv2.getTextSize(message, font, 1.2, 2)[0]
+            text_x = (1280 - text_size[0]) // 2
+            text_y = (720 + text_size[1]) // 2
+            cv2.putText(frame, message, (text_x, text_y), font, 1.2, color, 3, cv2.LINE_AA)
+            
+            # Status mesajı
+            status_size = cv2.getTextSize(status, font, 0.8, 2)[0]
+            status_x = (1280 - status_size[0]) // 2
+            status_y = text_y + 50
+            cv2.putText(frame, status, (status_x, status_y), font, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
+            
+            # FPS bilgisi
+            fps_text = f"FPS: {self.actual_fps:.1f} | STABIL MOD"
+            fps_size = cv2.getTextSize(fps_text, font, 0.6, 1)[0]
+            fps_x = (1280 - fps_size[0]) // 2
+            fps_y = status_y + 35
+            cv2.putText(frame, fps_text, (fps_x, fps_y), font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+            
+            # Border
+            cv2.rectangle(frame, (50, 50), (1230, 670), color, 3)
+            
+            return frame
+            
+        except Exception as e:
+            # En basit fallback frame
+            logging.error(f"Placeholder frame hatası: {e}")
+            fallback = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(fallback, "CAMERA ERROR", (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            return fallback
+
+        
+        
     def set_brightness(self, brightness):
         """Manuel parlaklık ayarı - KULLANIMA KAPALI."""
         logging.warning(f"Kamera {self.camera_index}: Parlaklık ayarı devre dışı - doğal ayarlar korunuyor")

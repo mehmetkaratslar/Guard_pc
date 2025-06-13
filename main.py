@@ -31,6 +31,9 @@ from config.settings import APP_NAME, APP_VERSION, MODEL_PATH, validate_config  
 import os
 os.environ['OPENCV_CAMERA_TIMEOUT'] = '2000'  # 2 saniye timeout
 
+os.environ['OPENCV_CAMERA_TIMEOUT'] = '3000'  # 3 saniye timeout
+os.environ['OPENCV_VIDEOIO_PRIORITY_DSHOW'] = '1'  # DirectShow öncelik
+
 # Uygulama meta verileri
 APP_METADATA = {
     "name": "Guard AI Ultra",

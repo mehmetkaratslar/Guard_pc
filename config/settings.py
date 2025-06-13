@@ -103,9 +103,10 @@ MODEL_PATH = os.path.join(
     "models", 
     "yolo11l-pose.pt"  # YOLOv11 Large Pose model
 )
-CONFIDENCE_THRESHOLD = 0.50  # Genel tespit güven eşiği
-POSE_CONFIDENCE_THRESHOLD = 0.30  # Pose keypoint güven eşiği
-NMS_THRESHOLD = 0.45  # Non-Maximum Suppression eşiği
+# YOLOv11 Pose Estimation Ayarları - DÜZELTME: Daha hassas
+CONFIDENCE_THRESHOLD = 0.2  # 0.50 -> 0.2 (çok düşük threshold)
+POSE_CONFIDENCE_THRESHOLD = 0.1  # 0.30 -> 0.1 (çok hassas keypoint)
+NMS_THRESHOLD = 0.5  # 0.45 -> 0.5 (daha az filtreleme)
 
 # YOLOv11 Model Seçenekleri
 AVAILABLE_MODELS = {
@@ -187,57 +188,61 @@ DEEPSORT_CONFIG = {
 
 # Düşme Algılama Parametreleri
 FALL_DETECTION_CONFIG = {
-    # DÜZELTME: Daha hassas eşikler
-    "head_pelvis_ratio_threshold": 0.6,    # 0.8 -> 0.6 (daha hassas)
-    "tilt_angle_threshold": 50,            # 45 -> 50 (sizin istediğiniz değer)
-    "shoulder_hip_alignment_threshold": 40, # 30 -> 40 (daha toleranslı)
+    # DÜZELTME: Çok daha hassas eşikler - test edilmiş değerler
+    "head_pelvis_ratio_threshold": 0.3,    # 0.6 -> 0.3 (çok hassas)
+    "tilt_angle_threshold": 25,            # 50 -> 25 (daha düşük açı)
+    "shoulder_hip_alignment_threshold": 60, # 40 -> 60 (daha toleranslı)
     
-    # DÜZELTME: Daha hızlı response
-    "continuity_frames": 3,                # 5 -> 3 (daha hızlı algılama)
-    "min_detection_interval": 1.5,        # 5.0 -> 1.5 (daha sık kontrol)
-    "max_detection_per_minute": 5,        # 3 -> 5 (daha fazla algılama)
+    # DÜZELTME: Çok hızlı response
+    "continuity_frames": 1,                # 3 -> 1 (anında algılama)
+    "min_detection_interval": 0.5,        # 1.5 -> 0.5 (daha sık kontrol)
+    "max_detection_per_minute": 20,       # 5 -> 20 (sınır kaldırıldı)
     
-    # DÜZELTME: Daha düşük kalite gereksinimleri
-    "min_keypoints": 8,                    # 10 -> 8 (daha esnek)
-    "min_keypoint_confidence": 0.25,      # 0.3 -> 0.25 (daha hassas)
-    "min_pose_stability": 0.15,           # 0.2 -> 0.15 (daha toleranslı)
+    # DÜZELTME: Çok düşük kalite gereksinimleri
+    "min_keypoints": 4,                    # 8 -> 4 (çok esnek)
+    "min_keypoint_confidence": 0.1,       # 0.25 -> 0.1 (çok hassas)
+    "min_pose_stability": 0.05,           # 0.15 -> 0.05 (çok toleranslı)
     
-    # Diğer ayarlar aynı kalabilir
+    # Diğer ayarlar - daha agresif
     "body_ratio_analysis": True,
-    "temporal_analysis": True,
-    "multi_frame_validation": True,
-    "pose_sequence_analysis": True,
+    "temporal_analysis": False,            # True -> False (hızlı algılama)
+    "multi_frame_validation": False,      # True -> False (tek frame yeterli)
+    "pose_sequence_analysis": False,      # True -> False (sequence bekleme)
     
     "fall_type_weights": {
-        "forward_fall": 0.4,
-        "backward_fall": 0.3,
-        "side_fall": 0.25,
-        "sitting_fall": 0.05
+        "forward_fall": 0.5,              # 0.4 -> 0.5
+        "backward_fall": 0.4,             # 0.3 -> 0.4
+        "side_fall": 0.35,                # 0.25 -> 0.35
+        "sitting_fall": 0.2               # 0.05 -> 0.2
     }
 }
 
-# Görselleştirme Ayarları
+
+# Görselleştirme Ayarları - DÜZELTME: Keypoint'leri görünür yap
 VISUALIZATION_CONFIG = {
-    "show_pose_points": True,
-    "show_pose_skeleton": True,
-    "show_pose_labels": False,
-    "pose_point_radius": 3,              # 4 -> 3 (performance)
-    "pose_line_thickness": 2,
+    "show_pose_points": True,             # Mutlaka True
+    "show_pose_skeleton": True,           # Mutlaka True
+    "show_pose_labels": True,             # False -> True (label'ları göster)
+    "pose_point_radius": 5,               # 3 -> 5 (daha büyük noktalar)
+    "pose_line_thickness": 3,             # 2 -> 3 (daha kalın çizgiler)
     
     "show_track_id": True,
     "show_confidence": True,
     "show_bounding_box": True,
     "bounding_box_thickness": 2,
     
-    "fall_alert_color": (0, 0, 255),
-    "normal_color": (0, 255, 0),
-    "tracking_color": (255, 0, 0),
-    "show_fall_overlay": True,
-    "fall_text_size": 1.0,              # 1.2 -> 1.0 (performance)
+    "fall_alert_color": (0, 0, 255),      # Kırmızı
+    "normal_color": (0, 255, 0),          # Yeşil
+    "tracking_color": (255, 255, 0),      # Sarı - daha görünür
+    "pose_point_color": (255, 0, 255),    # Magenta - çok görünür
+    "skeleton_color": (0, 255, 255),      # Cyan - çok görünür
     
-    "camera_display_size": (1200, 800),  # Optimize boyut
-    "ui_update_interval": 25,            # 33 -> 25 ms (~40 FPS)
-    "stats_update_interval": 500,        # 1000 -> 500 ms (daha hızlı)
+    "show_fall_overlay": True,
+    "fall_text_size": 1.5,               # 1.0 -> 1.5 (daha büyük text)
+    
+    "camera_display_size": (1200, 800),
+    "ui_update_interval": 40,             # 25 -> 40 ms (25 FPS)
+    "stats_update_interval": 1000,       # 500 -> 1000 ms (daha az CPU)
 }
 
 # API sunucusu ayarları
@@ -245,18 +250,18 @@ API_HOST = "127.0.0.1"
 API_PORT = 8002
 STREAM_PORT = 5000
 
-# Performans Ayarları
-# Performans Ayarları - DÜZELTME
+# Performans Ayarları - DÜZELTME: Daha responsive
 PERFORMANCE_CONFIG = {
-    "max_concurrent_detections": 3,
-    "frame_skip_ratio": 1,               # 0 -> 1 (her frame'i işle)
+    "max_concurrent_detections": 5,       # 3 -> 5
+    "frame_skip_ratio": 0,                # Her frame'i işle
     "gpu_acceleration": True,
     "multi_threading": True,
     "memory_optimization": True,
-    "detection_queue_size": 3,           # 15 -> 3 (düşük latency)
-    "camera_buffer_size": 1,             # Minimum buffer
-    "display_fps_limit": 40,             # UI FPS limit
-    "ai_detection_fps": 15,              # AI detection FPS (daha düşük)
+    "detection_queue_size": 1,            # Minimal latency
+    "camera_buffer_size": 2,              # 1 -> 2 (daha stabil)
+    "display_fps_limit": 25,              # 40 -> 25 (stabil)
+    "ai_detection_fps": 15,               # 10 -> 15 (daha responsive)
+    "mobile_stream_enabled": True,
 }
 
 # Bildirim ayarları
@@ -375,44 +380,34 @@ SYSTEM_REQUIREMENTS = {
     }
 }
 
-# Model performans profilleri
+# Model Performans Profilleri - DÜZELTME: Hassas profil
 MODEL_PROFILES = {
-    "ultra_fast": {
-        "model": "yolo11n-pose.pt",
-        "confidence": 0.6,
-        "frame_skip": 2,
-        "pose_points": False,
-        "description": "En hızlı, düşük doğruluk"
-    },
-    "fast": {
-        "model": "yolo11s-pose.pt", 
-        "confidence": 0.55,
-        "frame_skip": 1,
+    "ultra_sensitive": {                  # YENİ: Test profili
+        "model": "yolo11l-pose.pt",
+        "confidence": 0.15,               # Çok düşük
+        "frame_skip": 0,                  # Her frame
         "pose_points": True,
-        "description": "Hızlı, orta doğruluk"
+        "fall_threshold": 0.2,            # Çok hassas
+        "description": "Ultra hassas test modu"
     },
     "balanced": {
         "model": "yolo11m-pose.pt",
-        "confidence": 0.50,
+        "confidence": 0.25,               # 0.50 -> 0.25
         "frame_skip": 0,
         "pose_points": True, 
-        "description": "Dengeli hız ve doğruluk"
+        "fall_threshold": 0.3,            # Düşürüldü
+        "description": "Dengeli hız ve hassaslık"
     },
     "accurate": {
         "model": "yolo11l-pose.pt",
-        "confidence": 0.45,
+        "confidence": 0.2,                # 0.45 -> 0.2
         "frame_skip": 0,
         "pose_points": True,
-        "description": "Yüksek doğruluk (Önerilen)"
-    },
-    "ultra_accurate": {
-        "model": "yolo11x-pose.pt",
-        "confidence": 0.40,
-        "frame_skip": 0,
-        "pose_points": True,
-        "description": "En yüksek doğruluk, yavaş"
+        "fall_threshold": 0.25,           # Düşürüldü
+        "description": "Yüksek hassaslık (Önerilen)"
     }
 }
+
 
 # Kamera kalitesi ayarları
 CAMERA_QUALITY_PRESETS = {
@@ -442,35 +437,28 @@ CAMERA_QUALITY_PRESETS = {
     }
 }
 
-# Düşme algılama hassaslık seviyeleri
+# Düşme algılama hassaslık seviyeleri - DÜZELTME: Ultra hassas seviye eklendi
 SENSITIVITY_LEVELS = {
-    "low": {
-        "head_pelvis_ratio": 0.9,
-        "tilt_angle": 50,
-        "continuity_frames": 8,
-        "min_keypoints": 12,
-        "description": "Düşük hassaslık, az false positive"
-    },
-    "medium": {
-        "head_pelvis_ratio": 0.8,
-        "tilt_angle": 45,
-        "continuity_frames": 5,
-        "min_keypoints": 10,
-        "description": "Orta hassaslık, dengeli (Önerilen)"
+    "ultra": {                            # YENİ: Test seviyesi
+        "head_pelvis_ratio": 0.2,
+        "tilt_angle": 15,
+        "continuity_frames": 1,
+        "min_keypoints": 3,
+        "description": "Ultra hassaslık, test modu"
     },
     "high": {
-        "head_pelvis_ratio": 0.7,
-        "tilt_angle": 40,
-        "continuity_frames": 3,
-        "min_keypoints": 8,
-        "description": "Yüksek hassaslık, daha çok algılama"
+        "head_pelvis_ratio": 0.4,         # 0.7 -> 0.4
+        "tilt_angle": 20,                 # 40 -> 20
+        "continuity_frames": 1,           # 3 -> 1
+        "min_keypoints": 4,               # 8 -> 4
+        "description": "Yüksek hassaslık, çok algılama"
     },
-    "ultra": {
-        "head_pelvis_ratio": 0.6,
-        "tilt_angle": 35,
-        "continuity_frames": 2,
-        "min_keypoints": 6,
-        "description": "Ultra hassaslık, çok false positive"
+    "medium": {
+        "head_pelvis_ratio": 0.6,         # 0.8 -> 0.6
+        "tilt_angle": 30,                 # 45 -> 30
+        "continuity_frames": 2,           # 5 -> 2
+        "min_keypoints": 6,               # 10 -> 6
+        "description": "Orta hassaslık, dengeli"
     }
 }
 
@@ -600,18 +588,26 @@ VERSION_HISTORY = {
 
 # =======================================================================================
 
-# Akıcı kamera için optimize ayarlar
+# Camera Buffer Config - DÜZELTME: Daha stabil
 CAMERA_BUFFER_CONFIG = {
-    "buffer_size": 1,                    # Tek frame buffer
-    "capture_fps": 30,                   # Yakalama FPS
-    "display_fps": 30,                   # Gösterim FPS
-    "processing_fps": 10,                # AI işleme FPS (daha düşük)
-    "frame_skip_display": 1,             # Display için frame atlama yok
-    "frame_skip_ai": 3,                  # AI için her 3. frame
-    "double_buffering": True,            # Çift buffer sistemi
-    "direct_display": True,              # Doğrudan display güncelleme
+    "buffer_size": 2,                     # 1 -> 2
+    "capture_fps": 30,
+    "display_fps": 25,                    # 30 -> 25 (stabil)
+    "processing_fps": 15,                 # 10 -> 15 (daha hızlı AI)
+    "frame_skip_display": 1,
+    "frame_skip_ai": 2,                   # 3 -> 2 (daha sık AI)
+    "double_buffering": True,
+    "direct_display": True,
 }
 
+# TEST MODU - Geliştiriciler için
+DEBUG_FALL_DETECTION = {
+    "ultra_sensitive_mode": True,         # Test için ultra hassas mod
+    "log_all_detections": True,          # Her algılamayı logla
+    "show_debug_overlay": True,          # Debug bilgileri göster
+    "force_fall_threshold": 0.2,        # Test için çok düşük threshold
+    "disable_continuity_check": True,   # Süreklilik kontrolünü kapat
+}
 # Mobil API ayarları  
 MOBILE_API_CONFIG = {
     "enabled": True,
