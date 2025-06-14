@@ -653,10 +653,10 @@ class FallDetector:
                                 confidence
                             )
                         
-                        # DÜZELTME: Süreklilik eşiği - 1 frame yeterli
+                        # DÜZELTME: Süreklilik eşiği - 3 frame gerekli (kararlılık)
                         alert = self.fall_alerts[person_id]
-                        if alert['frame_count'] >= 1:  # 5 -> 1 (anında algılama)
-                            logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
+                        if alert['frame_count'] >= 3:  # 1 -> 3 (daha kararlı)
+                            logging.warning(f"🚨 DENGELİ DÜŞME ALGILANDI: ID={person_id}, Güven={alert['max_confidence']:.3f}")
                             
                             # İstatistikleri güncelle
                             self.detection_stats['fall_detections'] += 1
@@ -779,7 +779,7 @@ class FallDetector:
 
     def _analyze_fall_for_person(self, person_track):
         """
-        DÜZELTME: Ultra hassas düşme analizi - test edilmiş eşikler
+        DÜZELTME: Dengeli düşme analizi - optimize edilmiş eşikler
         """
         if not person_track.has_valid_pose():
             return False, 0.0
@@ -788,12 +788,12 @@ class FallDetector:
             keypoints = person_track.latest_keypoints
             keypoint_confs = person_track.latest_keypoint_confs
             
-            # DÜZELTME: Çok düşük eşik - daha hassas
-            conf_mask = keypoint_confs > 0.1  # 0.25 -> 0.1
+            # DÜZELTME: Dengeli eşik - yanlış pozitif azaltılmış
+            conf_mask = keypoint_confs > 0.3  # 0.1 -> 0.3 (daha güvenilir)
             valid_keypoints = np.sum(conf_mask)
             
-            # DÜZELTME: Minimum keypoint sayısı çok düşürüldü
-            if valid_keypoints < 4:  # 8 -> 4
+            # DÜZELTME: Minimum keypoint sayısı artırıldı - daha güvenilir
+            if valid_keypoints < 8:  # 4 -> 8 (daha stabil)
                 return False, 0.0
             
             # DÜZELTME: Doğru COCO keypoint indeksleri (0-based)
@@ -831,7 +831,7 @@ class FallDetector:
             fall_indicators = []
             fall_score = 0.0
             
-            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (25 derece kriteri)
+            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (45 derece kriteri - dengeli)
             if shoulder_center is not None and hip_center is not None:
                 dx = hip_center[0] - shoulder_center[0]
                 dy = hip_center[1] - shoulder_center[1]
@@ -839,13 +839,13 @@ class FallDetector:
                 if abs(dy) > 1:
                     tilt_angle = abs(math.degrees(math.atan(dx / abs(dy))))
                     
-                    # DÜZELTME: 25 derece eşiği - çok hassas
-                    if tilt_angle > 25:  # 50 -> 25 derece
-                        fall_score += 0.8  # Ağırlık artırıldı
+                    # DÜZELTME: 45 derece eşiği - dengeli hassasiyet
+                    if tilt_angle > 45:  # 25 -> 45 derece (daha güvenilir)
+                        fall_score += 0.6  # Ağırlık azaltıldı
                         fall_indicators.append("omuz_kalca_egim")
                         logging.debug(f"DÜŞME İNDİKATÖRÜ: Omuz-kalça eğimi {tilt_angle:.1f}°")
-                    elif tilt_angle > 15:  # Düşük risk
-                        fall_score += 0.4
+                    elif tilt_angle > 35:  # Orta risk
+                        fall_score += 0.3
                         fall_indicators.append("egim_riski")
             
             # 2. DÜZELTME: BAGAS-AYAK DİKEY MESAFE ORANI - çok hassas
@@ -931,16 +931,16 @@ class FallDetector:
                         fall_indicators.append(f"{elbow_name}_destek")
                         logging.debug(f"DÜZELTME İNDİKATÖRÜ: {elbow_name} desteklenme")
             
-            # DÜZELTME: DÜŞME KARARI - ÇOK DÜŞÜK EŞİK
-            fall_threshold = 0.3  # 0.5 -> 0.3 (ultra hassas)
+            # DÜZELTME: DÜŞME KARARI - DENGELİ EŞİK
+            fall_threshold = 0.7  # 0.3 -> 0.7 (dengeli hassasiyet)
             is_fall = fall_score >= fall_threshold
             
             if is_fall:
-                logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
+                logging.warning(f"🚨 DENGELİ DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
                 logging.info(f"   📊 Geçerli keypoint sayısı: {valid_keypoints}")
                 logging.info(f"   🎯 Toplam indikatör: {len(fall_indicators)}")
-            elif fall_score > 0.1:  # Düşük riskli durumları da logla
-                logging.debug(f"⚠️ Düşük risk algılandı: Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
+            elif fall_score > 0.4:  # Orta riskli durumları logla
+                logging.debug(f"⚠️ Orta risk algılandı: Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
             
             return is_fall, fall_score
             

@@ -6,6 +6,7 @@
 # 3. Buffer yönetimi karmaşık → Basit ve stabil
 # =======================================================================================
 
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
@@ -62,6 +63,12 @@ class DashboardFrame(tk.Frame):
         self.connection_status_var = tk.StringVar(value="🔴 Bağlantı Yok")
         self.fps_display_var = tk.StringVar(value="0 FPS")
         
+        # DÜZELTME: Görsel düşme bildirimi için değişkenler
+        self.fall_alert_var = tk.StringVar(value="")
+        self.fall_alert_visible = False
+        self.fall_alert_frame = None
+        self.last_fall_alert_time = 0
+        
         # Tracking istatistikleri
         self.tracking_stats = {
             'active_tracks': 0,
@@ -96,10 +103,6 @@ class DashboardFrame(tk.Frame):
             'current_fps': tk.StringVar(value="0")
         }
 
-        # Son düşme olayı değişkenleri
-        self.event_time_var = tk.StringVar(value="Henüz olay yok")
-        self.event_conf_var = tk.StringVar(value="Güven: -")
-        self.event_id_var = tk.StringVar(value="ID: -")
 
         # Kontrol butonları değişkenleri
         self.control_var = tk.StringVar(value="SİSTEMİ BAŞLAT")
@@ -191,9 +194,7 @@ class DashboardFrame(tk.Frame):
         
         # Canlı istatistikler
         self._create_stats_section(scrollable_frame)
-        
-        # Son olay bilgisi
-        self._create_last_event_section(scrollable_frame)
+    
         
         # Menü butonları
         self._create_menu_section(scrollable_frame)
@@ -287,13 +288,6 @@ class DashboardFrame(tk.Frame):
                                fg=self.colors['accent_danger'], bg=self.colors['bg_secondary'])
         status_label.pack(pady=(0, 15))
         
-        # Tam ekran butonu
-        self.fullscreen_button = tk.Button(control_frame, text="🖥️ TAM EKRAN",
-                                          font=("Segoe UI", 12, "bold"),
-                                          bg=self.colors['accent_info'], fg="white",
-                                          command=self.toggle_fullscreen,
-                                          relief=tk.FLAT, pady=8, cursor="hand2")
-        self.fullscreen_button.pack(fill=tk.X, padx=15, pady=(0, 15))
 
     def _create_camera_selector_section(self, parent):
         """Kamera seçici section."""
@@ -383,22 +377,7 @@ class DashboardFrame(tk.Frame):
                                   bg=self.colors['bg_tertiary'])
             value_label.pack(side=tk.RIGHT, pady=10, padx=10)
 
-    def _create_last_event_section(self, parent):
-        """Son olay section."""
-        event_frame = tk.LabelFrame(parent, text="🔔 Son Düşme Olayı", 
-                                   font=("Segoe UI", 14, "bold"),
-                                   fg=self.colors['text_primary'], bg=self.colors['bg_secondary'],
-                                   bd=1, relief="solid")
-        event_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        event_info_frame = tk.Frame(event_frame, bg=self.colors['bg_tertiary'])
-        event_info_frame.pack(fill=tk.X, padx=15, pady=15)
-        
-        # Event bilgileri
-        for var in [self.event_time_var, self.event_conf_var, self.event_id_var]:
-            label = tk.Label(event_info_frame, textvariable=var, font=("Segoe UI", 12),
-                           fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
-            label.pack(anchor="w", pady=2)
+
 
     def _create_menu_section(self, parent):
         """Alt kısım - Çıkış butonu."""
@@ -467,31 +446,136 @@ class DashboardFrame(tk.Frame):
         
         # İlk placeholder'ı göster
         self._show_camera_placeholder()
+        
+        # DÜZELTME: Görsel düşme bildirimi alanı oluştur
+        self._create_fall_alert_overlay()
 
     def _show_camera_placeholder(self):
-        """Kamera placeholder'ını gösterir."""
-        placeholder = np.zeros((720, 1280, 3), dtype=np.uint8)
+        """YOLOv11 optimize kamera placeholder'ını gösterir."""
+        # YOLOv11 için 640x640 kare placeholder
+        placeholder = np.zeros((640, 640, 3), dtype=np.uint8)
         
-        for i in range(720):
-            color_intensity = int(20 + (i / 720) * 30)
+        for i in range(640):
+            color_intensity = int(20 + (i / 640) * 30)
             placeholder[i, :] = [color_intensity, color_intensity, color_intensity]
         
-        cv2.putText(placeholder, "GUARD AI - DOGAL KALITE", (380, 300), cv2.FONT_HERSHEY_SIMPLEX,
-                   2.5, (56, 134, 54), 4, cv2.LINE_AA)
-        cv2.putText(placeholder, "Dusme Algilama Sistemi", (420, 380), cv2.FONT_HERSHEY_SIMPLEX,
-                   1.5, (240, 246, 252), 2, cv2.LINE_AA)
+        cv2.putText(placeholder, "GUARD", (200, 250), cv2.FONT_HERSHEY_SIMPLEX,
+                   1.8, (56, 134, 54), 3, cv2.LINE_AA)
         
-        cv2.putText(placeholder, "Sol panelden kamera seciniz", (450, 450), cv2.FONT_HERSHEY_SIMPLEX,
-                   1, (139, 148, 158), 2, cv2.LINE_AA)
-        cv2.putText(placeholder, "Sistemi baslatmak icin 'SISTEMI BASLAT' butonuna tiklayin", (280, 500), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (139, 148, 158), 2, cv2.LINE_AA)
+      
+        cv2.putText(placeholder, "Sistemi baslatmak icin", (200, 420), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (139, 148, 158), 1, cv2.LINE_AA)
+        cv2.putText(placeholder, "'SISTEMI BASLAT' butonuna tiklayin", (130, 450), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (139, 148, 158), 1, cv2.LINE_AA)
         
-        cv2.putText(placeholder, "DOGAL AYARLAR - STABLE GORUNTULER", (380, 600), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 136), 2, cv2.LINE_AA)
+
         
-        cv2.rectangle(placeholder, (50, 50), (1230, 670), (56, 134, 54), 3)
+        cv2.rectangle(placeholder, (30, 30), (610, 610), (56, 134, 54), 3)
         
         self._update_main_camera_display(placeholder)
+    
+    def _create_fall_alert_overlay(self):
+        """DÜZELTME: Görsel düşme bildirimi overlay'i oluşturur."""
+        # Overlay ana kamera frame'inin üzerinde floating olacak
+        self.fall_alert_frame = tk.Frame(self.main_camera_frame, 
+                                        bg=self.colors['accent_danger'],
+                                        relief=tk.RAISED, bd=3)
+        # Başlangıçta gizli
+        self.fall_alert_frame.place_forget()
+        
+        # İçerik
+        alert_content = tk.Frame(self.fall_alert_frame, bg=self.colors['accent_danger'])
+        alert_content.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        # Ana başlık
+        alert_title = tk.Label(alert_content, 
+                              text="🚨 DÜŞME ALGILANDI!", 
+                              font=("Segoe UI", 16, "bold"),
+                              fg="white", bg=self.colors['accent_danger'])
+        alert_title.pack(pady=(0, 5))
+        
+        # Detay bilgisi
+        self.fall_detail_label = tk.Label(alert_content,
+                                         textvariable=self.fall_alert_var,
+                                         font=("Segoe UI", 12),
+                                         fg="white", bg=self.colors['accent_danger'],
+                                         wraplength=300, justify=tk.LEFT)
+        self.fall_detail_label.pack(pady=5)
+        
+        # Butonlar
+        button_frame = tk.Frame(alert_content, bg=self.colors['accent_danger'])
+        button_frame.pack(pady=(10, 0))
+        
+        close_btn = tk.Button(button_frame, text="✅ TAMAM",
+                             font=("Segoe UI", 10, "bold"),
+                             bg="white", fg=self.colors['accent_danger'],
+                             command=self._hide_fall_alert,
+                             relief=tk.FLAT, padx=15, pady=5)
+        close_btn.pack(side=tk.LEFT, padx=5)
+        
+        details_btn = tk.Button(button_frame, text="📋 DETAYLAR",
+                               font=("Segoe UI", 10, "bold"),
+                               bg="white", fg=self.colors['accent_danger'],
+                               command=self.history_fn,
+                               relief=tk.FLAT, padx=15, pady=5)
+        details_btn.pack(side=tk.LEFT, padx=5)
+    
+    def _show_fall_alert(self, confidence, camera_id, timestamp):
+        """DÜZELTME: Görsel düşme bildirimi gösterir."""
+        try:
+            current_time = time.time()
+            
+            # Çok sık bildirim önleme (5 saniye)
+            if current_time - self.last_fall_alert_time < 5:
+                return
+                
+            self.last_fall_alert_time = current_time
+            
+            # Bildirim metnini güncelle
+            alert_text = f"""⏰ Zaman: {datetime.datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')}
+📹 Kamera: {camera_id}
+🎯 Güven: {confidence*100:.1f}%
+📊 Durum: {'Yüksek Risk' if confidence > 0.8 else 'Orta Risk'}"""
+            
+            self.fall_alert_var.set(alert_text)
+            
+            # Overlay'i göster - kamera görüntüsünün üst ortasında
+            if self.main_camera_frame.winfo_exists():
+                frame_width = self.main_camera_frame.winfo_width()
+                frame_height = self.main_camera_frame.winfo_height()
+                
+                if frame_width > 100 and frame_height > 100:
+                    alert_width = 400
+                    alert_height = 180
+                    
+                    x = (frame_width - alert_width) // 2
+                    y = 20  # Üstten 20px
+                    
+                    self.fall_alert_frame.place(x=x, y=y, width=alert_width, height=alert_height)
+                    self.fall_alert_visible = True
+                    
+                    # 10 saniye sonra otomatik gizle
+                    self.after(10000, self._auto_hide_fall_alert)
+                    
+                    logging.info("📢 Görsel düşme bildirimi gösterildi")
+                    
+        except Exception as e:
+            logging.error(f"Fall alert gösterme hatası: {e}")
+    
+    def _hide_fall_alert(self):
+        """DÜZELTME: Görsel düşme bildirimini gizler."""
+        try:
+            if self.fall_alert_frame:
+                self.fall_alert_frame.place_forget()
+                self.fall_alert_visible = False
+                logging.info("📢 Görsel düşme bildirimi gizlendi")
+        except Exception as e:
+            logging.error(f"Fall alert gizleme hatası: {e}")
+    
+    def _auto_hide_fall_alert(self):
+        """DÜZELTME: Otomatik gizleme."""
+        if self.fall_alert_visible:
+            self._hide_fall_alert()
 
     def _select_camera(self, camera_index):
         """Kamera seçer."""
@@ -863,33 +947,58 @@ class DashboardFrame(tk.Frame):
         except Exception as e:
             logging.error(f"Enhanced fall alert gösterme hatası: {e}")
 
-    def _show_fall_alert(self, confidence):
-        """Düşme uyarısı popup'ı gösterir."""
+    def _show_fall_alert_popup(self, confidence, camera_id, timestamp):
+        """DÜZELTME: Düşme uyarısı popup'ı gösterir - ayrı metod."""
         try:
             alert_frame = tk.Toplevel(self)
             alert_frame.title("🚨 DÜŞME ALGILANDI!")
-            alert_frame.geometry("400x200")
+            alert_frame.geometry("450x250")
             alert_frame.configure(bg=self.colors['accent_danger'])
             alert_frame.transient(self.winfo_toplevel())
             alert_frame.grab_set()
             
+            # Ana başlık
             tk.Label(alert_frame, text="🚨 DÜŞME ALGILANDI!", 
-                    font=("Segoe UI", 16, "bold"), fg="white", bg=self.colors['accent_danger']).pack(pady=20)
+                    font=("Segoe UI", 16, "bold"), fg="white", bg=self.colors['accent_danger']).pack(pady=15)
             
-            tk.Label(alert_frame, text=f"Güven Oranı: {confidence:.3f}", 
-                    font=("Segoe UI", 12), fg="white", bg=self.colors['accent_danger']).pack()
+            # Detaylar
+            info_frame = tk.Frame(alert_frame, bg=self.colors['accent_danger'])
+            info_frame.pack(pady=10, padx=20, fill='x')
             
-            tk.Label(alert_frame, text=datetime.datetime.now().strftime("Zaman: %H:%M:%S"), 
-                    font=("Segoe UI", 12), fg="white", bg=self.colors['accent_danger']).pack(pady=10)
+            tk.Label(info_frame, text=f"📹 Kamera: {camera_id}", 
+                    font=("Segoe UI", 11), fg="white", bg=self.colors['accent_danger']).pack(anchor='w')
             
-            tk.Button(alert_frame, text="TAMAM", font=("Segoe UI", 12, "bold"),
-                     bg="white", fg=self.colors['accent_danger'],
-                     command=alert_frame.destroy, pady=10).pack(pady=20)
+            tk.Label(info_frame, text=f"📊 Güven Oranı: {confidence:.3f}", 
+                    font=("Segoe UI", 11), fg="white", bg=self.colors['accent_danger']).pack(anchor='w', pady=2)
             
-            alert_frame.after(5000, alert_frame.destroy)
+            timestamp_str = datetime.datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+            tk.Label(info_frame, text=f"🕐 Zaman: {timestamp_str}", 
+                    font=("Segoe UI", 11), fg="white", bg=self.colors['accent_danger']).pack(anchor='w', pady=2)
+            
+            # Butonlar
+            btn_frame = tk.Frame(alert_frame, bg=self.colors['accent_danger'])
+            btn_frame.pack(pady=15)
+            
+            tk.Button(btn_frame, text="TAMAM", font=("Segoe UI", 12, "bold"),
+                     bg="white", fg=self.colors['accent_danger'], width=12,
+                     command=alert_frame.destroy, pady=8).pack(side='left', padx=5)
+            
+            tk.Button(btn_frame, text="DETAYLAR", font=("Segoe UI", 12, "bold"),
+                     bg=self.colors['bg_secondary'], fg="white", width=12,
+                     command=lambda: (alert_frame.destroy(), self.history_fn()), pady=8).pack(side='left', padx=5)
+            
+            # 8 saniye sonra otomatik kapat
+            alert_frame.after(8000, alert_frame.destroy)
+            
+            # Sesli uyarı
+            try:
+                import winsound
+                winsound.Beep(1000, 500)
+            except:
+                pass
             
         except Exception as e:
-            logging.error(f"Fall alert gösterme hatası: {e}")
+            logging.error(f"Fall alert popup gösterme hatası: {e}")
 
     def _toggle_system(self):
         """Sistemi başlatır/durdurur."""
@@ -947,11 +1056,38 @@ class DashboardFrame(tk.Frame):
             self.control_button.config(bg=self.colors['accent_primary'])
 
     def update_fall_detection(self, screenshot, confidence, event_data):
-        """Düşme algılama sonucunu günceller."""
+        """DÜZELTME: Düşme algılama sonucunu günceller - görsel bildirim dahil."""
         camera_id = event_data.get('camera_id', 'unknown')
         track_id = event_data.get('track_id', 'N/A')
+        timestamp = event_data.get('timestamp', time.time())
         
-        self.after(0, lambda: self._handle_fall_detection(camera_id, confidence, track_id))
+        # DÜZELTME: Görsel bildirim ve popup birlikte göster - performance optimized
+        def show_complete_fall_notification():
+            try:
+                # 1. Hızlı görsel overlay bildirim (öncelik)
+                self._show_fall_alert(confidence, camera_id, timestamp)
+                
+                # 2. Popup bildirim (gecikmeli)
+                self.after(500, lambda: self._show_fall_alert_popup(confidence, camera_id, timestamp))
+                
+                # 3. Geleneksel handler (opsiyonel)
+                self.after(1000, lambda: self._handle_fall_detection(camera_id, confidence, track_id))
+                
+                # 4. İstatistikleri güncelle
+                if hasattr(self, 'tracking_stats'):
+                    self.tracking_stats['fall_alerts'] += 1
+                    
+                logging.info(f"✅ Dashboard fall notification triggered: {camera_id}")
+                
+            except Exception as e:
+                logging.error(f"❌ Dashboard fall notification error: {e}")
+                # Fallback - basit bildirim
+                try:
+                    self._show_fall_alert_popup(confidence, camera_id, timestamp)
+                except Exception as fallback_error:
+                    logging.error(f"❌ Fallback notification error: {fallback_error}")
+            
+        self.after(0, show_complete_fall_notification)
 
     def update_ai_frame(self, frame):
         """AI processing sonucu frame'i günceller."""

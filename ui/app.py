@@ -1177,14 +1177,22 @@ class GuardApp:
             track_id: Tracking ID'si
             analysis_result: PoseAnalysisResult object
         """
-        # DÜZELTME: Fall event lock - aynı anda birden fazla event işlenmesini önle
+        # DÜZELTME: Performance optimized fall event handling
         current_time = time.time()
-        if (current_time - self.last_fall_event_time) < self.min_fall_event_interval:
-            logging.info(f"⏳ Fall event skipped - too soon after last event ({current_time - self.last_fall_event_time:.1f}s)")
+        
+        # DÜZELTME: Çok sık düşme olaylarını önle (3 saniye minimum)
+        if (current_time - self.last_fall_event_time) < 3.0:  # 3 saniye minimum
+            logging.info(f"⏳ Fall event rate limited: {current_time - self.last_fall_event_time:.1f}s < 3.0s")
             return {'event_saved': False, 'notification_sent': False, 'image_uploaded': False}
         
+        # DÜZELTME: Non-blocking lock - sistem donmasını önler
         if not self.fall_event_lock.acquire(blocking=False):
-            logging.warning("🔒 Fall event already being processed, skipping...")
+            logging.warning("🔒 Fall event processing busy, queuing for background processing...")
+            # DÜZELTME: Lightweight background processing
+            threading.Thread(target=self._lightweight_fall_processing, 
+                           args=(screenshot.copy() if screenshot is not None else None, 
+                                confidence, camera_id, track_id, analysis_result),
+                           daemon=True).start()
             return {'event_saved': False, 'notification_sent': False, 'image_uploaded': False}
         
         try:
@@ -1198,20 +1206,34 @@ class GuardApp:
             # Enhanced screenshot processing
             enhanced_screenshot = self._enhance_screenshot(screenshot, analysis_result, camera_id)
             
-            # DÜZELTME: Storage upload kontrolü
+            # DÜZELTME: Storage upload kontrolü - fixed screenshot conversion
             logging.info(f"📤 Storage'a yükleniyor: event_id={event_id}")
             image_url = None
             try:
-                # Numpy array'i PIL Image'a çevir
-                from PIL import Image
-                pil_image = Image.fromarray(cv2.cvtColor(enhanced_screenshot, cv2.COLOR_BGR2RGB))
-                
-                image_url = self.storage_manager.upload_screenshot(
-                    pil_image, self.current_user["localId"], event_id
-                )
-                logging.info(f"✅ Storage upload başarılı: {image_url}")
+                if enhanced_screenshot is not None and enhanced_screenshot.size > 0:
+                    # DÜZELTME: OpenCV format check ve dönüştürme
+                    if len(enhanced_screenshot.shape) == 3:
+                        # BGR to RGB conversion for PIL
+                        screenshot_rgb = cv2.cvtColor(enhanced_screenshot, cv2.COLOR_BGR2RGB)
+                    else:
+                        screenshot_rgb = enhanced_screenshot
+                    
+                    # DÜZELTME: StorageManager direkt numpy array kabul ediyor
+                    image_url = self.storage_manager.upload_screenshot(
+                        screenshot_rgb, self.current_user["localId"], event_id
+                    )
+                    
+                    if image_url:
+                        logging.info(f"✅ Storage upload başarılı: {image_url}")
+                    else:
+                        logging.warning("⚠️ Storage upload failed - no URL returned")
+                else:
+                    logging.warning("⚠️ No valid screenshot for upload")
+                    
             except Exception as storage_error:
                 logging.error(f"❌ Storage upload hatası: {storage_error}")
+                import traceback
+                logging.error(f"❌ Storage traceback: {traceback.format_exc()}")
                 # Storage başarısız olsa bile devam et
             
             # Enhanced model ve analiz bilgilerini al
@@ -1352,6 +1374,141 @@ class GuardApp:
         finally:
             # Lock'u her durumda release et
             self.fall_event_lock.release()
+
+    def _delayed_fall_processing(self, screenshot, confidence, camera_id, track_id, analysis_result):
+        """DÜZELTME: Gecikmeli düşme olayı işleme - sistem donmasını önler."""
+        try:
+            # 1 saniye bekle - sistem stabilize olsun
+            time.sleep(1.0)
+            
+            # Lock mevcut mu kontrol et
+            if self.fall_event_lock.acquire(blocking=True, timeout=5.0):
+                try:
+                    logging.info(f"🔄 Delayed fall processing started: {camera_id}")
+                    result = self._handle_enhanced_fall_detection(
+                        screenshot, confidence, camera_id, track_id, analysis_result
+                    )
+                    logging.info(f"🔄 Delayed fall processing completed: {result}")
+                finally:
+                    self.fall_event_lock.release()
+            else:
+                logging.warning("⚠️ Delayed fall processing timeout - skipping")
+                
+        except Exception as e:
+            logging.error(f"💥 Delayed fall processing error: {e}")
+    
+    def _lightweight_fall_processing(self, screenshot, confidence, camera_id, track_id, analysis_result):
+        """DÜZELTME: Hafif düşme olayı işleme - sistem donmasını önler."""
+        try:
+            # Öncelik sırasına göre hızlı işlem
+            logging.info(f"⚡ Lightweight fall processing started: {camera_id}")
+            
+            # 1. Hızlı bildirim gönder (UI donmaması için)
+            event_id = str(uuid.uuid4())
+            
+            # 2. Minimal event data
+            minimal_event_data = {
+                "id": event_id,
+                "user_id": self.current_user["localId"] if self.current_user else "unknown",
+                "timestamp": time.time(),
+                "confidence": float(confidence),
+                "camera_id": camera_id,
+                "track_id": track_id,
+                "processing_mode": "lightweight"
+            }
+            
+            # 3. Dashboard hızlı güncelle
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                def quick_dashboard_update():
+                    try:
+                        if (hasattr(self.dashboard_frame, 'winfo_exists') and 
+                            self.dashboard_frame.winfo_exists()):
+                            self.dashboard_frame.update_fall_detection(
+                                screenshot, confidence, minimal_event_data
+                            )
+                            logging.info(f"⚡ Quick dashboard update: {event_id}")
+                    except Exception as e:
+                        logging.error(f"❌ Quick dashboard update error: {e}")
+                
+                self.root.after(0, quick_dashboard_update)
+            
+            # 4. Arka planda tam işleme
+            time.sleep(0.5)  # Kısa gecikme ile tam işleme
+            
+            if self.fall_event_lock.acquire(blocking=True, timeout=2.0):
+                try:
+                    logging.info(f"🔄 Full processing started for: {event_id}")
+                    # Tam işleme yap
+                    result = self._handle_enhanced_fall_detection(
+                        screenshot, confidence, camera_id, track_id, analysis_result
+                    )
+                    logging.info(f"✅ Lightweight processing completed: {result}")
+                finally:
+                    self.fall_event_lock.release()
+            else:
+                logging.warning(f"⏰ Full processing timeout for: {event_id}")
+                
+        except Exception as e:
+            logging.error(f"💥 Lightweight fall processing error: {e}")
+    
+    def _add_minimal_fall_info(self, screenshot, fall_info):
+        """DÜZELTME: Screenshot'a minimal düşme bilgisi ekler - performans optimized."""
+        try:
+            h, w = screenshot.shape[:2]
+            
+            # Minimal overlay - sadece gerekli bilgiler
+            cv2.rectangle(screenshot, (0, 0), (300, 60), (0, 0, 255), -1)  # Kırmızı background
+            
+            cv2.putText(screenshot, "FALL DETECTED", (10, 25), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            
+            timestamp = datetime.datetime.fromtimestamp(fall_info['timestamp']).strftime('%H:%M:%S')
+            cv2.putText(screenshot, f"Time: {timestamp}", (10, 45), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            confidence = fall_info.get('confidence', 0)
+            cv2.putText(screenshot, f"Conf: {confidence:.2f}", (10, 55), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                       
+        except Exception as e:
+            logging.error(f"Minimal fall info overlay error: {e}")
+    
+    def get_storage_manager(self):
+        """DÜZELTME: Thread-safe storage manager getter."""
+        if not hasattr(self, 'storage_manager') or self.storage_manager is None:
+            try:
+                from data.storage import StorageManager
+                self.storage_manager = StorageManager()
+                logging.info("✅ Storage manager initialized")
+            except Exception as e:
+                logging.error(f"❌ Storage manager initialization error: {e}")
+                return None
+        return self.storage_manager
+    
+    def get_db_manager(self):
+        """DÜZELTME: Thread-safe database manager getter."""
+        if not hasattr(self, 'db_manager') or self.db_manager is None:
+            try:
+                from data.database import FirestoreManager
+                self.db_manager = FirestoreManager()
+                logging.info("✅ Database manager initialized")
+            except Exception as e:
+                logging.error(f"❌ Database manager initialization error: {e}")
+                return None
+        return self.db_manager
+    
+    def get_notification_manager(self):
+        """DÜZELTME: Thread-safe notification manager getter."""
+        if not hasattr(self, 'notification_manager') or self.notification_manager is None:
+            try:
+                from core.notification import NotificationManager
+                user_data = self.get_db_manager().get_user_data(self.current_user["localId"]) if self.current_user else None
+                self.notification_manager = NotificationManager.get_instance(user_data)
+                logging.info("✅ Notification manager initialized")
+            except Exception as e:
+                logging.error(f"❌ Notification manager initialization error: {e}")
+                return None
+        return self.notification_manager
 
     def _enhance_screenshot(self, screenshot: np.ndarray, analysis_result, camera_id: str) -> np.ndarray:
         """Screenshot'ı gelişmiş bilgilerle zenginleştir."""

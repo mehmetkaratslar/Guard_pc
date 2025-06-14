@@ -123,12 +123,26 @@ class StorageManager:
             str: Yüklenen dosyanın URL'i veya None
         """
         try:
-            # PIL Image olarak işle
+            # DÜZELTME: Farklı image formatlarını destekle
             if hasattr(image_data, 'save'):
+                # PIL Image
                 img = image_data
-            else:
+            elif hasattr(image_data, 'shape'):
+                # DÜZELTME: NumPy array desteği eklendi
+                import numpy as np
+                if len(image_data.shape) == 3:
+                    # BGR to RGB conversion (OpenCV format)
+                    image_rgb = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(image_rgb.astype(np.uint8))
+                else:
+                    img = Image.fromarray(image_data.astype(np.uint8))
+                logging.debug(f"NumPy array converted to PIL Image: {image_data.shape}")
+            elif isinstance(image_data, bytes):
                 # Bytes ise PIL Image'a çevir
                 img = Image.open(io.BytesIO(image_data))
+            else:
+                logging.error(f"Desteklenmeyen image_data türü: {type(image_data)}")
+                return None
             
             # Görüntüyü optimize et (max 1280x720)
             max_size = (1280, 720)

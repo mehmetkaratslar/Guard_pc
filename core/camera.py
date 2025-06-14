@@ -227,13 +227,25 @@ class UltraStableCamera:
             current_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             current_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             
-            # Eğer çok düşükse 1280x720 yap, yoksa mevcut ayarı koru
-            if current_width < 640 or current_height < 480:
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                logging.info(f"Kamera {self.camera_index} çözünürlük ayarlandı: 1280x720")
+            # YOLOv11 için ZORUNLU 640x640 kare format - birkaç deneme
+            for attempt in range(3):
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+                
+                # Doğrula
+                actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                
+                if actual_width == 640 and actual_height == 640:
+                    logging.info(f"✅ Kamera {self.camera_index} YOLOv11 PERFECT: 640x640")
+                    break
+                else:
+                    logging.warning(f"⚠️ Kamera {self.camera_index} deneme {attempt+1}: {actual_width}x{actual_height} (hedef: 640x640)")
+                    time.sleep(0.1)
             else:
-                logging.info(f"Kamera {self.camera_index} mevcut çözünürlük korundu: {current_width}x{current_height}")
+                logging.warning(f"⚠️ Kamera {self.camera_index} ZORLA ayarlandı: {actual_width}x{actual_height}")
+                # Kameranın native çözünürlüğü kabul et ama uyar
+                logging.info(f"ℹ️ Kamera {self.camera_index} native çözünürlük kullanacak, YOLOv11 resize yapacak")
             
             # FIXED: Auto ayarları kontrollü aç
             try:
@@ -419,11 +431,12 @@ class UltraStableCamera:
     def _create_ultra_stable_placeholder_frame(self):
         """FIXED: Ultra stabil placeholder frame - sistem çökmez."""
         try:
-            frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+            # YOLOv11 için 640x640 placeholder frame
+            frame = np.zeros((640, 640, 3), dtype=np.uint8)
             
             # Gradient background - görsel olarak hoş
-            for i in range(720):
-                intensity = int(15 + (i / 720) * 25)
+            for i in range(640):
+                intensity = int(15 + (i / 640) * 25)
                 frame[i, :] = [intensity, intensity, intensity]
             
             # Durum mesajları
@@ -442,35 +455,36 @@ class UltraStableCamera:
                 color = (0, 255, 0)
                 status = "Sistem hazir"
             
-            # Ana mesaj
-            text_size = cv2.getTextSize(message, font, 1.2, 2)[0]
-            text_x = (1280 - text_size[0]) // 2
-            text_y = (720 + text_size[1]) // 2
-            cv2.putText(frame, message, (text_x, text_y), font, 1.2, color, 3, cv2.LINE_AA)
+            # Ana mesaj - 640x640 için uyarlandı
+            text_size = cv2.getTextSize(message, font, 0.8, 2)[0]
+            text_x = (640 - text_size[0]) // 2
+            text_y = (640 + text_size[1]) // 2
+            cv2.putText(frame, message, (text_x, text_y), font, 0.8, color, 2, cv2.LINE_AA)
             
             # Status mesajı
-            status_size = cv2.getTextSize(status, font, 0.8, 2)[0]
-            status_x = (1280 - status_size[0]) // 2
-            status_y = text_y + 50
-            cv2.putText(frame, status, (status_x, status_y), font, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
+            status_size = cv2.getTextSize(status, font, 0.6, 2)[0]
+            status_x = (640 - status_size[0]) // 2
+            status_y = text_y + 40
+            cv2.putText(frame, status, (status_x, status_y), font, 0.6, (200, 200, 200), 2, cv2.LINE_AA)
             
             # FPS bilgisi
-            fps_text = f"FPS: {self.actual_fps:.1f} | ULTRA STABIL MOD"
-            fps_size = cv2.getTextSize(fps_text, font, 0.6, 1)[0]
-            fps_x = (1280 - fps_size[0]) // 2
-            fps_y = status_y + 35
-            cv2.putText(frame, fps_text, (fps_x, fps_y), font, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+            fps_text = f"FPS: {self.actual_fps:.1f} | YOLOv11 OPTIMIZE"
+            fps_size = cv2.getTextSize(fps_text, font, 0.5, 1)[0]
+            fps_x = (640 - fps_size[0]) // 2
+            fps_y = status_y + 30
+            cv2.putText(frame, fps_text, (fps_x, fps_y), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
             
-            # Border
-            cv2.rectangle(frame, (50, 50), (1230, 670), color, 3)
+            # Border - 640x640 için
+            cv2.rectangle(frame, (30, 30), (610, 610), color, 2)
             
             return frame
             
         except Exception as e:
-            # En basit fallback frame
+            # En basit fallback frame - YOLOv11 uyumlu 640x640
             logging.error(f"Placeholder frame hatası: {e}")
-            fallback = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(fallback, "CAMERA ERROR", (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            fallback = np.zeros((640, 640, 3), dtype=np.uint8)
+            cv2.putText(fallback, "CAMERA ERROR", (220, 320), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(fallback, "YOLOv11 640x640", (250, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
             return fallback
 
     def set_brightness(self, brightness):

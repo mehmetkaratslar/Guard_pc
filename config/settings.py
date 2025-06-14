@@ -37,9 +37,9 @@ CAMERA_CONFIGS = [
     {"index": 2, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera 2 (Ultra Stabil)"},
 ]
 
-# FIXED: Ultra stabil frame ayarları
-FRAME_WIDTH = 1280
-FRAME_HEIGHT = 720
+# FIXED: YOLOv11 optimize frame ayarları - 640x640 kare format
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 640  # YOLOv11 için kare format
 FRAME_RATE = 30  # Sabit 30 FPS
 
 # FIXED: Ultra stabil YOLOv11 Pose Estimation Ayarları
@@ -133,35 +133,35 @@ DEEPSORT_CONFIG = {
     "max_feature_history": 75   # 50 -> 75 (daha uzun geçmiş)
 }
 
-# FIXED: Ultra hassas Düşme Algılama Parametreleri
+# FIXED: DENGELI Düşme Algılama Parametreleri - Hassasiyet azaltıldı
 FALL_DETECTION_CONFIG = {
-    # FIXED: Ultra hassas eşikler - test edilmiş değerler
-    "head_pelvis_ratio_threshold": 0.2,    # 0.3 -> 0.2 (ultra hassas)
-    "tilt_angle_threshold": 20,            # 25 -> 20 (daha düşük açı)
-    "shoulder_hip_alignment_threshold": 70, # 60 -> 70 (daha toleranslı)
+    # FIXED: Dengeli hassasiyet - false positive azaltıldı
+    "head_pelvis_ratio_threshold": 0.4,    # 0.2 -> 0.4 (daha az hassas)
+    "tilt_angle_threshold": 35,            # 20 -> 35 (daha yüksek açı)
+    "shoulder_hip_alignment_threshold": 50, # 70 -> 50 (daha katı)
     
-    # FIXED: Ultra hızlı response
-    "continuity_frames": 1,                # 1 (anında algılama)
-    "min_detection_interval": 0.3,        # 0.5 -> 0.3 (daha sık kontrol)
-    "max_detection_per_minute": 30,       # 20 -> 30 (sınır artırıldı)
+    # FIXED: Dengeli response - sürekli algılama önlendi
+    "continuity_frames": 3,                # 1 -> 3 (3 frame devam etmeli)
+    "min_detection_interval": 2.0,        # 0.3 -> 2.0 (2 saniye ara)
+    "max_detection_per_minute": 5,        # 30 -> 5 (dakikada max 5)
     
-    # FIXED: Ultra hassas confidence
-    "confidence_threshold": 0.3,          # 0.5 -> 0.3 (ultra hassas)
-    "pose_confidence_threshold": 0.1,     # 0.2 -> 0.1 (ultra hassas pose)
+    # FIXED: Dengeli confidence - güvenilirlik artırıldı
+    "confidence_threshold": 0.6,          # 0.3 -> 0.6 (daha güvenilir)
+    "pose_confidence_threshold": 0.3,     # 0.1 -> 0.3 (daha güvenilir pose)
     
-    # FIXED: Ultra stabil tracking
-    "min_track_length": 2,                # 3 -> 2 (daha hızlı tracking)
-    "max_track_age": 60,                  # 30 -> 60 (daha uzun track)
+    # FIXED: Stabil tracking - daha uzun gözlem
+    "min_track_length": 5,                # 2 -> 5 (daha uzun tracking)
+    "max_track_age": 90,                  # 60 -> 90 (daha uzun track)
     
-    # FIXED: Ultra hassas fall detection
-    "fall_angle_threshold": 15,           # 25 -> 15 (daha hassas açı)
-    "fall_speed_threshold": 0.1,          # 0.2 -> 0.1 (daha hassas hız)
-    "fall_duration_threshold": 0.5,       # 1.0 -> 0.5 (daha hızlı algılama)
+    # FIXED: Dengeli fall detection - false positive azaltıldı
+    "fall_angle_threshold": 45,           # 15 -> 45 (gerçek düşme açısı)
+    "fall_speed_threshold": 0.3,          # 0.1 -> 0.3 (hızlı hareket)
+    "fall_duration_threshold": 1.5,       # 0.5 -> 1.5 (uzun süre gözlem)
     
-    # FIXED: Ultra stabil keypoint quality
-    "min_keypoint_quality": 0.05,         # 0.1 -> 0.05 (ultra düşük)
-    "min_visible_keypoints": 5,           # 8 -> 5 (daha az keypoint yeterli)
-    "keypoint_smoothing": 0.8,            # 0.9 -> 0.8 (daha az smoothing)
+    # FIXED: Kaliteli keypoint - daha güvenilir
+    "min_keypoint_quality": 0.2,          # 0.05 -> 0.2 (daha kaliteli)
+    "min_visible_keypoints": 8,           # 5 -> 8 (daha fazla nokta)
+    "keypoint_smoothing": 0.9,            # 0.8 -> 0.9 (daha yumuşak)
 }
 
 # Görselleştirme Ayarları - DÜZELTME: Keypoint'leri görünür yap
@@ -186,7 +186,7 @@ VISUALIZATION_CONFIG = {
     "show_fall_overlay": True,
     "fall_text_size": 1.5,               # 1.0 -> 1.5 (daha büyük text)
     
-    "camera_display_size": (1200, 800),
+    "camera_display_size": (640, 640),  # YOLOv11 kare format
     "ui_update_interval": 40,             # 25 -> 40 ms (25 FPS)
     "stats_update_interval": 1000,       # 500 -> 1000 ms (daha az CPU)
 }
@@ -358,53 +358,60 @@ MODEL_PROFILES = {
 # Kamera kalitesi ayarları
 CAMERA_QUALITY_PRESETS = {
     "low": {
-        "width": 640,
-        "height": 480,
+        "width": 416,
+        "height": 416,
         "fps": 15,
-        "description": "Düşük kalite, hızlı işlem"
+        "description": "Düşük kalite, çok hızlı işlem - YOLOv11 uyumlu"
     },
     "medium": {
-        "width": 1280,
-        "height": 720,
+        "width": 640,
+        "height": 640,
         "fps": 25,
-        "description": "Orta kalite, dengeli işlem (Önerilen)"
+        "description": "Orta kalite, dengeli işlem - YOLOv11 optimize (Önerilen)"
     },
     "high": {
-        "width": 1920,
-        "height": 1080,
+        "width": 832,
+        "height": 832,
         "fps": 30,
-        "description": "Yüksek kalite, yavaş işlem"
+        "description": "Yüksek kalite, yavaş işlem - YOLOv11 uyumlu"
     },
     "ultra": {
-        "width": 1920,
-        "height": 1080,
+        "width": 1280,
+        "height": 1280,
         "fps": 30,
-        "description": "Ultra kalite"
+        "description": "Ultra kalite - YOLOv11 maksimum doğruluk"
     }
 }
 
 # Düşme algılama hassaslık seviyeleri - DÜZELTME: Ultra hassas seviye eklendi
 SENSITIVITY_LEVELS = {
-    "ultra": {                            # YENİ: Test seviyesi
-        "head_pelvis_ratio": 0.2,
-        "tilt_angle": 15,
-        "continuity_frames": 1,
-        "min_keypoints": 3,
-        "description": "Ultra hassaslık, test modu"
-    },
-    "high": {
-        "head_pelvis_ratio": 0.4,         # 0.7 -> 0.4
-        "tilt_angle": 20,                 # 40 -> 20
-        "continuity_frames": 1,           # 3 -> 1
-        "min_keypoints": 4,               # 8 -> 4
-        "description": "Yüksek hassaslık, çok algılama"
+    "low": {                             # YENİ: Düşük hassasiyet - günlük kullanım
+        "head_pelvis_ratio": 0.7,
+        "tilt_angle": 60,
+        "continuity_frames": 5,
+        "min_keypoints": 10,
+        "description": "Düşük hassaslık, günlük kullanım (önerilen)"
     },
     "medium": {
-        "head_pelvis_ratio": 0.6,         # 0.8 -> 0.6
-        "tilt_angle": 30,                 # 45 -> 30
-        "continuity_frames": 2,           # 5 -> 2
-        "min_keypoints": 6,               # 10 -> 6
+        "head_pelvis_ratio": 0.5,         # 0.6 -> 0.5
+        "tilt_angle": 45,                 # 30 -> 45
+        "continuity_frames": 3,           # 2 -> 3
+        "min_keypoints": 8,               # 6 -> 8
         "description": "Orta hassaslık, dengeli"
+    },
+    "high": {
+        "head_pelvis_ratio": 0.3,         # 0.4 -> 0.3
+        "tilt_angle": 30,                 # 20 -> 30
+        "continuity_frames": 2,           # 1 -> 2
+        "min_keypoints": 6,               # 4 -> 6
+        "description": "Yüksek hassaslık, çok algılama"
+    },
+    "ultra": {                            # Test seviyesi - çok hassas
+        "head_pelvis_ratio": 0.2,
+        "tilt_angle": 20,
+        "continuity_frames": 1,
+        "min_keypoints": 4,
+        "description": "Ultra hassaslık, test modu - sadece test için"
     }
 }
 

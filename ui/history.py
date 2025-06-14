@@ -664,7 +664,7 @@ class HistoryFrame(ttk.Frame):
         
         self._draw_rounded_rect(card_canvas, 5, 5, 215, 275, 12, self.colors['secondary'])
         
-        timestamp = float(event.get("timestamp", 0))
+        timestamp = self._safe_timestamp_convert(event.get("timestamp", 0))
         dt = datetime.datetime.fromtimestamp(timestamp)
         confidence = float(event.get("confidence", 0.0))
         
@@ -766,7 +766,7 @@ class HistoryFrame(ttk.Frame):
         scrollbar.pack(side="right", fill="y")
         
         for event in self.filtered_events:
-            timestamp = float(event.get("timestamp", 0))
+            timestamp = self._safe_timestamp_convert(event.get("timestamp", 0))
             dt = datetime.datetime.fromtimestamp(timestamp)
             confidence = float(event.get("confidence", 0.0))
             
@@ -782,6 +782,27 @@ class HistoryFrame(ttk.Frame):
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.events_container.canvas = None  # Liste görünümünde canvas yok
 
+    def _safe_timestamp_convert(self, timestamp_value):
+        """DÜZELTME: Güvenli timestamp dönüştürme - DatetimeWithNanoseconds desteği"""
+        try:
+            # DatetimeWithNanoseconds durumu
+            if hasattr(timestamp_value, 'timestamp'):
+                return timestamp_value.timestamp()
+            # Normal datetime nesnesi
+            elif hasattr(timestamp_value, 'timestamp'):
+                return timestamp_value.timestamp()
+            # String veya sayısal değer
+            elif isinstance(timestamp_value, (int, float)):
+                return float(timestamp_value)
+            elif isinstance(timestamp_value, str):
+                return float(timestamp_value)
+            else:
+                # Varsayılan değer
+                return 0.0
+        except (ValueError, TypeError, AttributeError) as e:
+            logging.warning(f"Timestamp dönüştürme hatası: {timestamp_value} -> {e}")
+            return 0.0
+
     def _create_timeline_view(self):
         """⏱️ Zaman çizelgesi görünümü oluştur"""
         self._clear_canvas_bindings()
@@ -795,8 +816,8 @@ class HistoryFrame(ttk.Frame):
         scrollbar.pack(side="right", fill="y")
         
         y_pos = 40
-        for event in sorted(self.filtered_events, key=lambda x: float(x.get("timestamp", 0)), reverse=True):
-            timestamp = float(event.get("timestamp", 0))
+        for event in sorted(self.filtered_events, key=lambda x: self._safe_timestamp_convert(x.get("timestamp", 0)), reverse=True):
+            timestamp = self._safe_timestamp_convert(event.get("timestamp", 0))
             dt = datetime.datetime.fromtimestamp(timestamp)
             confidence = float(event.get("confidence", 0.0))
             
@@ -830,7 +851,7 @@ class HistoryFrame(ttk.Frame):
         else:
             self.filtered_events = []
             for event in self.events:
-                timestamp = float(event.get("timestamp", 0))
+                timestamp = self._safe_timestamp_convert(event.get("timestamp", 0))
                 dt = datetime.datetime.fromtimestamp(timestamp)
                 
                 searchable_text = f"{dt.strftime('%d.%m.%Y %H:%M:%S')} {event.get('confidence', 0)*100:.1f}%"
@@ -865,7 +886,7 @@ class HistoryFrame(ttk.Frame):
         start_timestamp = start_date.timestamp()
         self.filtered_events = [
             event for event in self.events
-            if float(event.get("timestamp", 0)) >= start_timestamp
+            if self._safe_timestamp_convert(event.get("timestamp", 0)) >= start_timestamp
         ]
         self._update_events_display()
 
@@ -894,7 +915,8 @@ class HistoryFrame(ttk.Frame):
             
         except Exception as e:
             logging.error(f"Events loading error: {e}")
-            self.after(0, lambda: messagebox.showerror("Hata", f"Olaylar yüklenemedi: {e}"))
+            error_msg = f"Olaylar yüklenemedi: {str(e)}"
+            self.after(0, lambda msg=error_msg: messagebox.showerror("Hata", msg))
 
     def _calculate_statistics(self):
         """📊 İstatistikleri hesapla"""
@@ -908,8 +930,8 @@ class HistoryFrame(ttk.Frame):
         self.stats = {
             "total_events": len(self.events),
             "high_confidence": len([e for e in self.events if float(e.get("confidence", 0)) >= 0.8]),
-            "today_events": len([e for e in self.events if float(e.get("timestamp", 0)) >= today_start]),
-            "this_week": len([e for e in self.events if float(e.get("timestamp", 0)) >= week_start]),
+            "today_events": len([e for e in self.events if self._safe_timestamp_convert(e.get("timestamp", 0)) >= today_start]),
+            "this_week": len([e for e in self.events if self._safe_timestamp_convert(e.get("timestamp", 0)) >= week_start]),
             "avg_confidence": sum(float(e.get("confidence", 0)) for e in self.events) / len(self.events) if self.events else 0.0
         }
 
@@ -1076,7 +1098,7 @@ class HistoryFrame(ttk.Frame):
 
     def _update_event_metadata(self, event):
         """📊 Olay metadata'sını güncelle"""
-        timestamp = float(event.get("timestamp", 0))
+        timestamp = self._safe_timestamp_convert(event.get("timestamp", 0))
         dt = datetime.datetime.fromtimestamp(timestamp)
         confidence = float(event.get("confidence", 0.0))
         
@@ -1102,7 +1124,7 @@ class HistoryFrame(ttk.Frame):
                 timestamp = datetime.datetime.strptime(timestamp_str, "%d.%m.%Y %H:%M:%S").timestamp()
                 confidence = float(values[2].strip("%")) / 100  # Örn: "95.0%" -> 0.95
                 for evt in self.filtered_events:
-                    if abs(float(evt.get("timestamp", 0)) - timestamp) < 1 and abs(float(evt.get("confidence", 0)) - confidence) < 0.01:
+                    if abs(self._safe_timestamp_convert(evt.get("timestamp", 0)) - timestamp) < 1 and abs(float(evt.get("confidence", 0)) - confidence) < 0.01:
                         self._select_event(evt)
                         break
             except (ValueError, IndexError) as e:
@@ -1138,9 +1160,30 @@ class HistoryFrame(ttk.Frame):
             threading.Thread(target=self._async_load_thumbnail, args=(canvas, url, x, y, w, h), daemon=True).start()
         except Exception as e:
             logging.error(f"Thumbnail yükleme hatası: {e}")
+            self._show_thumbnail_placeholder(canvas, x, y, w, h)
+    
+    def _show_thumbnail_placeholder(self, canvas, x, y, w, h):
+        """DÜZELTME: Thumbnail placeholder göster."""
+        try:
+            def show_placeholder():
+                try:
+                    canvas.delete(f"thumb_{x}_{y}")
+                    canvas.create_rectangle(x, y, x+w, y+h, 
+                                          fill=self.colors.get('bg_secondary', '#f0f0f0'),
+                                          outline=self.colors.get('text_secondary', 'gray'))
+                    canvas.create_text(x + w//2, y + h//2, text="📷\nGörüntü\nYüklenemedi",
+                                     font=("Segoe UI", 8), 
+                                     fill=self.colors.get('text_secondary', 'gray'),
+                                     anchor="center", tags=f"thumb_{x}_{y}")
+                except Exception as e:
+                    logging.debug(f"Placeholder gösterme hatası: {e}")
+            
+            self.after(0, show_placeholder)
+        except Exception as e:
+            logging.error(f"Thumbnail placeholder error: {e}")
 
     def _async_load_thumbnail(self, canvas, url, x, y, w, h):
-        """🖼️ Thumbnail'ı asenkron olarak yükle"""
+        """🖼️ DÜZELTME: Thumbnail'ı asenkron olarak yükle - local file desteği"""
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()

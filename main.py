@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =======================================================================================
 # === PROGRAM AÇIKLAMASI ===
 # Dosya Adı: main.py 
@@ -29,10 +30,9 @@ from config.settings import APP_NAME, APP_VERSION, MODEL_PATH, validate_config  
 
 # Windows kamera timeout sorunu için hızlı çözüm
 import os
-os.environ['OPENCV_CAMERA_TIMEOUT'] = '2000'  # 2 saniye timeout
-
-os.environ['OPENCV_CAMERA_TIMEOUT'] = '3000'  # 3 saniye timeout
+os.environ['OPENCV_CAMERA_TIMEOUT'] = '5000'  # 5 saniye timeout - iyileştirildi
 os.environ['OPENCV_VIDEOIO_PRIORITY_DSHOW'] = '1'  # DirectShow öncelik
+os.environ['OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS'] = '0'  # Hardware transforms devre dışı
 
 # Uygulama meta verileri
 APP_METADATA = {
@@ -472,19 +472,42 @@ def safe_camera_validation():
         
         def test_camera_with_timeout(camera_index, camera_name, result_dict, timeout=3):
             """Thread içinde kamera testi - Windows uyumlu timeout"""
+            cap = None
             try:
                 logging.info(f"🔍 Kamera {camera_index} ({camera_name}) test ediliyor...")
                 
-                # Kamerayı aç
+                # Kamerayı aç - Enhanced parametler ile
                 cap = cv2.VideoCapture(camera_index)
                 
+                # YOLOv11 için ZORUNLU 640x640 kare format - mehrere denemeler
+                for attempt in range(3):
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+                    cap.set(cv2.CAP_PROP_FPS, 30)  # Daha yüksek FPS
+                    
+                    # Doğrulama
+                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    
+                    if actual_w == 640 and actual_h == 640:
+                        logging.info(f"✅ Kamera {camera_index} test: PERFECT 640x640")
+                        break
+                    else:
+                        logging.warning(f"⚠️ Kamera {camera_index} test deneme {attempt+1}: {actual_w}x{actual_h}")
+                        time.sleep(0.1)
+                else:
+                    logging.warning(f"⚠️ Kamera {camera_index} test: Native {actual_w}x{actual_h} kullanacak")
+                
                 if cap.isOpened():
-                    # Frame test et
-                    ret, frame = cap.read()
-                    if ret and frame is not None and frame.shape[0] > 0:
-                        logging.info(f"✅ Kamera {camera_index} çalışıyor: {frame.shape}")
-                        result_dict['success'] = True
-                        result_dict['frame_shape'] = frame.shape
+                    # Frame test et - birkaç frame dene
+                    for attempt in range(3):
+                        ret, frame = cap.read()
+                        if ret and frame is not None and frame.shape[0] > 0:
+                            logging.info(f"✅ Kamera {camera_index} çalışıyor: {frame.shape}")
+                            result_dict['success'] = True
+                            result_dict['frame_shape'] = frame.shape
+                            break
+                        time.sleep(0.1)  # Kısa bekleme
                     else:
                         logging.warning(f"⚠️ Kamera {camera_index} açık ama frame alamadı")
                         result_dict['success'] = False
@@ -494,14 +517,15 @@ def safe_camera_validation():
                     result_dict['success'] = False
                     result_dict['error'] = "Kamera açılamadı"
                 
-                cap.release()
-                
             except Exception as e:
                 logging.warning(f"⚠️ Kamera {camera_index} test hatası: {e}")
                 result_dict['success'] = False
                 result_dict['error'] = str(e)
+            finally:
+                # Güvenli cleanup
                 try:
-                    cap.release()
+                    if cap is not None:
+                        cap.release()
                 except:
                     pass
         
@@ -639,6 +663,7 @@ def enhanced_main():
         logging.info(f"✅ AI Modelleri: {len(model_status['available_models'])} model, {model_status['total_size_mb']:.1f} MB")
         
         # DÜZELTME: Enhanced Stream Server'ı güvenli başlat
+        flask_thread = None
         try:
             logging.info("🌐 Enhanced YOLOv11 Stream Server başlatılıyor...")
             
@@ -653,8 +678,8 @@ def enhanced_main():
                 logging.info("   📊 Real-time Stats: http://localhost:5000/api/stats")
                 logging.info("   🔧 API Documentation: http://localhost:5000/api/docs")
                 
-                # DÜZELTME: Server'ın tamamen başlaması için kısa bekleme
-                time.sleep(2)  # 3 -> 2 saniye
+                # Server'ın tamamen başlaması için kısa bekleme
+                time.sleep(1.5)  # 2 -> 1.5 saniye
             else:
                 logging.warning("⚠️ Enhanced Stream Server başlatılamadı, ancak sistem devam edecek")
                 
@@ -792,6 +817,7 @@ def enhanced_main():
         
         # DÜZELTME: Error handling ile ana döngüyü başlat
         try:
+            root.protocol("WM_DELETE_WINDOW", lambda: on_window_close(root, app if 'app' in locals() else None))
             root.mainloop()
         except KeyboardInterrupt:
             logging.info("⚠️ Kullanıcı tarafından durduruldu (Ctrl+C)")
@@ -885,18 +911,28 @@ def enhanced_main():
         
         try:
             # GuardApp cleanup
-            if 'app' in locals() and hasattr(app, '_on_enhanced_close'):
+            if 'app' in locals() and app and hasattr(app, '_on_enhanced_close'):
                 app._on_enhanced_close()
                 cleanup_tasks.append("✅ GuardApp")
         except Exception as e:
             cleanup_tasks.append(f"⚠️ GuardApp: {str(e)[:50]}")
         
         try:
+            # Flask server cleanup
+            if 'flask_thread' in locals() and flask_thread and flask_thread.is_alive():
+                # Flask server'ı kapatmak için signal gönder
+                logging.info("🌐 Enhanced Stream Server kapatılıyor...")
+                # Thread daemon olarak ayarlandığı için otomatik kapanacak
+                cleanup_tasks.append("✅ Flask Server")
+        except Exception as e:
+            cleanup_tasks.append(f"⚠️ Flask Server: {str(e)[:50]}")
+        
+        try:
             # Thread cleanup
             active_threads = threading.active_count()
             if active_threads > 1:
                 logging.info(f"🧵 {active_threads-1} aktif thread temizleniyor...")
-                time.sleep(1)  # Thread'lerin temizlenmesi için bekle
+                time.sleep(0.5)  # Thread'lerin temizlenmesi için kısa bekle
             cleanup_tasks.append("✅ Threading")
         except Exception as e:
             cleanup_tasks.append(f"⚠️ Threading: {str(e)[:50]}")
@@ -906,13 +942,37 @@ def enhanced_main():
         for task in cleanup_tasks:
             logging.info(f"   {task}")
         
+        # Session süresi hesaplama - DÜZELTME
+        session_duration = time.time() - start_time if 'start_time' in locals() else 0
+        
         logging.info("=" * 100)
         logging.info("👋 Guard AI Ultra uygulaması güvenli şekilde kapatıldı.")
-        uptime = time.time() - time.time()  # Placeholder
-        logging.info(f"🕐 Session sürdü: {uptime:.1f}s")
+        logging.info(f"🕐 Session sürdü: {session_duration:.1f}s")
         logging.info("=" * 100)
         
         return True
+
+def on_window_close(root, app=None):
+    """Enhanced pencere kapatma işleyicisi"""
+    try:
+        logging.info("🚪 Pencere kapatma işlemi başlatıldı")
+        
+        # Uygulama varsa önce onu kapat
+        if app and hasattr(app, '_on_enhanced_close'):
+            app._on_enhanced_close()
+        
+        # Root pencereyi kapat
+        if root:
+            root.quit()
+            root.destroy()
+            
+    except Exception as e:
+        logging.warning(f"⚠️ Pencere kapatma hatası: {e}")
+        # Zorla çık
+        try:
+            root.quit()
+        except:
+            pass
 
 # ===== ULTRA ENHANCED PROGRAM BAŞLANGIÇ NOKTASI =====
 if __name__ == "__main__":

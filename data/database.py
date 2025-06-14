@@ -288,17 +288,33 @@ class FirestoreManager:
             user_id = event_data.get("user_id", "unknown")
             logging.info(f"Düşme olayı kaydediliyor: {event_id} - Kullanıcı: {user_id}")
             
-            # Firestore uyumlu veri oluştur
-            cleaned_data = {}
-            for key, value in event_data.items():
-                if key == "model_info":
-                    # model_info'yu string'e çevir
-                    cleaned_data[key] = str(value)
-                elif isinstance(value, (str, int, float, bool)) or value is None:
-                    cleaned_data[key] = value
+            # DÜZELTME: Firestore uyumlu veri oluştur - JSON serialization
+            def serialize_firestore_data(obj):
+                """Firestore uyumlu veri serileştirmesi."""
+                if obj is None or isinstance(obj, (str, int, float, bool)):
+                    return obj
+                elif isinstance(obj, dict):
+                    return {k: serialize_firestore_data(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return [serialize_firestore_data(item) for item in obj]
                 else:
-                    # Diğer karmaşık nesneleri string'e çevir
-                    cleaned_data[key] = str(value)
+                    # Complex objects'i JSON string'e çevir
+                    try:
+                        import json
+                        return json.dumps(obj, default=str)
+                    except:
+                        return str(obj)
+            
+            cleaned_data = serialize_firestore_data(event_data)
+            
+            # DÜZELTME: Çok büyük alanları kısalt (Firestore 1MB limiti)
+            max_field_size = 1024 * 50  # 50KB per field max
+            for key, value in cleaned_data.items():
+                if isinstance(value, str) and len(value) > max_field_size:
+                    cleaned_data[key] = value[:max_field_size] + "...[truncated]"
+                    logging.warning(f"Field '{key}' truncated due to size: {len(value)} > {max_field_size}")
+            
+            logging.debug(f"Event data cleaned for Firestore: {len(str(cleaned_data))} bytes")
             
             if not self.is_available:
                 # Yerel depolamada /users/{user_id}/events ve /users/{user_id}/fall_events'e kaydet
