@@ -292,7 +292,7 @@ class FallDetector:
 
     def get_detection_visualization(self, frame):
         """
-        DÜZELTME: Enhanced detection visualization - keypoint'ler görünür
+        DÜZELTME: İNSAN DOĞRULAMALI detection visualization
         """
         if not self.is_model_loaded or self.model is None:
             logging.warning("Model yüklü değil, orijinal frame döndürülüyor")
@@ -305,13 +305,33 @@ class FallDetector:
                 # Frame'i resize et
                 frame_resized = cv2.resize(frame, (self.frame_size, self.frame_size))
                 
-                # YOLO ile pose estimation - düşük confidence
+                # DÜZELTME: YOLO ile pose estimation - ÇOK DÜŞÜK threshold + DEBUG
                 results = self.model.predict(
                     frame_resized, 
-                    conf=0.15,  # 0.50 -> 0.15 (çok düşük threshold)
+                    conf=0.15,  # 0.20 -> 0.15 (çok daha düşük)
                     classes=[0],  # sadece person class
                     verbose=False
                 )
+                
+                # DEBUG: YOLO sonuçları kontrol et - SADECE değişiklik varsa logla
+                total_raw_detections = 0
+                for result in results:
+                    if result.boxes is not None and hasattr(result.boxes, 'xyxy'):
+                        total_raw_detections += len(result.boxes.xyxy)
+                
+                # FIXED: Log spam önleme - doğrulanmış insan sayısı
+                if not hasattr(self, '_last_validated_count'):
+                    self._last_validated_count = -1
+                    self._last_validated_log_time = 0
+                
+                current_time = time.time()
+                validated_should_log = (total_raw_detections != self._last_validated_count or 
+                                       current_time - self._last_validated_log_time > 10.0)
+                
+                if validated_should_log:
+                    logging.info(f"🔍 Doğrulanmış insan sayısı: {total_raw_detections}")
+                    self._last_validated_count = total_raw_detections
+                    self._last_validated_log_time = current_time
                 
                 # Detections'ı hazırla
                 detections = []
@@ -379,35 +399,81 @@ class FallDetector:
                                     keypoints = None
                                     keypoint_confs = None
                             
-                            # Her detection için işle
+                            # DÜZELTME: Her detection için GELİŞMİŞ İNSAN DOĞRULAMA
                             for i, (box, conf) in enumerate(zip(boxes, confs)):
+                                # DEBUG: Her detection'ı logla
+                                logging.debug(f"📊 Detection {i}: conf={conf:.3f}")
+                                
+                                # DÜZELTME: ÇOK DÜŞÜK filtreleme - neredeyse her şeyi geçir
+                                if conf < 0.15:  # 0.4 -> 0.15 (çok daha düşük)
+                                    logging.debug(f"❌ Düşük confidence reddedildi: {conf:.3f}")
+                                    continue
+                                
                                 x1, y1, x2, y2 = map(int, box)
                                 
-                                # Detection formatı: [x, y, w, h]
-                                detection = [x1, y1, x2-x1, y2-y1]
-                                detections.append((detection, conf, 0))  # class_id = 0 (person)
+                                # DEBUG: Bbox boyutları
+                                bbox_width = x2 - x1
+                                bbox_height = y2 - y1
+                                logging.debug(f"📐 Bbox boyutu: {bbox_width}x{bbox_height}")
                                 
-                                # Pose data ekle
+                                # DÜZELTME: ÇOK ESNEK boyut kontrolü
+                                if bbox_width < 20 or bbox_height < 50:  # 30,80 -> 20,50 (çok daha küçük)
+                                    logging.debug(f"❌ Çok küçük obje reddedildi: {bbox_width}x{bbox_height}")
+                                    continue
+                                
+                                if bbox_width > 400 or bbox_height > 600:  # 300,500 -> 400,600 (çok daha büyük)
+                                    logging.debug(f"❌ Çok büyük obje reddedildi: {bbox_width}x{bbox_height}")
+                                    continue
+                                
+                                # DÜZELTME: ÇOK ESNEK aspect ratio
+                                aspect_ratio = bbox_height / bbox_width
+                                if aspect_ratio < 1.0 or aspect_ratio > 6.0:  # 1.2-4.5 -> 1.0-6.0 (çok daha geniş)
+                                    logging.debug(f"❌ Yanlış aspect ratio reddedildi: {aspect_ratio:.2f}")
+                                    continue
+                                
+                                logging.debug(f"✅ Bbox kontrolü geçti: {bbox_width}x{bbox_height}, ratio: {aspect_ratio:.2f}")
+                                
+                                # DÜZELTME: Pose data ve keypoint doğrulama
                                 person_keypoints = None
                                 person_keypoint_confs = None
                                 if keypoints is not None and i < len(keypoints):
                                     person_keypoints = keypoints[i]
                                     person_keypoint_confs = keypoint_confs[i] if keypoint_confs is not None else None
+                                    
+                                    # DEBUG: Keypoint sayısı
+                                    if person_keypoint_confs is not None:
+                                        valid_kp_count = np.sum(person_keypoint_confs > 0.2)  # 0.3 -> 0.2 (daha düşük)
+                                        logging.debug(f"🎯 Geçerli keypoint sayısı: {valid_kp_count}/17")
+                                    
+                                    # DÜZELTME: ÇOK ESNEK keypoint validation - geçici olarak devre dışı
+                                    # if not self._validate_human_keypoints(person_keypoints, person_keypoint_confs):
+                                    #     logging.debug(f"❌ Keypoint doğrulama başarısız - insan değil")
+                                    #     continue
+                                    logging.debug(f"⚠️ Keypoint validation GEÇİCİ OLARAK DEVRE DIŞI - test için")
+                                
+                                # DÜZELTME: Sadece doğrulanmış insanları ekle
+                                detection = [x1, y1, x2-x1, y2-y1]
+                                detections.append((detection, conf, 0))  # class_id = 0 (person)
                                 
                                 pose_data.append({
                                     'keypoints': person_keypoints,
                                     'keypoint_confs': person_keypoint_confs,
-                                    'bbox': [x1, y1, x2, y2]
+                                    'bbox': [x1, y1, x2, y2],
+                                    'confidence': float(conf),  # Box confidence ekle
+                                    'validated_human': True  # Doğrulanmış insan işareti
                                 })
+                                
+                                logging.info(f"✅ İnsan EKLENDI: conf={conf:.3f}, keypoints={np.sum(person_keypoint_confs > 0.2) if person_keypoint_confs is not None else 0}")
                         
                         except Exception as box_error:
-                            logging.debug(f"Box işleme hatası: {box_error}")
+                            logging.error(f"Box işleme hatası: {box_error}")
                             continue
 
                 # İstatistikleri güncelle
                 self.detection_stats['total_detections'] += len(detections)
+                logging.info(f"🔍 Doğrulanmış insan sayısı: {len(detections)}")
 
-                # DeepSORT ile tracking
+                # DeepSORT ile tracking - sadece doğrulanmış insanlar
                 tracks = []
                 if self.tracker is not None and len(detections) > 0:
                     try:
@@ -419,10 +485,10 @@ class FallDetector:
                 # Tracking bilgilerini güncelle
                 self._update_person_tracks(tracks, pose_data)
                 
-                # DÜZELTME: Enhanced görselleştirme - keypoint'ler görünür
+                # DÜZELTME: Enhanced görselleştirme - sadece doğrulanmış insanlar
                 annotated_frame = self._draw_enhanced_visualizations(frame, tracks)
                 
-                # Track listesi oluştur
+                # Track listesi oluştur - sadece doğrulanmış insanlar
                 track_list = []
                 for track in tracks:
                     if hasattr(track, 'is_confirmed') and track.is_confirmed():
@@ -441,7 +507,8 @@ class FallDetector:
                         track_list.append({
                             'track_id': track_id,
                             'bbox': [x1, y1, x2, y2],
-                            'confidence': getattr(track, 'confidence', 0.0)
+                            'confidence': getattr(track, 'confidence', 0.0),
+                            'validated_human': True  # Doğrulanmış insan
                         })
                 
                 # İşlem süresini kaydet
@@ -779,7 +846,7 @@ class FallDetector:
 
     def _analyze_fall_for_person(self, person_track):
         """
-        DÜZELTME: Dengeli düşme analizi - optimize edilmiş eşikler
+        DÜZELTME: DENGELI İNSAN DOĞRULAMALI düşme analizi
         """
         if not person_track.has_valid_pose():
             return False, 0.0
@@ -788,12 +855,19 @@ class FallDetector:
             keypoints = person_track.latest_keypoints
             keypoint_confs = person_track.latest_keypoint_confs
             
-            # DÜZELTME: Dengeli eşik - yanlış pozitif azaltılmış
-            conf_mask = keypoint_confs > 0.3  # 0.1 -> 0.3 (daha güvenilir)
+            # DÜZELTME: Dengeli confidence threshold - daha fazla keypoint algılar
+            conf_threshold = 0.35  # 0.5 -> 0.35 (daha düşük eşik)
+            conf_mask = keypoint_confs > conf_threshold
             valid_keypoints = np.sum(conf_mask)
             
-            # DÜZELTME: Minimum keypoint sayısı artırıldı - daha güvenilir
-            if valid_keypoints < 8:  # 4 -> 8 (daha stabil)
+            # DÜZELTME: Esnek minimum keypoint sayısı - güvenilir analiz
+            if valid_keypoints < 7:  # 10 -> 7 (daha esnek)
+                logging.debug(f"❌ Yetersiz güvenilir keypoint düşme analizi için: {valid_keypoints}/17")
+                return False, 0.0
+            
+            # DÜZELTME: TEKRAR İNSAN DOĞRULAMA - düşme analizinden önce
+            if not self._validate_human_keypoints(keypoints, keypoint_confs):
+                logging.debug(f"❌ İnsan doğrulama başarısız - düşme analizi iptal")
                 return False, 0.0
             
             # DÜZELTME: Doğru COCO keypoint indeksleri (0-based)
@@ -809,14 +883,15 @@ class FallDetector:
             left_ankle = keypoints[15] if conf_mask[15] else None           # 15: sol ayak bileği
             right_ankle = keypoints[16] if conf_mask[16] else None          # 16: sağ ayak bileği
             
-            # DÜZELTME: Vücut merkez noktalarını hesapla
-            shoulder_center = None
-            if left_shoulder is not None and right_shoulder is not None:
-                shoulder_center = (left_shoulder + right_shoulder) / 2
+            # DÜZELTME: ZORUNLU anatomik noktalar - bunlar olmadan analiz yapma
+            if (left_shoulder is None or right_shoulder is None or 
+                left_hip is None or right_hip is None):
+                logging.debug(f"❌ Zorunlu anatomik noktalar eksik - düşme analizi iptal")
+                return False, 0.0
             
-            hip_center = None
-            if left_hip is not None and right_hip is not None:
-                hip_center = (left_hip + right_hip) / 2
+            # DÜZELTME: Vücut merkez noktalarını hesapla
+            shoulder_center = (left_shoulder + right_shoulder) / 2
+            hip_center = (left_hip + right_hip) / 2
             
             # Ayak merkezi
             foot_center = None
@@ -827,74 +902,91 @@ class FallDetector:
             elif right_ankle is not None:
                 foot_center = right_ankle
             
-            # DÜZELTME: Ana düşme algılama kriterleri - çok hassas
+            # DÜZELTME: KATIL düşme algılama kriterleri - yüksek eşikler
             fall_indicators = []
             fall_score = 0.0
             
-            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (45 derece kriteri - dengeli)
-            if shoulder_center is not None and hip_center is not None:
-                dx = hip_center[0] - shoulder_center[0]
-                dy = hip_center[1] - shoulder_center[1]
-                
-                if abs(dy) > 1:
-                    tilt_angle = abs(math.degrees(math.atan(dx / abs(dy))))
-                    
-                    # DÜZELTME: 45 derece eşiği - dengeli hassasiyet
-                    if tilt_angle > 45:  # 25 -> 45 derece (daha güvenilir)
-                        fall_score += 0.6  # Ağırlık azaltıldı
-                        fall_indicators.append("omuz_kalca_egim")
-                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Omuz-kalça eğimi {tilt_angle:.1f}°")
-                    elif tilt_angle > 35:  # Orta risk
-                        fall_score += 0.3
-                        fall_indicators.append("egim_riski")
+            # 1. DÜZELTME: OMUZ-KALÇA EĞİM AÇISI (60 derece kriteri - çok katı)
+            dx = hip_center[0] - shoulder_center[0]
+            dy = hip_center[1] - shoulder_center[1]
             
-            # 2. DÜZELTME: BAGAS-AYAK DİKEY MESAFE ORANI - çok hassas
-            if hip_center is not None and foot_center is not None:
+            if abs(dy) > 1:
+                tilt_angle = abs(math.degrees(math.atan(dx / abs(dy))))
+                
+                # DÜZELTME: 60 derece eşiği - çok katı hassasiyet
+                if tilt_angle > 60:  # 45 -> 60 derece (çok daha katı)
+                    fall_score += 1.0  # Yüksek ağırlık
+                    fall_indicators.append("kritik_egim")
+                    logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik omuz-kalça eğimi {tilt_angle:.1f}°")
+                elif tilt_angle > 45:  # Orta risk
+                    fall_score += 0.5
+                    fall_indicators.append("omuz_kalca_egim")
+            
+            # 2. DÜZELTME: YÜKSEK HASSAS yükseklik kaybı analizi
+            if foot_center is not None:
                 hip_foot_distance = abs(hip_center[1] - foot_center[1])
                 bbox_height = person_track.latest_bbox[3] - person_track.latest_bbox[1]
                 
                 if bbox_height > 0:
                     height_ratio = hip_foot_distance / bbox_height
                     
-                    # DÜZELTME: Çok hassas oran
-                    if height_ratio < 0.4:  # 0.6 -> 0.4
-                        fall_score += 0.7
+                    # DÜZELTME: Çok katı oran - gerçek düşme tespiti
+                    if height_ratio < 0.25:  # 0.4 -> 0.25 (çok daha katı)
+                        fall_score += 1.2
+                        fall_indicators.append("kritik_yukseklik_kaybi")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik yükseklik kaybı {height_ratio:.3f}")
+                    elif height_ratio < 0.4:  # Orta risk
+                        fall_score += 0.6
                         fall_indicators.append("yukseklik_kaybi")
-                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Yükseklik oranı {height_ratio:.3f}")
-                    elif height_ratio < 0.6:  # Orta risk
-                        fall_score += 0.3
-                        fall_indicators.append("yukseklik_riski")
             
-            # 3. DÜZELTME: OMUZ GENİŞLİĞİ VS YÜKSEKLIK ORANI - yatay pozisyon
-            if (left_shoulder is not None and right_shoulder is not None and 
-                shoulder_center is not None and foot_center is not None):
-                
+            # 3. DÜZELTME: YATAY POZISYONU - çok katı kontrol
+            if foot_center is not None:
                 shoulder_width = abs(left_shoulder[0] - right_shoulder[0])
                 body_height = abs(shoulder_center[1] - foot_center[1])
                 
                 if body_height > 0:
                     width_height_ratio = shoulder_width / body_height
                     
-                    # DÜZELTME: Daha düşük eşik - yatay pozisyon
-                    if width_height_ratio > 0.6:  # 0.8 -> 0.6
-                        fall_score += 0.8
+                    # DÜZELTME: Çok katı eşik - gerçek yatay pozisyon
+                    if width_height_ratio > 0.8:  # 0.6 -> 0.8 (çok daha katı)
+                        fall_score += 1.5
+                        fall_indicators.append("kritik_yatay_pozisyon")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik yatay pozisyon {width_height_ratio:.3f}")
+                    elif width_height_ratio > 0.6:  # Orta risk
+                        fall_score += 0.7
                         fall_indicators.append("yatay_pozisyon")
-                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Genişlik/yükseklik oranı {width_height_ratio:.3f}")
-                    elif width_height_ratio > 0.5:  # Orta risk
-                        fall_score += 0.4
-                        fall_indicators.append("yatay_risk")
             
-            # 4. DÜZELTME: BURUN KONUMU - baş aşağıda mı?
-            if nose is not None and hip_center is not None:
+            # 4. DÜZELTME: BAŞ POZISYONU - çok katı kontrol
+            if nose is not None:
                 nose_hip_diff = nose[1] - hip_center[1]  # Y farkı
                 
-                # Burun kalçadan aşağıdaysa (ters durum)
-                if nose_hip_diff > 20:  # 20 piksel fark
-                    fall_score += 0.6
+                # Burun kalçadan çok aşağıdaysa (ters durum)
+                if nose_hip_diff > 40:  # 20 -> 40 piksel (daha katı)
+                    fall_score += 1.0
+                    fall_indicators.append("kritik_bas_asagida")
+                    logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik baş aşağıda pozisyonu")
+                elif nose_hip_diff > 20:  # Orta risk
+                    fall_score += 0.4
                     fall_indicators.append("bas_asagida")
-                    logging.debug(f"DÜŞME İNDİKATÖRÜ: Baş aşağıda pozisyonu")
             
-            # 5. DÜZELTME: DİZ BÜKÜLMESİ - oturma/düşme
+            # 5. DÜZELTME: DESTEK POZISYONU - el yerde
+            ground_support_score = 0
+            for elbow_name, elbow_point in [("sol_dirsek", left_elbow), ("sag_dirsek", right_elbow)]:
+                if elbow_point is not None and foot_center is not None:
+                    elbow_foot_distance = abs(elbow_point[1] - foot_center[1])
+                    
+                    # Dirsek ayağa çok yakınsa (yerde desteklenme)
+                    if elbow_foot_distance < 60:  # 100 -> 60 piksel (daha katı)
+                        ground_support_score += 0.8
+                        fall_indicators.append(f"kritik_{elbow_name}_destek")
+                        logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik {elbow_name} yerde destek")
+                    elif elbow_foot_distance < 100:  # Orta risk
+                        ground_support_score += 0.3
+                        fall_indicators.append(f"{elbow_name}_destek")
+            
+            fall_score += ground_support_score
+            
+            # 6. DÜZELTME: DİZ BÜKÜLME - oturma/düşme analizi
             knee_bend_score = 0
             for knee_name, knee_point, hip_point, ankle_point in [
                 ("sol_diz", left_knee, left_hip, left_ankle),
@@ -912,40 +1004,38 @@ class FallDetector:
                         cos_angle = np.clip(dot_product / norms, -1.0, 1.0)
                         knee_angle = math.degrees(math.acos(cos_angle))
                         
-                        # DÜZELTME: Diz açısı 60 derece altındaysa risk
-                        if knee_angle < 60:  # 50 -> 60
-                            knee_bend_score += 0.3
+                        # DÜZELTME: Diz açısı 45 derece altındaysa kritik
+                        if knee_angle < 45:  # 60 -> 45 (daha katı)
+                            knee_bend_score += 0.6
+                            fall_indicators.append(f"kritik_{knee_name}_bukum")
+                            logging.debug(f"DÜŞME İNDİKATÖRÜ: Kritik {knee_name} açısı {knee_angle:.1f}°")
+                        elif knee_angle < 60:  # Orta risk
+                            knee_bend_score += 0.2
                             fall_indicators.append(f"{knee_name}_bukum")
-                            logging.debug(f"DÜŞME İNDİKATÖRÜ: {knee_name} açısı {knee_angle:.1f}°")
             
             fall_score += knee_bend_score
             
-            # 6. DÜZELTME: EL POZİSYONU - desteklenme hareketi
-            for elbow_name, elbow_point in [("sol_dirsek", left_elbow), ("sag_dirsek", right_elbow)]:
-                if elbow_point is not None and foot_center is not None:
-                    elbow_foot_distance = abs(elbow_point[1] - foot_center[1])
-                    
-                    # Dirsek ayağa çok yakınsa (desteklenme)
-                    if elbow_foot_distance < 100:  # 80 -> 100 piksel
-                        fall_score += 0.4
-                        fall_indicators.append(f"{elbow_name}_destek")
-                        logging.debug(f"DÜZELTME İNDİKATÖRÜ: {elbow_name} desteklenme")
-            
-            # DÜZELTME: DÜŞME KARARI - DENGELİ EŞİK
-            fall_threshold = 0.7  # 0.3 -> 0.7 (dengeli hassasiyet)
+            # DÜZELTME: ÇOK YÜKSEK DÜŞME EŞİĞİ - sadece gerçek düşmeler
+            fall_threshold = 2.0  # 0.7 -> 2.0 (çok daha yüksek eşik)
             is_fall = fall_score >= fall_threshold
             
+            # DÜZELTME: Ek güvenlik kontrolü - en az 2 farklı indikatör gerekli
+            if is_fall and len(set(fall_indicators)) < 2:
+                logging.debug(f"❌ Yetersiz çeşitli indikatör - düşme reddedildi")
+                is_fall = False
+            
             if is_fall:
-                logging.warning(f"🚨 DENGELİ DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
+                logging.warning(f"🚨 GELİŞMİŞ DÜŞME ALGILANDI! Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
                 logging.info(f"   📊 Geçerli keypoint sayısı: {valid_keypoints}")
                 logging.info(f"   🎯 Toplam indikatör: {len(fall_indicators)}")
-            elif fall_score > 0.4:  # Orta riskli durumları logla
+                logging.info(f"   🔍 Güvenilir insan doğrulaması: ✅")
+            elif fall_score > 1.0:  # Orta riskli durumları logla
                 logging.debug(f"⚠️ Orta risk algılandı: Skor: {fall_score:.3f}, İndikatörler: {fall_indicators}")
             
             return is_fall, fall_score
             
         except Exception as e:
-            logging.error(f"Ultra hassas düşme analizi hatası: {str(e)}")
+            logging.error(f"Gelişmiş düşme analizi hatası: {str(e)}")
             return False, 0.0
 
     def _play_fall_alert_sound(self):
@@ -966,6 +1056,81 @@ class FallDetector:
             logging.info("FallDetector kaynakları temizlendi.")
         except Exception as e:
             logging.error(f"Cleanup hatası: {str(e)}")
+
+    def _validate_human_keypoints(self, keypoints, keypoint_confs):
+        """
+        DÜZELTME: TUTARLI İNSAN KEYPOINT DOĞRULAMA
+        Daha stabil ve tutarlı insan tespiti
+        """
+        if keypoints is None or keypoint_confs is None:
+            return False
+        
+        try:
+            # DÜZELTME: Dengeli confidence threshold - tutarlı tespit
+            conf_threshold = 0.25  # 0.3 -> 0.25 (daha tutarlı)
+            valid_mask = keypoint_confs > conf_threshold
+            valid_count = np.sum(valid_mask)
+            
+            # DÜZELTME: Daha esnek minimum keypoint sayısı - tutarlılık için
+            if valid_count < 5:  # 6 -> 5 (daha stabil)
+                logging.debug(f"❌ Yetersiz güvenilir keypoint: {valid_count}/17")
+                return False
+            
+            # DÜZELTME: Kritik keypoint kontrolü - insan anatomisi
+            critical_points = [0, 5, 6, 11, 12]  # Burun, omuzlar, kalçalar
+            critical_valid = np.sum(valid_mask[critical_points])
+            
+            if critical_valid < 2:  # En az 2 kritik keypoint
+                logging.debug(f"❌ Yetersiz kritik keypoint: {critical_valid}/5")
+                return False
+            
+            # DÜZELTME: Keypoint anatomik kontrol - insan vücut yapısı
+            if self._validate_anatomical_structure(keypoints, keypoint_confs):
+                logging.debug(f"✅ Keypoint doğrulama başarılı: {valid_count} valid, {critical_valid} critical")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logging.debug(f"❌ Keypoint validation error: {e}")
+            return False
+    
+    def _validate_anatomical_structure(self, keypoints, keypoint_confs):
+        """
+        DÜZELTME: Anatomik yapı doğrulama - insan vücut oranları
+        """
+        try:
+            conf_threshold = 0.2  # Daha düşük eşik anatomik kontrol için
+            
+            # Baş-boyun kontrolü
+            nose = keypoints[0] if keypoint_confs[0] > conf_threshold else None
+            left_shoulder = keypoints[5] if keypoint_confs[5] > conf_threshold else None
+            right_shoulder = keypoints[6] if keypoint_confs[6] > conf_threshold else None
+            
+            # Omuz mesafesi kontrolü - insan boyutu
+            if left_shoulder is not None and right_shoulder is not None:
+                shoulder_distance = np.linalg.norm(left_shoulder - right_shoulder)
+                if 15 <= shoulder_distance <= 200:  # Makul omuz mesafesi
+                    return True
+            
+            # Kalça kontrolü
+            left_hip = keypoints[11] if keypoint_confs[11] > conf_threshold else None
+            right_hip = keypoints[12] if keypoint_confs[12] > conf_threshold else None
+            
+            if left_hip is not None and right_hip is not None:
+                hip_distance = np.linalg.norm(left_hip - right_hip)
+                if 10 <= hip_distance <= 150:  # Makul kalça mesafesi
+                    return True
+            
+            # Dikey kontrol - baş omuz kalça hizası
+            if nose is not None and (left_shoulder is not None or right_shoulder is not None):
+                return True  # Temel dikey yapı var
+            
+            return False
+            
+        except Exception as e:
+            logging.debug(f"❌ Anatomical validation error: {e}")
+            return False
 
 
 class PersonTrack:

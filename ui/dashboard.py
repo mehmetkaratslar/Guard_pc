@@ -137,14 +137,10 @@ class DashboardFrame(tk.Frame):
                                          pady=5,
                                          bd=0)
         # Başlangıçta sol üst köşeye yerleştir
-        self.toggle_panel_btn.place(x=360, y=10, anchor="nw")
-        
-        self.bind_all("<F11>", lambda e: self.toggle_fullscreen())
-        self.bind_all("<Escape>", lambda e: self.exit_fullscreen())
+    
         self.bind_all("<Left>", lambda e: self._previous_camera())
         self.bind_all("<Right>", lambda e: self._next_camera())
-        # Responsive: pencere boyutu değişince fontları güncelle - FIXED
-        self._configure_binding_id = None
+        # FIXED: Responsive font sistemi
         self._setup_configure_binding()
 
     def _setup_configure_binding(self):
@@ -200,39 +196,60 @@ class DashboardFrame(tk.Frame):
         self._create_menu_section(scrollable_frame)
 
     def _create_header_section(self, parent):
-        """Header section - sol üstte ayarlar ve geçmiş butonları."""
-        header_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], height=100)
+        """Header section - üst kısımda ortalanmış kullanıcı bilgisi."""
+        header_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], height=120)
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         header_frame.pack_propagate(False)
         
-        # Sol taraf - Logo ve başlık
-        left_frame = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Ana header container - grid kullanarak tam ortalama
+        header_grid = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
+        header_grid.pack(fill=tk.BOTH, expand=True)
+        header_grid.grid_columnconfigure(0, weight=1)  # Sol boşluk
+        header_grid.grid_columnconfigure(1, weight=0)  # Orta - kullanıcı bilgisi
+        header_grid.grid_columnconfigure(2, weight=1)  # Sağ boşluk
+        header_grid.grid_rowconfigure(0, weight=1)
+        
+        # Sol taraf - Logo 
+        left_frame = tk.Frame(header_grid, bg=self.colors['bg_tertiary'])
+        left_frame.grid(row=0, column=0, sticky="w", padx=20)
         
         title_label = tk.Label(left_frame, text="🛡️ GUARD AI", 
-                              font=("Segoe UI", self._responsive_font(20, 0.025)),
-                              fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'],
-                              wraplength=300, anchor="w")
-        title_label.pack(side=tk.LEFT, padx=20, pady=10)
+                              font=("Segoe UI", self._responsive_font(18, 0.025)),
+                              fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'])
+        title_label.pack(anchor="w", pady=20)
         
-        # Sağ taraf - Kullanıcı bilgisi
-        right_frame = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
-        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=20)
+        # Orta - Kullanıcı bilgisi (TAM ORTALANMIŞ)
+        center_frame = tk.Frame(header_grid, bg=self.colors['bg_secondary'], relief=tk.RAISED, bd=2)
+        center_frame.grid(row=0, column=1, sticky="", padx=20, pady=15)  # sticky="" = ortalanmış
         
-        # Kullanıcı adı
+        # Kullanıcı bilgi containerı
+        user_info_frame = tk.Frame(center_frame, bg=self.colors['bg_secondary'])
+        user_info_frame.pack(padx=25, pady=15)
+        
+        # Kullanıcı adı - ortalanmış
         user_name = self.user.get('displayName', self.user.get('email', 'Kullanıcı'))
-        user_label = tk.Label(right_frame, text=f"👤 {user_name}", 
-                             font=("Segoe UI", self._responsive_font(14)),
-                             fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
-        user_label.pack(pady=(20, 5))
+        user_label = tk.Label(user_info_frame, text=f"👤 {user_name}", 
+                             font=("Segoe UI", self._responsive_font(16, 0.02), "bold"),
+                             fg=self.colors['text_primary'], bg=self.colors['bg_secondary'])
+        user_label.pack(anchor="center", pady=(0, 3))
         
-        # Email
+        # Email - ortalanmış
         user_email = self.user.get('email', '')
         if user_email:
-            email_label = tk.Label(right_frame, text=user_email, 
-                                 font=("Segoe UI", self._responsive_font(10)),
-                                 fg=self.colors['text_secondary'], bg=self.colors['bg_tertiary'])
-            email_label.pack()
+            email_label = tk.Label(user_info_frame, text=user_email, 
+                                 font=("Segoe UI", self._responsive_font(11, 0.015)),
+                                 fg=self.colors['text_secondary'], bg=self.colors['bg_secondary'])
+            email_label.pack(anchor="center")
+            
+        # Online durumu - ortalanmış
+        status_label = tk.Label(user_info_frame, text="🟢 Çevrimiçi", 
+                              font=("Segoe UI", self._responsive_font(10, 0.01)),
+                              fg=self.colors['accent_primary'], bg=self.colors['bg_secondary'])
+        status_label.pack(anchor="center", pady=(3, 0))
+        
+        # Sağ taraf - Boş (gelecekte ekstra bilgiler için)
+        right_frame = tk.Frame(header_grid, bg=self.colors['bg_tertiary'])
+        right_frame.grid(row=0, column=2, sticky="e", padx=20)
 
     def _responsive_font(self, base_size, rel=0.02):
         """Ekran boyutuna göre font büyüklüğü döndürür."""
@@ -440,9 +457,6 @@ class DashboardFrame(tk.Frame):
         # Kamera label'ı
         self.main_camera_label = tk.Label(self.main_camera_frame, bg="#000000", cursor="hand2")
         self.main_camera_label.pack(fill=tk.BOTH, expand=True)
-        
-        # Double-click tam ekran
-        self.main_camera_label.bind("<Double-Button-1>", lambda e: self.toggle_fullscreen())
         
         # İlk placeholder'ı göster
         self._show_camera_placeholder()
@@ -1007,40 +1021,6 @@ class DashboardFrame(tk.Frame):
         else:
             self.stop_fn()
 
-    def toggle_fullscreen(self):
-        """Tam ekran modunu açar/kapatır."""
-        root = self.winfo_toplevel()
-        
-        if not self.is_fullscreen:
-            self.is_fullscreen = True
-            root.attributes('-fullscreen', True)
-            
-            self.control_panel.grid_remove()
-            
-            self.camera_area.grid(column=0, columnspan=2)
-            
-            self.fullscreen_button.config(text="🪟 NORMAL EKRAN")
-            
-            logging.info("Tam ekran moduna geçildi")
-            
-        else:
-            self.exit_fullscreen()
-
-    def exit_fullscreen(self):
-        """Tam ekran modundan çıkar."""
-        if self.is_fullscreen:
-            root = self.winfo_toplevel()
-            
-            self.is_fullscreen = False
-            root.attributes('-fullscreen', False)
-            
-            self.control_panel.grid()
-            
-            self.camera_area.grid(column=1, columnspan=1)
-            
-            self.fullscreen_button.config(text="🖥️ TAM EKRAN")
-            
-            logging.info("Normal ekran moduna dönüldü")
 
     def update_system_status(self, running):
         """Sistem durumunu günceller."""
@@ -1056,38 +1036,106 @@ class DashboardFrame(tk.Frame):
             self.control_button.config(bg=self.colors['accent_primary'])
 
     def update_fall_detection(self, screenshot, confidence, event_data):
-        """DÜZELTME: Düşme algılama sonucunu günceller - görsel bildirim dahil."""
-        camera_id = event_data.get('camera_id', 'unknown')
-        track_id = event_data.get('track_id', 'N/A')
-        timestamp = event_data.get('timestamp', time.time())
-        
-        # DÜZELTME: Görsel bildirim ve popup birlikte göster - performance optimized
-        def show_complete_fall_notification():
-            try:
-                # 1. Hızlı görsel overlay bildirim (öncelik)
-                self._show_fall_alert(confidence, camera_id, timestamp)
-                
-                # 2. Popup bildirim (gecikmeli)
-                self.after(500, lambda: self._show_fall_alert_popup(confidence, camera_id, timestamp))
-                
-                # 3. Geleneksel handler (opsiyonel)
-                self.after(1000, lambda: self._handle_fall_detection(camera_id, confidence, track_id))
-                
-                # 4. İstatistikleri güncelle
-                if hasattr(self, 'tracking_stats'):
-                    self.tracking_stats['fall_alerts'] += 1
-                    
-                logging.info(f"✅ Dashboard fall notification triggered: {camera_id}")
-                
-            except Exception as e:
-                logging.error(f"❌ Dashboard fall notification error: {e}")
-                # Fallback - basit bildirim
-                try:
-                    self._show_fall_alert_popup(confidence, camera_id, timestamp)
-                except Exception as fallback_error:
-                    logging.error(f"❌ Fallback notification error: {fallback_error}")
+        """DÜZELTME: Optimize edilmiş düşme algılama güncellemesi - sistem donmasını önler."""
+        try:
+            camera_id = event_data.get('camera_id', 'unknown')
+            track_id = event_data.get('track_id', 'N/A')
+            timestamp = event_data.get('timestamp', time.time())
+            event_id = event_data.get('event_id', 'unknown')
             
-        self.after(0, show_complete_fall_notification)
+            # DÜZELTME: Hızlı UI update - asenkron popup
+            def quick_fall_notification():
+                try:
+                    # 1. Anında tracking stats güncelle
+                    if hasattr(self, 'tracking_stats'):
+                        self.tracking_stats['fall_alerts'] += 1
+                    
+                    # 2. Hızlı fall alert göster
+                    self._show_quick_fall_alert(confidence, camera_id, timestamp, event_id)
+                    
+                    # 3. Background'da popup göster
+                    self.after(200, lambda: self._show_delayed_popup(confidence, camera_id, timestamp, event_id))
+                    
+                    logging.info(f"✅ Quick dashboard notification: {event_id}")
+                    
+                except Exception as e:
+                    logging.error(f"❌ Quick notification error: {e}")
+            
+            # DÜZELTME: Hemen UI thread'inde çalıştır
+            self.after(0, quick_fall_notification)
+            
+        except Exception as e:
+            logging.error(f"❌ Dashboard update error: {e}")
+
+    def _show_quick_fall_alert(self, confidence, camera_id, timestamp, event_id):
+        """DÜZELTME: Hızlı fall alert - minimum CPU kullanımı."""
+        try:
+            # Fall alert overlay hızlı göster
+            if hasattr(self, 'fall_alert_frame') and self.fall_alert_frame:
+                self.fall_alert_frame.destroy()
+            
+            # Basit overlay
+            self.fall_alert_frame = tk.Frame(self, bg='red', relief=tk.RAISED, bd=5)
+            self.fall_alert_frame.place(relx=0.5, rely=0.1, anchor='center')
+            
+            alert_text = f"🚨 DÜŞME ALGILANDI!\nGüven: {confidence:.2f}\nKamera: {camera_id}\nID: {event_id[:8]}"
+            
+            alert_label = tk.Label(self.fall_alert_frame, text=alert_text,
+                                 font=("Segoe UI", 14, "bold"),
+                                 fg='white', bg='red', padx=20, pady=15)
+            alert_label.pack()
+            
+            # 3 saniye sonra otomatik gizle
+            self.after(3000, self._hide_quick_alert)
+            
+        except Exception as e:
+            logging.error(f"❌ Quick alert error: {e}")
+
+    def _hide_quick_alert(self):
+        """DÜZELTME: Hızlı alert gizleme."""
+        try:
+            if hasattr(self, 'fall_alert_frame') and self.fall_alert_frame:
+                self.fall_alert_frame.destroy()
+                self.fall_alert_frame = None
+        except:
+            pass
+
+    def _show_delayed_popup(self, confidence, camera_id, timestamp, event_id):
+        """DÜZELTME: Gecikmeli popup - background'da çalışır."""
+        try:
+            # Basit popup - sistem dondurmaz
+            popup = tk.Toplevel(self)
+            popup.title("Düşme Algılandı")
+            popup.geometry("400x200")
+            popup.configure(bg=self.colors['bg_primary'])
+            popup.transient(self)
+            popup.grab_set()
+            
+            # İçerik
+            tk.Label(popup, text="🚨 DÜŞME ALGILANDI!", 
+                    font=("Segoe UI", 16, "bold"),
+                    fg=self.colors['accent_danger'], 
+                    bg=self.colors['bg_primary']).pack(pady=20)
+            
+            info_text = f"Güven Oranı: {confidence:.2f}\nKamera: {camera_id}\nZaman: {time.strftime('%H:%M:%S', time.localtime(timestamp))}"
+            
+            tk.Label(popup, text=info_text,
+                    font=("Segoe UI", 12),
+                    fg=self.colors['text_primary'],
+                    bg=self.colors['bg_primary']).pack(pady=10)
+            
+            # Kapat butonu
+            tk.Button(popup, text="TAMAM", 
+                     command=popup.destroy,
+                     font=("Segoe UI", 12, "bold"),
+                     bg=self.colors['accent_primary'], 
+                     fg="white").pack(pady=20)
+            
+            # 5 saniye sonra otomatik kapat
+            self.after(5000, lambda: popup.destroy() if popup.winfo_exists() else None)
+            
+        except Exception as e:
+            logging.error(f"❌ Delayed popup error: {e}")
 
     def update_ai_frame(self, frame):
         """AI processing sonucu frame'i günceller."""
@@ -1189,3 +1237,4 @@ class DashboardFrame(tk.Frame):
             self.toggle_panel_btn.config(text="▶")
             self.toggle_panel_btn.place(x=10, y=10, anchor="nw")
             self.panel_collapsed = True
+

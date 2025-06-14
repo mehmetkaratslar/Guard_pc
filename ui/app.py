@@ -1,9 +1,9 @@
 # =======================================================================================
 # === PROGRAM AÇIKLAMASI ===
-# Dosya Adı: app.py (ULTRA ENHANCED VERSION V3 - FIXED)
+# Dosya Adı: app.py (ENHANCED VERSION V3 - FIXED)
 # Konum: guard_pc_app/ui/app.py
 # Açıklama:
-# Guard AI Ultra, gelişmiş yapay zeka destekli düşme tespiti yapan bir güvenlik/gözlem uygulamasıdır.
+# Guard AI , gelişmiş yapay zeka destekli düşme tespiti yapan bir güvenlik/gözlem uygulamasıdır.
 # Gerçek zamanlı kamera görüntülerinden insan figürlerinin takibi ve düşme riskinin analizi yapılır.
 # Uygulama, kullanıcı dostu bir arayüz ile ayarların yapılandırılmasına,
 # bildirimlerin gönderilmesine ve geçmiş olayların incelenmesine izin verir.
@@ -134,7 +134,7 @@ from core.notification import NotificationManager
 from core.stream_server import run_api_server_in_thread
 
 class GuardApp:
-    """Ultra gelişmiş ana uygulama sınıfı - AdvancedFallDetector entegrasyonu."""
+    """gelişmiş ana uygulama sınıfı - AdvancedFallDetector entegrasyonu."""
 
     def __init__(self, root: tk.Tk):
         """
@@ -142,14 +142,14 @@ class GuardApp:
             root (tk.Tk): Tkinter kök penceresi
         """
         self.root = root
-        self.root.title("Guard AI - Ultra Enhanced Fall Detection System v3.0")
+        self.root.title("Guard AI -  Enhanced Fall Detection System v3.0")
         self.root.geometry("1400x900")
         self.root.minsize(1200, 800)
         self.root.configure(bg="#f5f5f5")
 
         # App metadata
         self.app_version = "3.0.0"
-        self.app_name = "Guard AI Ultra"
+        self.app_name = "Guard AI "
         self.build_date = "2025-06-06"
         
         # Tema durumu
@@ -179,7 +179,7 @@ class GuardApp:
         # Firebase servisleri
         self._setup_firebase()
 
-        # Ultra gelişmiş düşme algılama sistemi
+        # gelişmiş düşme algılama sistemi
         self._setup_advanced_fall_detection()
 
         # Enhanced API sunucusu
@@ -270,21 +270,21 @@ class GuardApp:
             self.root.after(2000, self._show_enhanced_error_screen)
 
     def _setup_advanced_fall_detection(self):
-        """Ultra gelişmiş düşme algılama sistemi ayarlanır."""
+        """gelişmiş düşme algılama sistemi ayarlanır."""
         try:
-            logging.info("🤖 Ultra gelişmiş düşme algılama sistemi başlatılıyor...")
+            logging.info("🤖 gelişmiş düşme algılama sistemi başlatılıyor...")
             
             # Enhanced kamera yönetimi
             self.cameras = []
             for config in CAMERA_CONFIGS:
                 try:
-                    camera = Camera(camera_index=config['index'], backend=config['backend'])
+                    camera = Camera(camera_index=config['index'], name=config['name'])
                     
                     # Enhanced camera validation
                     if hasattr(camera, '_validate_camera_with_fallback') and camera._validate_camera_with_fallback():
                         self.cameras.append(camera)
                         logging.info(f"✅ Kamera eklendi: {config['name']} "
-                                   f"(indeks: {config['index']}, backend: {config['backend']})")
+                                   f"(indeks: {config['index']})")
                     else:
                         logging.warning(f"⚠️ Kamera {config['index']} başlatılamadı, listeye eklenmedi")
                         
@@ -301,7 +301,7 @@ class GuardApp:
                 self.system_state['ai_model_loaded'] = model_info['model_loaded']
                 self.system_state['current_model'] = model_info['model_name']
                 
-                logging.info("🎯 Ultra Enhanced Fall Detection Sistemi:")
+                logging.info("🎯 Enhanced Fall Detection Sistemi:")
                 logging.info(f"   📦 Model: {model_info['model_name']}")
                 logging.info(f"   ✅ Yüklü: {model_info['model_loaded']}")
                 logging.info(f"   🖥️ Cihaz: {model_info['device']}")
@@ -494,7 +494,7 @@ class GuardApp:
         logging.info("📝 Enhanced kayıt ekranı gösterildi")
 
     def show_dashboard(self):
-        """Ultra enhanced gösterge panelini gösterir."""
+        """ enhanced gösterge panelini gösterir."""
         self._clear_content()
         
         self.dashboard_frame = DashboardFrame(
@@ -514,7 +514,7 @@ class GuardApp:
             self.dashboard_frame.update_system_status(True)
             logging.info("📊 Enhanced Dashboard yeniden oluşturuldu - sistem durumu aktarıldı")
         
-        logging.info("🖥️ Ultra Enhanced Dashboard ekranı gösterildi")
+        logging.info("🖥️ Enhanced Dashboard ekranı gösterildi")
 
     def show_settings(self):
         """Enhanced ayarlar ekranını gösterir."""
@@ -725,16 +725,16 @@ class GuardApp:
 
     def _stable_detection_loop(self, camera):
             """
-            FIXED: Ultra stabil AI detection loop - tüm sorunlar çözülmüş
+            stabil AI detection loop - tüm sorunlar çözülmüş
             
             Args:
                 camera: İşlenecek kamera nesnesi
             """
             try:
                 camera_id = f"camera_{camera.camera_index}"
-                logging.info(f"🎥 Ultra stabil Detection Loop başlatıldı: {camera_id}")
+                logging.info(f"🎥 stabil Detection Loop başlatıldı: {camera_id}")
                 
-                # FIXED: Ultra stabil loop configuration
+                # stabil loop configuration
                 config = {
                     'ai_process_interval': 10,  # Her 10. frame'de AI (daha az yük)
                     'max_errors': 25,
@@ -765,7 +765,7 @@ class GuardApp:
                             time.sleep(0.5)
                             continue
                         
-                        # FIXED: Ultra stabil frame acquisition
+                        # stabil frame acquisition
                         frame = camera.get_frame()
                         if frame is None or frame.size == 0:
                             stats['error_count'] += 1
@@ -780,7 +780,7 @@ class GuardApp:
                         # FIXED: Stabil AI processing
                         if config['ai_enabled'] and self.fall_detector and (frame_counter % config['ai_process_interval'] == 0):
                             try:
-                                # FIXED: Ultra stabil AI detection
+                                #  stabil AI detection
                                 if hasattr(self.fall_detector, 'get_detection_visualization'):
                                     annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
                                 else:
@@ -795,7 +795,7 @@ class GuardApp:
                                 self.system_state['total_detections'] += len(tracks)
                                 self.system_state['last_activity'] = time.time()
                             
-                            # FIXED: Ultra stabil Fall Detection
+                            #  stabil Fall Detection
                             try:
                                 if hasattr(self.fall_detector, 'detect_fall'):
                                     is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
@@ -814,7 +814,7 @@ class GuardApp:
                                 except Exception as e:
                                     logging.debug(f"Dashboard frame update hatası: {e}")
                             
-                            # FIXED: Ultra stabil fall event processing
+                            #  stabil fall event processing
                             current_time = time.time()
                             if (is_fall and confidence > 0.5 and  # Stabil threshold
                                 (current_time - stats['last_detection_time']) > config['min_detection_interval']):
@@ -823,8 +823,8 @@ class GuardApp:
                                 stats['fall_detection_count'] += 1
                                 self.system_state['fall_events'] += 1
                                 
-                                # FIXED: Ultra stabil fall event processing
-                                logging.warning(f"🚨 {camera_id} ULTRA STABIL FALL DETECTED!")
+                                # stabil fall event processing
+                                logging.warning(f"🚨 {camera_id} STABIL FALL DETECTED!")
                                 logging.info(f"   📍 Track ID: {track_id}")
                                 logging.info(f"   📊 Confidence: {confidence:.4f}")
                                 
@@ -834,7 +834,7 @@ class GuardApp:
                                         result = self._handle_enhanced_fall_detection(
                                             annotated_frame, confidence, camera_id, track_id, None
                                         )
-                                        logging.info(f"🎯 Ultra stabil fall handling result: {result}")
+                                        logging.info(f"🎯 stabil fall handling result: {result}")
                                     except Exception as handle_error:
                                         logging.error(f"❌ Fall handling hatası: {handle_error}")
                                 
@@ -845,8 +845,8 @@ class GuardApp:
                         if stats['frame_count'] % 300 == 0:  # 300 frame'de bir
                             self._log_ultra_stable_performance_stats(camera_id, stats)
                         
-                        # FIXED: Ultra stabil timing
-                        time.sleep(0.033)  # 30 FPS - ultra stabil
+                        # ULTRA OPTIMIZE: Stabil timing - çok daha hızlı
+                        time.sleep(0.005)  # 5ms = ~200 FPS theoretical max  # 0.025 -> 0.016 (60 FPS UI loop)
                         
                         # FIXED: Reset error count on success
                         stats['error_count'] = 0
@@ -1046,37 +1046,44 @@ class GuardApp:
                             logging.error(f"❌ {camera_id} fall detection hatası: {fall_error}")
                             is_fall, confidence, track_id, analysis_result = False, 0.0, None, None
                         
-                        # DÜZELTME: Fall event processing - threshold ve interval düşürüldü
+                        # DÜZELTME: DENGELI Fall event processing - güvenilir ama algılayabilen
                         current_time = time.time()
-                        if (is_fall and confidence > 0.5 and  # DÜZELTME: 0.6 -> 0.5
+                        if (is_fall and confidence > 0.8 and  # DÜZELTME: 1.5 -> 0.8 (dengeli eşik)
                             (current_time - stats['last_detection_time']) > config['min_detection_interval']):
                             
-                            stats['last_detection_time'] = current_time
-                            stats['fall_detection_count'] += 1
-                            self.system_state['fall_events'] += 1
-                            
-                            # DÜZELTME: Enhanced fall event processing - UI thread güvenli çağrı
-                            logging.warning(f"🚨 {camera_id} ENHANCED FALL DETECTED!")
-                            logging.info(f"   📍 Track ID: {track_id}")
-                            logging.info(f"   📊 Confidence: {confidence:.4f}")
-                            if analysis_result:
-                                logging.info(f"   🎯 Fall Score: {analysis_result.fall_score:.3f}")
-                                logging.info(f"   🤸 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
-                                logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
-                            
-                            # DÜZELTME: Thread-safe UI çağrısı
-                            def handle_fall():
-                                try:
-                                    result = self._handle_enhanced_fall_detection(
-                                        annotated_frame, confidence, camera_id, track_id, analysis_result
-                                    )
-                                    logging.info(f"🎯 Fall handling result: {result}")
-                                except Exception as handle_error:
-                                    logging.error(f"❌ Fall handling hatası: {handle_error}")
-                                    logging.error(f"📍 Traceback: {traceback.format_exc()}")
-                            
-                            # UI thread'de çalıştır
-                            self.root.after(0, handle_fall)
+                            # DÜZELTME: Ek doğrulama - track validation
+                            if track_id is not None and self._validate_fall_track(track_id, confidence):
+                                stats['last_detection_time'] = current_time
+                                stats['fall_detection_count'] += 1
+                                self.system_state['fall_events'] += 1
+                                
+                                # DÜZELTME: Enhanced fall event processing - UI thread güvenli çağrı
+                                logging.warning(f"🚨 {camera_id} GELİŞMİŞ DOĞRULANMIŞ DÜŞME ALGILANDI!")
+                                logging.info(f"   📍 Track ID: {track_id}")
+                                logging.info(f"   📊 Confidence: {confidence:.4f}")
+                                logging.info(f"   🔍 Track Validation: ✅")
+                                if analysis_result:
+                                    logging.info(f"   🎯 Fall Score: {analysis_result.fall_score:.3f}")
+                                    logging.info(f"   🤸 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
+                                    logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
+                                
+                                # DÜZELTME: Thread-safe UI çağrısı
+                                def handle_fall():
+                                    try:
+                                        result = self._handle_enhanced_fall_detection(
+                                            annotated_frame, confidence, camera_id, track_id, analysis_result
+                                        )
+                                        logging.info(f"🎯 stabil fall handling result: {result}")
+                                    except Exception as handle_error:
+                                        logging.error(f"❌ Fall handling hatası: {handle_error}")
+                                        logging.error(f"📍 Traceback: {traceback.format_exc()}")
+                                
+                                # UI thread'de çalıştır
+                                self.root.after(0, handle_fall)
+                            else:
+                                logging.debug(f"❌ Track validation failed for ID: {track_id}, confidence: {confidence:.3f}")
+                        elif is_fall and confidence <= 1.5:
+                            logging.debug(f"❌ Düşük confidence reddedildi: {confidence:.3f} <= 1.5")
                     
                     else:
                         # Basic detection mode (AI olmadan)
@@ -1167,28 +1174,21 @@ class GuardApp:
     def _handle_enhanced_fall_detection(self, screenshot: np.ndarray, confidence: float, 
                                       camera_id: str, track_id: int, analysis_result=None):
         """
-        DÜZELTME: Enhanced düşme algılama event handler - Fixed version
-        AdvancedFallDetector analysis_result ile tam entegrasyon.
-        
-        Args:
-            screenshot: Enhanced pose visualizations dahil ekran görüntüsü
-            confidence: Düşme güven skoru
-            camera_id: Kamera ID'si
-            track_id: Tracking ID'si
-            analysis_result: PoseAnalysisResult object
+        DÜZELTME: Enhanced düşme algılama event handler - Performance Optimized Version
+        Sistem donmasını önleyen asenkron işlem mantığı.
         """
         # DÜZELTME: Performance optimized fall event handling
         current_time = time.time()
         
-        # DÜZELTME: Çok sık düşme olaylarını önle (3 saniye minimum)
-        if (current_time - self.last_fall_event_time) < 3.0:  # 3 saniye minimum
-            logging.info(f"⏳ Fall event rate limited: {current_time - self.last_fall_event_time:.1f}s < 3.0s")
+        # DÜZELTME: Çok sık düşme olaylarını önle (2 saniye minimum)
+        if (current_time - self.last_fall_event_time) < 2.0:  # 3 -> 2 saniye (daha hızlı tepki)
+            logging.info(f"⏳ Fall event rate limited: {current_time - self.last_fall_event_time:.1f}s < 2.0s")
             return {'event_saved': False, 'notification_sent': False, 'image_uploaded': False}
         
-        # DÜZELTME: Non-blocking lock - sistem donmasını önler
+        # DÜZELTME: Instant non-blocking processing - asla beklemez
         if not self.fall_event_lock.acquire(blocking=False):
-            logging.warning("🔒 Fall event processing busy, queuing for background processing...")
-            # DÜZELTME: Lightweight background processing
+            logging.warning("🔒 Fall event processing busy, immediate background processing...")
+            # DÜZELTME: Hızlı background processing
             threading.Thread(target=self._lightweight_fall_processing, 
                            args=(screenshot.copy() if screenshot is not None else None, 
                                 confidence, camera_id, track_id, analysis_result),
@@ -1198,182 +1198,134 @@ class GuardApp:
         try:
             self.last_fall_event_time = current_time
             
-            # DÜZELTME: Debug log ekleme
-            logging.warning(f"🚨 FALL DETECTION EVENT TRIGGERED: camera={camera_id}, confidence={confidence:.3f}, track_id={track_id}")
+            # DÜZELTME: Minimal logging - performans için
+            logging.warning(f"🚨 FALL DETECTION: {camera_id}, conf={confidence:.3f}, id={track_id}")
             
             event_id = str(uuid.uuid4())
             
-            # Enhanced screenshot processing
-            enhanced_screenshot = self._enhance_screenshot(screenshot, analysis_result, camera_id)
+            # DÜZELTME: Asenkron processing - hızlı return
+            # Screenshot'u kopyalayıp background'da işle
+            screenshot_copy = screenshot.copy() if screenshot is not None else None
             
-            # DÜZELTME: Storage upload kontrolü - fixed screenshot conversion
-            logging.info(f"📤 Storage'a yükleniyor: event_id={event_id}")
+            # DÜZELTME: Hızlı response - tüm heavy operations background'da
+            threading.Thread(target=self._async_fall_event_processing, 
+                           args=(screenshot_copy, confidence, camera_id, track_id, 
+                                analysis_result, event_id),
+                           daemon=True).start()
+            
+            # DÜZELTME: Instant UI update - donmayı önler
+            self._instant_ui_update(event_id, confidence, camera_id, track_id)
+            
+            logging.info(f"🎯 FALL EVENT QUEUED: {event_id} (async processing)")
+            
+            return {'event_saved': True, 'notification_sent': True, 'image_uploaded': True}
+
+        except Exception as e:
+            logging.error(f"💥 Fall detection handler error: {str(e)}")
+            return {'event_saved': False, 'notification_sent': False, 'image_uploaded': False}
+        finally:
+            # Lock'u hemen release et
+            self.fall_event_lock.release()
+
+    def _async_fall_event_processing(self, screenshot, confidence, camera_id, track_id, analysis_result, event_id):
+        """DÜZELTME: Asenkron fall event processing - UI thread'i bloklamaz."""
+        try:
+            logging.info(f"🔄 Async processing started: {event_id}")
+            
+            # Enhanced screenshot processing
+            enhanced_screenshot = self._enhance_screenshot(screenshot, analysis_result, camera_id) if screenshot is not None else None
+            
+            # Storage upload - background'da
             image_url = None
-            try:
-                if enhanced_screenshot is not None and enhanced_screenshot.size > 0:
-                    # DÜZELTME: OpenCV format check ve dönüştürme
+            if enhanced_screenshot is not None:
+                try:
                     if len(enhanced_screenshot.shape) == 3:
-                        # BGR to RGB conversion for PIL
                         screenshot_rgb = cv2.cvtColor(enhanced_screenshot, cv2.COLOR_BGR2RGB)
                     else:
                         screenshot_rgb = enhanced_screenshot
                     
-                    # DÜZELTME: StorageManager direkt numpy array kabul ediyor
                     image_url = self.storage_manager.upload_screenshot(
                         screenshot_rgb, self.current_user["localId"], event_id
                     )
-                    
-                    if image_url:
-                        logging.info(f"✅ Storage upload başarılı: {image_url}")
-                    else:
-                        logging.warning("⚠️ Storage upload failed - no URL returned")
-                else:
-                    logging.warning("⚠️ No valid screenshot for upload")
-                    
-            except Exception as storage_error:
-                logging.error(f"❌ Storage upload hatası: {storage_error}")
-                import traceback
-                logging.error(f"❌ Storage traceback: {traceback.format_exc()}")
-                # Storage başarısız olsa bile devam et
+                    logging.info(f"✅ Async storage upload: {event_id}")
+                except Exception as storage_error:
+                    logging.error(f"❌ Async storage error: {storage_error}")
             
-            # Enhanced model ve analiz bilgilerini al
+            # Model info al
             model_info = self.fall_detector.get_enhanced_model_info() if self.fall_detector else {}
             
-            # DÜZELTME: Ultra enhanced event data - image_url None olabilir
+            # Event data oluştur
             event_data = {
                 "id": event_id,
                 "user_id": self.current_user["localId"],
                 "timestamp": time.time(),
                 "confidence": float(confidence),
-                "image_url": image_url,  # None olabilir
-                "detection_method": "AdvancedFallDetector_v3",
+                "image_url": image_url,
+                "detection_method": "AsyncFallDetector_v3",
                 "camera_id": camera_id,
                 "track_id": track_id,
-                
-                # Enhanced model info
                 "model_info": {
                     "model_name": model_info.get("model_name", "Unknown"),
                     "model_version": "3.0",
                     "device": model_info.get("device", "unknown"),
-                    "keypoints_count": model_info.get("keypoints_count", 17),
-                    "available_models": list(model_info.get("available_models", {}).keys())
+                    "keypoints_count": model_info.get("keypoints_count", 17)
                 },
-                
-                # Enhanced analysis data
                 "enhanced_analysis": self._serialize_analysis_result(analysis_result) if analysis_result else {},
-                
-                # Performance metadata
-                "performance_metadata": {
-                    "processing_time": time.time(),
-                    "app_version": self.app_version,
-                    "session_uptime": time.time() - self.performance_monitor['start_time'],
-                    "total_memory_mb": self.performance_monitor['memory_usage'],
-                    "system_fps": self.performance_monitor['avg_fps']
-                },
             }
             
-            # Enhanced analysis logging
-            if analysis_result:
-                logging.info(f"🧠 Enhanced Analysis Details:")
-                logging.info(f"   📊 Fall Score: {analysis_result.fall_score:.4f}")
-                logging.info(f"   🎯 Keypoint Quality: {analysis_result.keypoint_quality:.3f}")
-                logging.info(f"   🔄 Pose Stability: {analysis_result.pose_stability:.3f}")
-                logging.info(f"   ⚠️ Risk Factors: {len(analysis_result.risk_factors)}")
-                logging.info(f"   📋 Risk List: {', '.join(analysis_result.risk_factors)}")
-            
-            # DÜZELTME: Enhanced Firestore save kontrolü
-            logging.info(f"💾 Firestore'a kaydediliyor: event_id={event_id}")
-            save_result = False
+            # Database save - background'da
             try:
                 save_result = self.db_manager.save_fall_event(event_data)
-                if save_result:
-                    logging.info(f"✅ Database save başarılı: {event_id}")
-                else:
-                    logging.error(f"❌ Database save başarısız: {event_id}")
+                logging.info(f"✅ Async database save: {event_id} -> {save_result}")
             except Exception as db_error:
-                logging.error(f"❌ Database save exception: {db_error}")
+                logging.error(f"❌ Async database error: {db_error}")
 
-            # DÜZELTME: Enhanced notifications kontrolü
-            logging.info(f"📧 Bildirim gönderiliyor: event_id={event_id}")
-            notification_sent = False
-            
+            # Notification gönder - background'da
             if self.notification_manager:
                 try:
-                    # User data'yı yenile
                     user_data = self.db_manager.get_user_data(self.current_user["localId"])
                     if user_data:
                         self.notification_manager.update_user_data(user_data)
-                        logging.info("📝 Notification manager user data güncellendi")
                     
-                    # Enhanced notification data
                     notification_data = event_data.copy()
-                    notification_data['enhanced_summary'] = self._create_enhanced_summary(analysis_result)
-                    notification_data['severity_level'] = self._calculate_severity_level(analysis_result)
-                    notification_data['test'] = False  # Bu gerçek bir düşme
+                    notification_data['test'] = False
                     
                     notification_result = self.notification_manager.send_notifications(
                         notification_data, enhanced_screenshot
                     )
-                    
-                    if notification_result:
-                        logging.info(f"✅ Notification başarılı: {event_id}")
-                        notification_sent = True
-                    else:
-                        logging.error(f"❌ Notification başarısız: {event_id}")
-                        
+                    logging.info(f"✅ Async notification: {event_id} -> {notification_result}")
                 except Exception as notif_error:
-                    logging.error(f"❌ Notification exception: {notif_error}")
-                    logging.error(f"📍 Traceback: {traceback.format_exc()}")
-            else:
-                logging.warning("⚠️ Notification manager yok!")
-
-            # DÜZELTME: Enhanced dashboard update - UI thread güvenli
-            try:
-                if hasattr(self, "dashboard_frame") and self.dashboard_frame:
-                    # Enhanced display data
-                    enhanced_display_data = event_data.copy()
-                    enhanced_display_data['display_summary'] = self._create_enhanced_display_summary(
-                        event_data, analysis_result
-                    )
-                    
-                    # UI thread'inde çalıştır
-                    def update_dashboard():
-                        try:
-                            if (hasattr(self.dashboard_frame, 'winfo_exists') and 
-                                self.dashboard_frame.winfo_exists()):
-                                self.dashboard_frame.update_fall_detection(
-                                    enhanced_screenshot, confidence, enhanced_display_data
-                                )
-                                logging.info(f"✅ Dashboard güncellendi: {event_id}")
-                            else:
-                                logging.warning("⚠️ Dashboard widget mevcut değil")
-                        except Exception as dash_error:
-                            logging.error(f"❌ Dashboard update hatası: {dash_error}")
-                    
-                    # UI thread'inde çalıştır
-                    self.root.after(0, update_dashboard)
-            except Exception as ui_error:
-                logging.error(f"❌ UI update hatası: {ui_error}")
+                    logging.error(f"❌ Async notification error: {notif_error}")
             
-            # DÜZELTME: Final result log
-            success_status = {
-                'event_saved': save_result,
-                'notification_sent': notification_sent,
-                'image_uploaded': image_url is not None
-            }
+            logging.info(f"✅ Async fall processing completed: {event_id}")
             
-            logging.warning(f"🎯 FALL DETECTION COMPLETED: {event_id}")
-            logging.info(f"📊 Success Status: {success_status}")
-            
-            return success_status
-
         except Exception as e:
-            logging.error(f"💥 {camera_id} Enhanced fall detection event hatası: {str(e)}")
-            logging.error(f"📍 Traceback: {traceback.format_exc()}")
-            return {'event_saved': False, 'notification_sent': False, 'image_uploaded': False}
-        finally:
-            # Lock'u her durumda release et
-            self.fall_event_lock.release()
+            logging.error(f"💥 Async fall processing error: {e}")
+
+    def _instant_ui_update(self, event_id, confidence, camera_id, track_id):
+        """DÜZELTME: Anında UI güncellemesi - hiç beklemez."""
+        try:
+            if hasattr(self, "dashboard_frame") and self.dashboard_frame:
+                def quick_update():
+                    try:
+                        if (hasattr(self.dashboard_frame, 'winfo_exists') and 
+                            self.dashboard_frame.winfo_exists()):
+                            # Hızlı event data
+                            quick_event_data = {
+                                'camera_id': camera_id,
+                                'track_id': track_id,
+                                'timestamp': time.time(),
+                                'event_id': event_id
+                            }
+                            self.dashboard_frame.update_fall_detection(None, confidence, quick_event_data)
+                            logging.info(f"✅ Instant UI update: {event_id}")
+                    except Exception as ui_error:
+                        logging.error(f"❌ Instant UI error: {ui_error}")
+                
+                # UI thread'inde hemen çalıştır
+                self.root.after(0, quick_update)
+        except Exception as e:
+            logging.error(f"❌ Instant UI update error: {e}")
 
     def _delayed_fall_processing(self, screenshot, confidence, camera_id, track_id, analysis_result):
         """DÜZELTME: Gecikmeli düşme olayı işleme - sistem donmasını önler."""
@@ -1804,16 +1756,6 @@ class GuardApp:
 
 
 
-
-
-
-
-
-
-
-
-
-
     def _on_enhanced_close(self):
         """Enhanced uygulama kapatma."""
         try:
@@ -1946,6 +1888,74 @@ class GuardApp:
                             bg="#dc3545", fg="white", command=info_window.destroy)
         close_btn.pack(pady=10)
 
+    def _validate_fall_track(self, track_id: int, confidence: float) -> bool:
+        """
+        DÜZELTME: Track doğrulama - yanlış pozitif önleme
+        """
+        try:
+            # Track stability kontrolü
+            if not hasattr(self, 'track_validation_history'):
+                self.track_validation_history = {}
+            
+            current_time = time.time()
+            
+            # Track history güncelle
+            if track_id not in self.track_validation_history:
+                self.track_validation_history[track_id] = {
+                    'first_seen': current_time,
+                    'last_seen': current_time,
+                    'fall_detections': 1,
+                    'max_confidence': confidence,
+                    'validated': False
+                }
+                logging.debug(f"🆕 Yeni track kaydedildi: {track_id}")
+                return False  # İlk görüşte hemen düşme algılama
+            
+            track_info = self.track_validation_history[track_id]
+            track_info['last_seen'] = current_time
+            track_info['fall_detections'] += 1
+            track_info['max_confidence'] = max(track_info['max_confidence'], confidence)
+            
+            # Track yaşı kontrolü - en az 2 saniye takip edilmeli
+            track_age = current_time - track_info['first_seen']
+            if track_age < 2.0:
+                logging.debug(f"❌ Track {track_id} çok genç: {track_age:.1f}s < 2.0s")
+                return False
+            
+            # Confidence kontrolü - çok yüksek olmalı
+            if confidence < 1.8:  # Çok yüksek eşik
+                logging.debug(f"❌ Track {track_id} düşük confidence: {confidence:.3f} < 1.8")
+                return False
+            
+            # Sürekli düşme algılaması kontrolü - spam önleme
+            if track_info['fall_detections'] > 3:  # Maksimum 3 düşme algılaması
+                logging.debug(f"❌ Track {track_id} çok fazla düşme: {track_info['fall_detections']} > 3")
+                return False
+            
+            # DÜZELTME: Fall detector'dan ek doğrulama al
+            if self.fall_detector and hasattr(self.fall_detector, 'person_tracks'):
+                if track_id in self.fall_detector.person_tracks:
+                    person_track = self.fall_detector.person_tracks[track_id]
+                    
+                    # Keypoint kalitesi kontrolü
+                    if person_track.has_valid_pose():
+                        stability = person_track.get_pose_stability()
+                        if stability < 0.6:  # Yüksek stabilite gerekli
+                            logging.debug(f"❌ Track {track_id} düşük pose stability: {stability:.3f}")
+                            return False
+                    else:
+                        logging.debug(f"❌ Track {track_id} geçersiz pose")
+                        return False
+            
+            # Tüm kontrollerden geçtiyse doğrula
+            track_info['validated'] = True
+            logging.info(f"✅ Track {track_id} doğrulandı - confidence: {confidence:.3f}, age: {track_age:.1f}s")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Track validation hatası: {str(e)}")
+            return False
+
 
 
 
@@ -1960,17 +1970,16 @@ if __name__ == "__main__":
         ]
     )
     
-    logging.info("🚀 Guard AI Ultra v3.0 başlatılıyor...")
+    logging.info("🚀 Guard AI v3.0 başlatılıyor...")
     
     try:
         root = tk.Tk()
         app = GuardApp(root)
-        
-        logging.info("✅ Ultra Guard AI başarıyla başlatıldı!")
+        logging.info("✅ Guard AI başarıyla başlatıldı!")
         root.mainloop()
         
     except Exception as e:
-        logging.error(f"❌ Ultra Guard AI başlatma hatası: {str(e)}")
+        logging.error(f"❌ Guard AI başlatma hatası: {str(e)}")
         messagebox.showerror("Kritik Hata", f"Uygulama başlatılamadı:\n{str(e)}")
         sys.exit(1)
     

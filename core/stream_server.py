@@ -250,7 +250,7 @@ class EnhancedStreamServer:
                 camera_id = f"camera_{config['index']}"
                 logging.info(f"Stream Server: Kamera başlatılıyor - {config['name']}")
                 
-                camera = Camera(camera_index=config['index'], backend=config['backend'])
+                camera = Camera(camera_index=config['index'], name=config['name'])
                 self.cameras[camera_id] = {
                     'camera': camera,
                     'config': config,

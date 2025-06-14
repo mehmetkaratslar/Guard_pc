@@ -37,10 +37,10 @@ CAMERA_CONFIGS = [
     {"index": 2, "backend": cv2.CAP_DSHOW, "name": "Harici Kamera 2 (Ultra Stabil)"},
 ]
 
-# FIXED: YOLOv11 optimize frame ayarları - 640x640 kare format
+# ULTRA OPTIMIZE: YOLOv11 optimize frame ayarları - 640x640 kare format
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 640  # YOLOv11 için kare format
-FRAME_RATE = 30  # Sabit 30 FPS
+FRAME_RATE = 45  # ULTRA OPTIMIZE: Gerçekçi ve stabil FPS hedefi
 
 # FIXED: Ultra stabil YOLOv11 Pose Estimation Ayarları
 MODEL_PATH = os.path.join(
@@ -50,10 +50,12 @@ MODEL_PATH = os.path.join(
     "yolo11l-pose.pt"  # YOLOv11 Large Pose model
 )
 
-# FIXED: Ultra hassas confidence threshold'ları
-CONFIDENCE_THRESHOLD = 0.15  # 0.2 -> 0.15 (ultra hassas)
-POSE_CONFIDENCE_THRESHOLD = 0.1  # 0.05 -> 0.1 (validation uyumlu)
-NMS_THRESHOLD = 0.6  # 0.5 -> 0.6 (daha az filtreleme)
+# ULTRA OPTIMIZE: YOLOv11 640x640 için optimize threshold'lar
+CONFIDENCE_THRESHOLD = 0.12  # ULTRA OPTIMIZE: Maksimum tespit için
+POSE_CONFIDENCE_THRESHOLD = 0.10  # ULTRA OPTIMIZE: Minimum geçerli değer (0.1-1.0)
+NMS_THRESHOLD = 0.5  # ULTRA OPTIMIZE: Optimal filtreleme
+YOLO_INPUT_SIZE = (640, 640)  # ULTRA OPTIMIZE: YOLOv11 kare format
+MIN_KEYPOINTS = 6  # ULTRA OPTIMIZE: Minimum keypoint sayısı
 
 # FIXED: YOLOv11 Model Seçenekleri
 AVAILABLE_MODELS = {
@@ -133,44 +135,76 @@ DEEPSORT_CONFIG = {
     "max_feature_history": 75   # 50 -> 75 (daha uzun geçmiş)
 }
 
-# FIXED: DENGELI Düşme Algılama Parametreleri - Hassasiyet azaltıldı
+# FIXED: DENGELI İNSAN ALGILLAMA - hem güvenilir hem algılayabilen
 FALL_DETECTION_CONFIG = {
-    # FIXED: Dengeli hassasiyet - false positive azaltıldı
-    "head_pelvis_ratio_threshold": 0.4,    # 0.2 -> 0.4 (daha az hassas)
-    "tilt_angle_threshold": 35,            # 20 -> 35 (daha yüksek açı)
-    "shoulder_hip_alignment_threshold": 50, # 70 -> 50 (daha katı)
+    # FIXED: DENGELI GÜVENİLİRLİK - insan algılaması + yanlış pozitif önleme
+    "person_confidence_threshold": 0.4,       # 0.6 -> 0.4 (daha fazla insan algılar)
+    "pose_confidence_threshold": 0.35,        # 0.5 -> 0.35 (daha fazla keypoint algılar)
+    "min_keypoints_for_analysis": 7,          # 10 -> 7 (daha az keypoint yeterli)
+    "min_critical_keypoints": 2,              # 3 -> 2 (daha esnek kritik keypoint)
     
-    # FIXED: Dengeli response - sürekli algılama önlendi
-    "continuity_frames": 3,                # 1 -> 3 (3 frame devam etmeli)
-    "min_detection_interval": 2.0,        # 0.3 -> 2.0 (2 saniye ara)
-    "max_detection_per_minute": 5,        # 30 -> 5 (dakikada max 5)
+    # FIXED: ANATOMIK DOĞRULAMA - insan vücut oranları (korundu)
+    "min_bbox_width": 30,                    # Minimum bbox genişliği
+    "min_bbox_height": 80,                   # Minimum bbox yüksekliği
+    "max_bbox_width": 300,                   # Maksimum bbox genişliği
+    "max_bbox_height": 500,                  # Maksimum bbox yüksekliği
+    "min_aspect_ratio": 1.2,                 # 1.5 -> 1.2 (daha esnek oran)
+    "max_aspect_ratio": 4.5,                 # 4.0 -> 4.5 (daha geniş oran)
     
-    # FIXED: Dengeli confidence - güvenilirlik artırıldı
-    "confidence_threshold": 0.6,          # 0.3 -> 0.6 (daha güvenilir)
-    "pose_confidence_threshold": 0.3,     # 0.1 -> 0.3 (daha güvenilir pose)
+    # FIXED: KATIL düşme algılama eşikleri - yanlış pozitif önleme
+    "critical_tilt_angle": 60,               # Kritik eğim açısı (derece)
+    "moderate_tilt_angle": 45,               # Orta risk eğim açısı
+    "critical_height_ratio": 0.25,           # Kritik yükseklik kaybı oranı
+    "moderate_height_ratio": 0.4,            # Orta risk yükseklik oranı
+    "critical_width_height_ratio": 0.8,      # Kritik yatay pozisyon oranı
+    "moderate_width_height_ratio": 0.6,      # Orta risk yatay pozisyon
     
-    # FIXED: Stabil tracking - daha uzun gözlem
-    "min_track_length": 5,                # 2 -> 5 (daha uzun tracking)
-    "max_track_age": 90,                  # 60 -> 90 (daha uzun track)
+    # FIXED: EKLEM AÇISI KONTROLLERI - insan fizyolojisi
+    "min_elbow_angle": 10,                   # Minimum dirsek açısı
+    "max_elbow_angle": 170,                  # Maksimum dirsek açısı
+    "min_knee_angle": 20,                    # Minimum diz açısı
+    "max_knee_angle": 185,                   # Maksimum diz açısı
+    "critical_knee_angle": 45,               # Kritik diz açısı (düşme)
+    "moderate_knee_angle": 60,               # Orta risk diz açısı
     
-    # FIXED: Dengeli fall detection - false positive azaltıldı
-    "fall_angle_threshold": 45,           # 15 -> 45 (gerçek düşme açısı)
-    "fall_speed_threshold": 0.3,          # 0.1 -> 0.3 (hızlı hareket)
-    "fall_duration_threshold": 1.5,       # 0.5 -> 1.5 (uzun süre gözlem)
+    # FIXED: SIMETRI KONTROLLERI - vücut hizalama
+    "max_shoulder_asymmetry": 50,            # Maksimum omuz eğikliği (piksel)
+    "max_hip_asymmetry": 40,                 # Maksimum kalça eğikliği
+    "max_eye_asymmetry": 30,                 # Maksimum göz eğikliği
+    "max_body_lateral_shift": 80,            # Maksimum yanal kayma
     
-    # FIXED: Kaliteli keypoint - daha güvenilir
-    "min_keypoint_quality": 0.2,          # 0.05 -> 0.2 (daha kaliteli)
-    "min_visible_keypoints": 8,           # 5 -> 8 (daha fazla nokta)
-    "keypoint_smoothing": 0.9,            # 0.8 -> 0.9 (daha yumuşak)
+    # FIXED: DESTEK POZİSYONU - el yerde kontrolleri
+    "critical_elbow_ground_distance": 60,    # Kritik dirsek-yer mesafesi
+    "moderate_elbow_ground_distance": 100,   # Orta risk dirsek-yer mesafesi
+    "critical_head_hip_diff": 40,            # Kritik baş-kalça farkı
+    "moderate_head_hip_diff": 20,            # Orta risk baş-kalça farkı
+    
+    # FIXED: DÜŞME KARARI - çok yüksek eşikler
+    "fall_score_threshold": 2.0,             # Minimum düşme skoru
+    "min_diverse_indicators": 2,             # Minimum farklı indikatör sayısı
+    "critical_indicator_weight": 1.0,        # Kritik indikatör ağırlığı
+    "moderate_indicator_weight": 0.5,        # Orta risk indikatör ağırlığı
+    
+    # FIXED: SÜREKLİLİK VE İNTERVAL - spam önleme
+    "continuity_frames": 5,                  # Süreklilik için frame sayısı
+    "min_detection_interval": 3.0,          # Minimum algılama aralığı (saniye)
+    "max_detection_per_minute": 3,          # Dakikada maksimum algılama
+    "track_stability_frames": 10,           # Track stabilite frame sayısı
+    
+    # FIXED: KALITE KONTROLLERI - güvenilirlik
+    "min_track_length": 8,                  # Minimum track uzunluğu
+    "max_track_age": 120,                   # Maksimum track yaşı
+    "pose_stability_threshold": 0.6,        # Pose stabilite eşiği
+    "detection_confidence_boost": 0.1       # Sürekli detection confidence artışı
 }
 
-# Görselleştirme Ayarları - DÜZELTME: Keypoint'leri görünür yap
+# Görselleştirme Ayarları - DÜZELTME: AKICI VIDEO + Keypoint'leri görünür yap
 VISUALIZATION_CONFIG = {
     "show_pose_points": True,             # Mutlaka True
     "show_pose_skeleton": True,           # Mutlaka True
     "show_pose_labels": True,             # False -> True (label'ları göster)
-    "pose_point_radius": 5,               # 3 -> 5 (daha büyük noktalar)
-    "pose_line_thickness": 3,             # 2 -> 3 (daha kalın çizgiler)
+    "pose_point_radius": 4,               # 5 -> 4 (biraz daha küçük - performans)
+    "pose_line_thickness": 2,             # 3 -> 2 (daha ince - performans)
     
     "show_track_id": True,
     "show_confidence": True,
@@ -184,11 +218,11 @@ VISUALIZATION_CONFIG = {
     "skeleton_color": (0, 255, 255),      # Cyan - çok görünür
     
     "show_fall_overlay": True,
-    "fall_text_size": 1.5,               # 1.0 -> 1.5 (daha büyük text)
+    "fall_text_size": 1.2,               # 1.5 -> 1.2 (daha küçük - performans)
     
-    "camera_display_size": (640, 640),  # YOLOv11 kare format
-    "ui_update_interval": 40,             # 25 -> 40 ms (25 FPS)
-    "stats_update_interval": 1000,       # 500 -> 1000 ms (daha az CPU)
+    "camera_display_size": (640, 640),    # YOLOv11 kare format
+    "ui_update_interval": 8,              # ULTRA OPTIMIZE: 16 -> 8 ms (120 FPS UI)
+    "stats_update_interval": 500,         # ULTRA OPTIMIZE: 1000 -> 500 ms (çok hızlı stats)
 }
 
 # API sunucusu ayarları
@@ -196,18 +230,25 @@ API_HOST = "127.0.0.1"
 API_PORT = 8002
 STREAM_PORT = 5000
 
-# Performans Ayarları - DÜZELTME: Daha responsive
+# Performans Ayarları - DÜZELTME: YÜKSEK FPS için optimizasyon
 PERFORMANCE_CONFIG = {
-    "max_concurrent_detections": 5,       # 3 -> 5
+    "max_concurrent_detections": 2,       # 3 -> 2 (daha az CPU kullanımı)
     "frame_skip_ratio": 0,                # Her frame'i işle
     "gpu_acceleration": True,
     "multi_threading": True,
     "memory_optimization": True,
     "detection_queue_size": 1,            # Minimal latency
-    "camera_buffer_size": 2,              # 1 -> 2 (daha stabil)
-    "display_fps_limit": 25,              # 40 -> 25 (stabil)
-    "ai_detection_fps": 15,               # 10 -> 15 (daha responsive)
+    "camera_buffer_size": 1,              # Minimum buffer
+    "display_fps_limit": 60,              # 30 -> 60 (çok daha akıcı)
+    "ai_detection_fps": 30,               # 20 -> 30 (daha hızlı AI)
     "mobile_stream_enabled": True,
+    
+    # YENİ: YÜKSEK FPS ayarları
+    "video_buffer_size": 1,               # Minimum buffer
+    "video_processing_threads": 3,        # 2 -> 3 (daha fazla paralel işlem)
+    "frame_processing_timeout": 0.01,     # 0.02 -> 0.01 (daha hızlı timeout)
+    "detection_interval": 0.02,           # 0.033 -> 0.02 (50 FPS detection)
+    "ui_update_interval": 0.016,          # 0.025 -> 0.016 (60 FPS UI)
 }
 
 # Bildirim ayarları
@@ -353,6 +394,7 @@ MODEL_PROFILES = {
         "description": "Yüksek hassaslık (Önerilen)"
     }
 }
+
 
 
 # Kamera kalitesi ayarları
@@ -576,21 +618,6 @@ MOBILE_API_CONFIG = {
     }
 }
 
-# Performance ayarları güncelle
-PERFORMANCE_CONFIG = {
-    "max_concurrent_detections": 3,
-    "frame_skip_ratio": 0,               # Hiç frame atlama
-    "gpu_acceleration": True,
-    "multi_threading": True,
-    "memory_optimization": True,
-    "detection_queue_size": 1,           # Minimal queue
-    "camera_buffer_size": 1,             # Tek frame buffer
-    "display_fps_limit": 30,             # 30 FPS display
-    "ai_detection_fps": 10,              # 10 FPS AI processing
-    "mobile_stream_enabled": True,       # Mobil stream aktif
-}
-
-
 # Ek yardımcı fonksiyonlar için sabitler
 CONSTANTS = {
     "PI": 3.14159265359,
@@ -666,7 +693,7 @@ FIREBASE_CONFIG = {
     "messagingSenderId": "584140094374",
     "appId": "1:584140094374:web:e8e8e8e8e8e8e8e8e8e8e8",
     "databaseURL": "https://guard-12345-default-rtdb.firebaseio.com",
-    "measurementId": "G-XXXXXXXXXX",
+    "measurementId": "G-Q69PDLQLSQ",
     "serviceAccountKey": "resources/firebase/serviceAccountKey.json",
     "use_local_storage": True  # Firebase Storage yerine yerel depolama kullan
 }
