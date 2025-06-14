@@ -265,9 +265,10 @@ class NotificationManager:
                 logging.error("FCM bildirimi gönderilemedi: Kullanıcı ID bulunamadı.")
                 return False
 
+            # image_url opsiyonel olabilir
             if not image_url:
-                logging.error("FCM bildirimi gönderilemedi: image_url eksik.")
-                return False
+                logging.warning("FCM bildirimi: image_url eksik, görüntüsüz bildirim gönderiliyor.")
+                image_url = ""  # Boş string olarak ayarla
 
             fcm_token = self.user_data.get("fcmToken")
             if not fcm_token:

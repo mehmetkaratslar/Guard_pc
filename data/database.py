@@ -119,6 +119,10 @@ class FirestoreManager:
         Args:
             db (google.cloud.firestore.Client, optional): Firestore client nesnesi
         """
+        self._memory_storage = {
+            "users": {}
+        }  # Memory storage başta tanımlanıyor
+        
         try:
             self.db = db or firestore.client()
             self.is_available = True
@@ -127,9 +131,6 @@ class FirestoreManager:
             logging.warning(f"Firestore başlatılamadı: {str(e)}")
             logging.info("Yerel dosya tabanlı veri saklama kullanılacak.")
             self.is_available = False
-            self._memory_storage = {
-                "users": {}
-            }
             self._load_local_data()
 
     def _get_local_data_path(self):

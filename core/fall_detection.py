@@ -32,7 +32,7 @@
 
 # === TEMEL FONKSİYONLAR ===
 # - __init__: Gerekli modelleri başlatır, yapılandırmaları yükler
-# - process_frame: Tek bir frame’i işler, nesne tespiti yapar, takip eder
+# - process_frame: Tek bir frame'i işler, nesne tespiti yapar, takip eder
 # - detect_fall: Belirli bir kişinin düşüp düşmediğini analiz eder
 # - visualize_detections: Algılanan kişileri görüntü üzerine çizer
 # - _play_fall_alert_sound: Düşme algılandığında sesli uyarı verir
@@ -49,13 +49,13 @@
 # 2. **Eğim Açısı:**
 #    - Vücudun yatay eksene göre dik olmadığı durumlar
 # 3. **Minimum Poz Noktası Sayısı:**
-#    - Yeterli sayıda keypoint’in güvenilir olması gerekir
+#    - Yeterli sayıda keypoint'in güvenilir olması gerekir
 # 4. **Süre Kontrolü:**
 #    - Aynı kişi üzerinde belirli süre boyunca tekrarlayan algılama
 
 # === DEEPSORT İLE KİŞİ TAKİBİ ===
 # - Her kişiye benzersiz ID atanır
-# - Frame’ler arasında aynı kişiyi takip eder
+# - Frame'ler arasında aynı kişiyi takip eder
 # - Takip süresince düşme algılaması yapılır
 
 # === GÖRSEL ÜSTÜNE BİLGİ EKLEME ===
@@ -289,116 +289,6 @@ class FallDetector:
         }
         
         return enhanced_info
-
-    def get_enhanced_detection_visualization(self, frame):
-        """
-        Enhanced detection visualization method (app.py uyumluluğu için).
-        
-        Args:
-            frame (np.ndarray): Giriş görüntüsü
-            
-        Returns:
-            tuple: (görselleştirilmiş_frame, track_listesi)
-        """
-        return self.get_detection_visualization(frame)
-
-    def detect_enhanced_fall(self, frame, tracks=None):
-        """
-        Enhanced fall detection method (app.py uyumluluğu için).
-        
-        Args:
-            frame (np.ndarray): Giriş görüntüsü
-            tracks (list, optional): Tracking bilgileri
-            
-        Returns:
-            tuple: (düşme_durumu, güven_skoru, track_id, analysis_result)
-        """
-        # Standart detect_fall metodunu çağır ve sonuca None ekle
-        is_fall, confidence, track_id = self.detect_fall(frame, tracks)
-        
-        # Analysis result için basit bir mock object
-        analysis_result = None
-        if is_fall:
-            analysis_result = AnalysisResult(
-                is_fall=is_fall,
-                confidence=confidence,
-                fall_score=confidence,
-                keypoint_quality=0.8,
-                pose_stability=0.7,
-                risk_factors=["tilt_angle", "head_pelvis_ratio"],
-                timestamp=time.time(),
-                analysis_details={}
-            )
-        
-        return is_fall, confidence, track_id, analysis_result
-
-    def _get_performance_metrics(self):
-        """Performans metriklerini hesapla."""
-        processing_times = list(self.detection_stats['processing_times'])
-        
-        if not processing_times:
-            return {
-                "avg_processing_time": 0.0,
-                "fps": 0.0,
-                "min_processing_time": 0.0,
-                "max_processing_time": 0.0
-            }
-        
-        avg_time = np.mean(processing_times)
-        fps = 1.0 / avg_time if avg_time > 0 else 0.0
-        
-        return {
-            "avg_processing_time": float(avg_time),
-            "fps": float(fps),
-            "min_processing_time": float(np.min(processing_times)),
-            "max_processing_time": float(np.max(processing_times)),
-            "total_frames_processed": self.frame_count,
-            "detection_accuracy": self._calculate_detection_accuracy()
-        }
-
-    def _calculate_detection_accuracy(self):
-        """Algılama doğruluğunu hesapla."""
-        total = self.detection_stats['total_detections']
-        false_pos = self.detection_stats['false_positives']
-        
-        if total == 0:
-            return 1.0
-        
-        accuracy = 1.0 - (false_pos / total)
-        return max(0.0, min(1.0, accuracy))
-
-    def _get_system_status(self):
-        """Sistem durumunu değerlendir."""
-        status = "healthy"
-        issues = []
-        
-        # Model durumu
-        if not self.is_model_loaded:
-            status = "warning"
-            issues.append("Model yüklü değil")
-        
-        # Tracker durumu
-        if self.tracker is None:
-            if status == "healthy":
-                status = "warning"
-            issues.append("Tracker kullanılamıyor")
-        
-        # Performans kontrolü
-        if self.detection_stats['processing_times']:
-            avg_time = np.mean(list(self.detection_stats['processing_times']))
-            if avg_time > 0.5:  # 500ms'den fazla
-                if status == "healthy":
-                    status = "warning"
-                issues.append("Yavaş işleme")
-        
-        return {
-            "status": status,
-            "issues": issues,
-            "last_check": time.time(),
-            "checks_passed": len(issues) == 0
-        }
-
-
 
     def get_detection_visualization(self, frame):
         """
@@ -728,7 +618,6 @@ class FallDetector:
         except Exception as e:
             logging.error(f"Enhanced pose keypoints çizim hatası: {str(e)}")
 
-
     def detect_fall(self, frame, tracks=None):
         """
         DÜZELTME: Ultra hassas düşme algılama - düşük threshold
@@ -787,7 +676,6 @@ class FallDetector:
                 logging.error(f"Ultra hassas fall detection hatası: {str(e)}")
                 return False, 0.0, None
 
-
     def get_detection_summary(self):
         """Algılama özetini döndürür."""
         uptime = time.time() - self.initialization_time
@@ -803,6 +691,59 @@ class FallDetector:
             "model_status": "loaded" if self.is_model_loaded else "error",
             "tracker_status": "active" if self.tracker else "disabled"
         }
+
+    def _get_performance_metrics(self):
+        """Performans metriklerini hesaplar."""
+        try:
+            uptime = time.time() - self.initialization_time
+            fps = self.frame_count / uptime if uptime > 0 else 0
+            
+            avg_processing_time = 0
+            if self.detection_stats['processing_times']:
+                avg_processing_time = sum(self.detection_stats['processing_times']) / len(self.detection_stats['processing_times'])
+            
+            return {
+                "fps": fps,
+                "avg_processing_time": avg_processing_time,
+                "total_frames": self.frame_count,
+                "uptime": uptime,
+                "detection_rate": self.detection_stats['total_detections'] / max(1, self.frame_count),
+                "fall_rate": self.detection_stats['fall_detections'] / max(1, self.frame_count)
+            }
+        except Exception as e:
+            logging.error(f"Performance metrics hesaplama hatası: {e}")
+            return {
+                "fps": 0,
+                "avg_processing_time": 0,
+                "total_frames": 0,
+                "uptime": 0,
+                "detection_rate": 0,
+                "fall_rate": 0
+            }
+
+    def _get_system_status(self):
+        """Sistem durumunu döndürür."""
+        try:
+            return {
+                "model_loaded": self.is_model_loaded,
+                "tracker_active": self.tracker is not None,
+                "cameras_connected": True,  # Bu bilgi camera.py'den gelir
+                "ai_processing": True,
+                "fall_detection_active": True,
+                "pose_estimation_active": True,
+                "system_healthy": self.is_model_loaded and self.tracker is not None
+            }
+        except Exception as e:
+            logging.error(f"System status hesaplama hatası: {e}")
+            return {
+                "model_loaded": False,
+                "tracker_active": False,
+                "cameras_connected": False,
+                "ai_processing": False,
+                "fall_detection_active": False,
+                "pose_estimation_active": False,
+                "system_healthy": False
+            }
 
     def _update_person_tracks(self, tracks, pose_data):
         """Person tracking bilgilerini günceller."""
@@ -835,9 +776,6 @@ class FallDetector:
                     
         except Exception as e:
             logging.error(f"Person tracks güncelleme hatası: {str(e)}")
-
-
-
 
     def _analyze_fall_for_person(self, person_track):
         """
@@ -1010,290 +948,6 @@ class FallDetector:
             logging.error(f"Ultra hassas düşme analizi hatası: {str(e)}")
             return False, 0.0
 
-
-    def _enhanced_detection_loop(self, camera):
-        """
-        DÜZELTME: Optimized detection loop - Daha akıcı kamera
-        """
-        try:
-            camera_id = f"camera_{camera.camera_index}"
-            logging.info(f"🎥 Enhanced Detection Loop başlatıldı: {camera_id}")
-            
-            # DÜZELTME: Performans optimizasyonu
-            config = {
-                'target_fps': 25,  # 30 -> 25 (daha kararlı)
-                'max_errors': 10,  # 15 -> 10
-                'min_detection_interval': 1.5,  # 2.0 -> 1.5 saniye (daha hızlı)
-                'performance_log_interval': 100,  # 150 -> 100
-                'ai_enabled': self.system_state['ai_model_loaded'],
-                'frame_skip': 1  # Her frame'i işle
-            }
-            
-            stats = {
-                'frame_count': 0,
-                'detection_count': 0,
-                'fall_detection_count': 0,
-                'error_count': 0,
-                'session_start': time.time(),
-                'last_detection_time': 0,
-                'total_processing_time': 0.0,
-                'fps_counter': 0,
-                'fps_start_time': time.time()
-            }
-            
-            frame_duration = 1.0 / config['target_fps']
-            last_fps_log = time.time()
-            
-            while self.system_state['running']:
-                loop_start = time.time()
-                
-                try:
-                    # DÜZELTME: Kamera durumu kontrolü
-                    if not camera or not hasattr(camera, 'is_running') or not camera.is_running:
-                        time.sleep(0.1)
-                        continue
-                    
-                    # DÜZELTME: Frame alma optimizasyonu
-                    frame = camera.get_frame()
-                    if frame is None or frame.size == 0:
-                        stats['error_count'] += 1
-                        if stats['error_count'] < config['max_errors']:
-                            time.sleep(0.05)  # Kısa bekleme
-                            continue
-                        else:
-                            logging.error(f"💥 {camera_id}: Maksimum hata sayısına ulaşıldı")
-                            break
-                    
-                    # Frame başarılı - error count sıfırla
-                    stats['error_count'] = 0
-                    stats['frame_count'] += 1
-                    stats['fps_counter'] += 1
-                    processing_start = time.time()
-                    
-                    # DÜZELTME: AI Detection
-                    if config['ai_enabled'] and self.fall_detector:
-                        try:
-                            # Pose detection
-                            annotated_frame, tracks = self.fall_detector.get_detection_visualization(frame)
-                            
-                            # Stats güncelle
-                            if tracks:
-                                stats['detection_count'] += len(tracks)
-                                self.system_state['total_detections'] += len(tracks)
-                                self.system_state['last_activity'] = time.time()
-                            
-                            # DÜZELTME: Fall Detection - Daha hassas eşik
-                            current_time = time.time()
-                            if (current_time - stats['last_detection_time']) > config['min_detection_interval']:
-                                is_fall, confidence, track_id = self.fall_detector.detect_fall(frame, tracks)
-                                
-                                # DÜZELTME: Düşük eşik değeri
-                                if is_fall and confidence > 0.4:  # 0.5 -> 0.4
-                                    stats['last_detection_time'] = current_time
-                                    stats['fall_detection_count'] += 1
-                                    self.system_state['fall_events'] += 1
-                                    
-                                    logging.warning(f"🚨 {camera_id} DÜŞME ALGILANDI!")
-                                    logging.info(f"   📍 Track ID: {track_id}")
-                                    logging.info(f"   📊 Confidence: {confidence:.4f}")
-                                    
-                                    # DÜZELTME: Thread-safe fall handling
-                                    def handle_fall():
-                                        try:
-                                            self._handle_enhanced_fall_detection(
-                                                annotated_frame, confidence, camera_id, track_id, None
-                                            )
-                                        except Exception as handle_error:
-                                            logging.error(f"❌ Fall handling hatası: {handle_error}")
-                                    
-                                    self.root.after(0, handle_fall)
-                        
-                        except Exception as ai_error:
-                            logging.error(f"❌ {camera_id} AI detection hatası: {ai_error}")
-                            annotated_frame = frame
-                    
-                    else:
-                        annotated_frame = frame
-                    
-                    # DÜZELTME: Processing time
-                    processing_time = time.time() - processing_start
-                    stats['total_processing_time'] += processing_time
-                    
-                    # DÜZELTME: FPS logging - Her 5 saniyede bir
-                    if time.time() - last_fps_log >= 5.0:
-                        elapsed = time.time() - stats['fps_start_time']
-                        if elapsed > 0:
-                            current_fps = stats['fps_counter'] / elapsed
-                            logging.info(f"📊 {camera_id} FPS: {current_fps:.1f}")
-                            
-                            # Reset
-                            stats['fps_counter'] = 0
-                            stats['fps_start_time'] = time.time()
-                            last_fps_log = time.time()
-                    
-                    # DÜZELTME: Akıcılık için dinamik FPS kontrolü
-                    elapsed_time = time.time() - loop_start
-                    target_sleep = frame_duration - elapsed_time
-                    
-                    # CPU kullanımına göre uyarla
-                    if processing_time > frame_duration * 0.8:  # %80'den fazla CPU kullanımı
-                        target_sleep = max(0.01, target_sleep)  # Minimum 10ms
-                    else:
-                        target_sleep = max(0.005, target_sleep)  # Minimum 5ms
-                    
-                    if target_sleep > 0:
-                        time.sleep(target_sleep)
-                    
-                except Exception as inner_e:
-                    stats['error_count'] += 1
-                    logging.error(f"❌ {camera_id} loop inner hatası: {str(inner_e)}")
-                    
-                    if stats['error_count'] >= config['max_errors']:
-                        logging.error(f"💥 {camera_id} maksimum hata sayısına ulaştı")
-                        break
-                    
-                    time.sleep(0.1)
-            
-            # Final log
-            total_time = time.time() - stats['session_start']
-            avg_fps = stats['frame_count'] / total_time if total_time > 0 else 0
-            logging.info(f"🏁 {camera_id} Session tamamlandı: {avg_fps:.1f} FPS")
-            
-        except Exception as e:
-            logging.error(f"💥 {camera_id} Detection loop kritik hatası: {str(e)}")
-        finally:
-            logging.info(f"🧹 {camera_id} detection thread temizlendi")
-
-
-    def _draw_visualizations(self, frame, tracks):
-        """
-        Tracking ve pose bilgilerini frame üzerine çizer.
-        
-        Args:
-            frame (np.ndarray): Orijinal frame
-            tracks (list): DeepSORT track listesi
-            
-        Returns:
-            np.ndarray: Görselleştirilmiş frame
-        """
-        annotated_frame = frame.copy()
-        
-        try:
-            # Frame boyut oranları
-            scale_x = frame.shape[1] / self.frame_size
-            scale_y = frame.shape[0] / self.frame_size
-            
-            for track in tracks:
-                if not hasattr(track, 'is_confirmed') or not track.is_confirmed():
-                    continue
-                
-                track_id = track.track_id
-                bbox = track.to_ltrb()
-                
-                # Bbox'ı orijinal frame boyutuna ölçeklendir
-                x1 = int(bbox[0] * scale_x)
-                y1 = int(bbox[1] * scale_y)
-                x2 = int(bbox[2] * scale_x)
-                y2 = int(bbox[3] * scale_y)
-                
-                # Düşme durumu kontrolü
-                is_falling = track_id in self.fall_alerts
-                box_color = (0, 0, 255) if is_falling else (0, 255, 0)  # Kırmızı/Yeşil
-                box_thickness = 3 if is_falling else 2
-                
-                # Bounding box çiz
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, box_thickness)
-                
-                # Track ID ve güven skoru
-                confidence = getattr(track, 'confidence', 0.0)
-                label = f"ID: {track_id}"
-                if confidence > 0:
-                    label += f" ({confidence:.2f})"
-                
-                # Düşme uyarısı ekle
-                if is_falling:
-                    label += " - FALL DETECTED!"
-                
-                # Label arka planı
-                label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-                cv2.rectangle(annotated_frame, (x1, y1-35), (x1 + label_size[0], y1), box_color, -1)
-                
-                # Label metni
-                text_color = (255, 255, 255)
-                cv2.putText(annotated_frame, label, (x1, y1-10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, text_color, 2)
-                
-                # Pose keypoints çiz
-                if track_id in self.person_tracks:
-                    person_track = self.person_tracks[track_id]
-                    if person_track.has_valid_pose():
-                        self._draw_pose_keypoints(annotated_frame, person_track, scale_x, scale_y)
-            
-            return annotated_frame
-            
-        except Exception as e:
-            logging.error(f"Visualization çizim hatası: {str(e)}")
-            return frame
-
-    def _draw_pose_keypoints(self, frame, person_track, scale_x, scale_y):
-        """
-        Pose keypoints'leri frame üzerine çizer.
-        
-        Args:
-            frame (np.ndarray): Frame
-            person_track (PersonTrack): Kişi tracking bilgileri
-            scale_x (float): X ekseni ölçekleme faktörü
-            scale_y (float): Y ekseni ölçekleme faktörü
-        """
-        try:
-            keypoints = person_track.latest_keypoints
-            keypoint_confs = person_track.latest_keypoint_confs
-            
-            if keypoints is None or keypoint_confs is None:
-                return
-            
-            # Keypoint bağlantıları (COCO format)
-            skeleton = [
-                [16, 14], [14, 12], [17, 15], [15, 13], [12, 13],  # Bacaklar
-                [6, 12], [7, 13], [6, 7], [6, 8], [7, 9],         # Gövde ve kollar
-                [8, 10], [9, 11], [6, 5], [5, 7], [1, 2],         # Kollar ve omuzlar
-                [0, 1], [0, 2], [1, 3], [2, 4]                    # Baş
-            ]
-            
-            # Keypoint'leri çiz
-            for i, (keypoint, conf) in enumerate(zip(keypoints, keypoint_confs)):
-                if conf > self.fall_detection_params['confidence_threshold']:
-                    x = int(keypoint[0] * scale_x)
-                    y = int(keypoint[1] * scale_y)
-                    
-                    # Keypoint rengi (önemli noktalara göre)
-                    if i == 0:  # Burun
-                        color = (255, 0, 0)  # Mavi
-                    elif i in [5, 6]:  # Omuzlar
-                        color = (0, 255, 255)  # Sarı
-                    elif i in [11, 12]:  # Kalçalar
-                        color = (255, 0, 255)  # Magenta
-                    else:
-                        color = (0, 255, 0)  # Yeşil
-                    
-                    cv2.circle(frame, (x, y), 4, color, -1)
-            
-            # Skeleton çizgileri çiz
-            for connection in skeleton:
-                pt1_idx, pt2_idx = connection[0] - 1, connection[1] - 1  # COCO 1-indexed
-                
-                if (0 <= pt1_idx < len(keypoints) and 0 <= pt2_idx < len(keypoints) and
-                    keypoint_confs[pt1_idx] > self.fall_detection_params['confidence_threshold'] and
-                    keypoint_confs[pt2_idx] > self.fall_detection_params['confidence_threshold']):
-                    
-                    pt1 = (int(keypoints[pt1_idx][0] * scale_x), int(keypoints[pt1_idx][1] * scale_y))
-                    pt2 = (int(keypoints[pt2_idx][0] * scale_x), int(keypoints[pt2_idx][1] * scale_y))
-                    
-                    cv2.line(frame, pt1, pt2, (0, 255, 0), 2)
-                    
-        except Exception as e:
-            logging.error(f"Pose keypoints çizim hatası: {str(e)}")
-
     def _play_fall_alert_sound(self):
         """Düşme uyarısı sesini çalar."""
         try:
@@ -1326,6 +980,7 @@ class PersonTrack:
         self.latest_keypoint_confs = None
         self.pose_history = deque(maxlen=10)  # Son 10 pose
         self.update_time = time.time()
+        self.pose_data = None  # Pose data attribute eklendi
         
     def update(self, track, pose_data):
         """Track ve pose bilgilerini günceller."""

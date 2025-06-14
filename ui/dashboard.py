@@ -41,6 +41,7 @@ class DashboardFrame(tk.Frame):
         self.system_running = False
         self.is_fullscreen = False
         self.selected_camera_index = 0
+        self.panel_collapsed = False  # Panel durumu
         
         # DÜZELTME: Stabil frame yönetimi
         self.current_frame = None
@@ -107,36 +108,60 @@ class DashboardFrame(tk.Frame):
         # UI oluştur
         self._create_ultra_modern_ui()
         
-        # DÜZELTME: Basit processing başlat
-        self._start_simple_processing()
-        
-        # DÜZELTME: Stabil display güncellemesi
+        # Display update başlat
         self._start_stable_display_updates()
 
     def _create_ultra_modern_ui(self):
-        """Ultra modern UI yapısını oluşturur."""
+        """Ultra modern UI yapısını oluşturur - responsive ayarlar."""
         self.configure(bg=self.colors['bg_primary'])
-        
-        # Ana container
         self.main_container = tk.Frame(self, bg=self.colors['bg_primary'])
         self.main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # Grid layout
         self.main_container.grid_rowconfigure(0, weight=1)
         self.main_container.grid_columnconfigure(0, weight=1, minsize=350)
         self.main_container.grid_columnconfigure(1, weight=5)
-        
-        # Sol kontrol paneli
         self._create_control_panel()
-        
-        # Ana kamera alanı
         self._create_single_camera_area()
         
-        # Keyboard shortcuts
+        # Panel toggle butonu - floating olarak ana container'da
+        self.toggle_panel_btn = tk.Button(self.main_container, text="◀", 
+                                         font=("Segoe UI", 12, "bold"),
+                                         bg=self.colors['accent_primary'], 
+                                         fg="white",
+                                         command=self._toggle_panel,
+                                         relief=tk.FLAT, 
+                                         cursor="hand2", 
+                                         padx=8, 
+                                         pady=5,
+                                         bd=0)
+        # Başlangıçta sol üst köşeye yerleştir
+        self.toggle_panel_btn.place(x=360, y=10, anchor="nw")
+        
         self.bind_all("<F11>", lambda e: self.toggle_fullscreen())
         self.bind_all("<Escape>", lambda e: self.exit_fullscreen())
         self.bind_all("<Left>", lambda e: self._previous_camera())
         self.bind_all("<Right>", lambda e: self._next_camera())
+        # Responsive: pencere boyutu değişince fontları güncelle - FIXED
+        self._configure_binding_id = None
+        self._setup_configure_binding()
+
+    def _setup_configure_binding(self):
+        """Configure event binding'ini güvenli şekilde ayarla."""
+        try:
+            if self.winfo_exists():
+                root = self.winfo_toplevel()
+                if root.winfo_exists():
+                    self._configure_binding_id = root.bind("<Configure>", self._safe_update_fonts)
+        except:
+            pass
+
+    def _safe_update_fonts(self, event=None):
+        """Güvenli font güncelleme."""
+        try:
+            if self.is_destroyed or not self.winfo_exists():
+                return
+            self._update_fonts()
+        except:
+            pass
 
     def _create_control_panel(self):
         """Sol kontrol panelini oluşturur."""
@@ -174,45 +199,50 @@ class DashboardFrame(tk.Frame):
         self._create_menu_section(scrollable_frame)
 
     def _create_header_section(self, parent):
-        """Header section."""
+        """Header section - sol üstte ayarlar ve geçmiş butonları."""
         header_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], height=100)
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         header_frame.pack_propagate(False)
         
-        # Logo ve başlık
-        title_label = tk.Label(header_frame, text="🛡️ GUARD AI", 
-                              font=("Segoe UI", 20, "bold"),
-                              fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'])
-        title_label.pack(pady=10)
+        # Sol taraf - Logo ve başlık
+        left_frame = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        subtitle_label = tk.Label(header_frame, text="Doğal Kalite Düşme Algılama", 
-                                 font=("Segoe UI", 12),
-                                 fg=self.colors['text_secondary'], bg=self.colors['bg_tertiary'])
-        subtitle_label.pack()
+        title_label = tk.Label(left_frame, text="🛡️ GUARD AI", 
+                              font=("Segoe UI", self._responsive_font(20, 0.025)),
+                              fg=self.colors['accent_primary'], bg=self.colors['bg_tertiary'],
+                              wraplength=300, anchor="w")
+        title_label.pack(side=tk.LEFT, padx=20, pady=10)
         
-        # Kullanıcı bilgisi
-        user_label = tk.Label(header_frame, text=f"👤 {self.user.get('displayName', 'Kullanıcı')}", 
-                             font=("Segoe UI", 12),
+        # Sağ taraf - Kullanıcı bilgisi
+        right_frame = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=20)
+        
+        # Kullanıcı adı
+        user_name = self.user.get('displayName', self.user.get('email', 'Kullanıcı'))
+        user_label = tk.Label(right_frame, text=f"👤 {user_name}", 
+                             font=("Segoe UI", self._responsive_font(14)),
                              fg=self.colors['text_primary'], bg=self.colors['bg_tertiary'])
-        user_label.pack(pady=(10, 0))
+        user_label.pack(pady=(20, 5))
+        
+        # Email
+        user_email = self.user.get('email', '')
+        if user_email:
+            email_label = tk.Label(right_frame, text=user_email, 
+                                 font=("Segoe UI", self._responsive_font(10)),
+                                 fg=self.colors['text_secondary'], bg=self.colors['bg_tertiary'])
+            email_label.pack()
 
-        # Sağ üst köşe butonları
-        top_right_panel = tk.Frame(header_frame, bg=self.colors['bg_tertiary'])
-        top_right_panel.place(relx=1, rely=0.1, x=-10, anchor="ne")
-        
-        # Ayarlar butonu
-        settings_btn = tk.Button(top_right_panel, text="⚙️ Ayarlar", font=("Segoe UI", 12, "bold"),
-                                bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
-                                padx=10, pady=6, command=self.settings_fn,
-                                activebackground="#CF1A1A", cursor="hand2")
-        settings_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Olay geçmişi butonu
-        history_btn = tk.Button(top_right_panel, text="📋 Geçmiş", font=("Segoe UI", 12, "bold"),
-                               bg=self.colors['accent_info'], fg="white", relief=tk.FLAT,
-                               padx=10, pady=6, command=self.history_fn,
-                               activebackground="#1A5ACF", cursor="hand2")
-        history_btn.pack(side=tk.LEFT, padx=5)
+    def _responsive_font(self, base_size, rel=0.02):
+        """Ekran boyutuna göre font büyüklüğü döndürür."""
+        try:
+            root = self.winfo_toplevel()
+            w = root.winfo_width() or 1400
+            h = root.winfo_height() or 900
+            scale = min(w, h)
+            return max(int(base_size * (scale / 900)), int(base_size * rel * (scale / 900)), 10)
+        except:
+            return base_size
 
     def _create_system_control_section(self, parent):
         """Sistem kontrolü section."""
@@ -222,6 +252,26 @@ class DashboardFrame(tk.Frame):
                                      bd=1, relief="solid")
         control_frame.pack(fill=tk.X, padx=10, pady=10)
         
+        # Üst butonlar - Ayarlar ve Geçmiş
+        top_buttons_frame = tk.Frame(control_frame, bg=self.colors['bg_secondary'])
+        top_buttons_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
+        
+        # Ayarlar butonu
+        settings_btn = tk.Button(top_buttons_frame, text="⚙️ Ayarlar", 
+                                font=("Segoe UI", 12, "bold"),
+                                bg=self.colors['accent_info'], fg="white",
+                                command=self.settings_fn,
+                                relief=tk.FLAT, padx=15, pady=8, cursor="hand2")
+        settings_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Olay geçmişi butonu
+        history_btn = tk.Button(top_buttons_frame, text="📋 Olay Geçmişi", 
+                               font=("Segoe UI", 12, "bold"),
+                               bg=self.colors['accent_info'], fg="white",
+                               command=self.history_fn,
+                               relief=tk.FLAT, padx=15, pady=8, cursor="hand2")
+        history_btn.pack(side=tk.LEFT, padx=5)
+        
         # Ana kontrol butonu
         self.control_button = tk.Button(control_frame, textvariable=self.control_var,
                                        font=("Segoe UI", 16, "bold"),
@@ -229,7 +279,7 @@ class DashboardFrame(tk.Frame):
                                        command=self._toggle_system,
                                        relief=tk.FLAT, pady=15, cursor="hand2",
                                        activebackground=self.colors['hover'])
-        self.control_button.pack(fill=tk.X, padx=15, pady=15)
+        self.control_button.pack(fill=tk.X, padx=15, pady=10)
         
         # Sistem durumu
         status_label = tk.Label(control_frame, textvariable=self.status_var,
@@ -351,18 +401,22 @@ class DashboardFrame(tk.Frame):
             label.pack(anchor="w", pady=2)
 
     def _create_menu_section(self, parent):
-        """Menü section."""
-        menu_frame = tk.LabelFrame(parent, text="⚙️ Menü", 
-                                  font=("Segoe UI", 14, "bold"),
-                                  fg=self.colors['text_primary'], bg=self.colors['bg_secondary'],
-                                  bd=1, relief="solid")
-        menu_frame.pack(fill=tk.X, padx=10, pady=10)
+        """Alt kısım - Çıkış butonu."""
+        # Spacer frame - boş alan
+        spacer_frame = tk.Frame(parent, bg=self.colors['bg_secondary'])
+        spacer_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Sadece Çıkış butonu
-        btn = tk.Button(menu_frame, text="🚪 Çıkış", font=("Segoe UI", 12),
-                       bg=self.colors['accent_danger'], fg="white", command=self.logout_fn,
-                       relief=tk.FLAT, cursor="hand2", pady=8)
-        btn.pack(fill=tk.X, padx=15, pady=5)
+        # Alt buton frame
+        bottom_frame = tk.Frame(parent, bg=self.colors['bg_secondary'])
+        bottom_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Çıkış butonu - en altta
+        logout_btn = tk.Button(bottom_frame, text="🚪 ÇIKIŞ YAP", 
+                              font=("Segoe UI", 14, "bold"),
+                              bg=self.colors['accent_danger'], fg="white", 
+                              command=self.logout_fn,
+                              relief=tk.FLAT, cursor="hand2", pady=12)
+        logout_btn.pack(fill=tk.X)
 
     def _create_single_camera_area(self):
         """TEK KAMERA görüntüleme alanını oluşturur."""
@@ -468,162 +522,91 @@ class DashboardFrame(tk.Frame):
             new_index = (self.selected_camera_index + 1) % len(self.cameras)
             self._select_camera(new_index)
 
-
-
-    def _start_simple_processing(self):
-        """DÜZELTME: Ultra hassas AI processing thread."""
-        def ultra_sensitive_processing():
-            try:
-                fall_detector = FallDetector.get_instance()
-                logging.info("🎯 Ultra hassas processing başlatıldı")
-            except Exception as e:
-                logging.error(f"FallDetector başlatma hatası: {e}")
-                return
-            
-            # DÜZELTME: Çok daha sık AI processing
-            ai_process_interval = 2  # Her 2. frame'de AI (ultra responsive)
-            frame_counter = 0
-            last_stats_update = time.time()
-            
-            while not self.is_destroyed and self.system_running:
-                try:
-                    if not self.cameras or self.selected_camera_index >= len(self.cameras):
-                        time.sleep(0.1)
-                        continue
-                    
-                    camera = self.cameras[self.selected_camera_index]
-                    
-                    if not hasattr(camera, 'is_running') or not camera.is_running:
-                        time.sleep(0.1)
-                        continue
-                    
-                    # Frame al
-                    frame = camera.get_frame()
-                    if frame is None or frame.size == 0:
-                        time.sleep(0.02)
-                        continue
-                    
-                    frame_counter += 1
-                    
-                    # DÜZELTME: Çok sık AI processing
-                    if frame_counter % ai_process_interval == 0:
-                        try:
-                            # Enhanced AI detection
-                            annotated_frame, tracks = fall_detector.get_detection_visualization(frame)
-                            
-                            # Stats güncelle
-                            self.tracking_stats['active_tracks'] = len(tracks)
-                            if tracks:
-                                self.tracking_stats['total_detections'] += len(tracks)
-                            
-                            # DÜZELTME: Ultra hassas fall detection
-                            is_fall, confidence, track_id = fall_detector.detect_fall(frame, tracks)
-                            
-                            # DÜZELTME: Çok düşük threshold - 0.15!
-                            if is_fall and confidence > 0.15:
-                                logging.warning(f"🚨 ULTRA HASSAS DÜŞME ALGILANDI! Confidence: {confidence:.3f}")
-                                self._handle_fall_detection(self.selected_camera_index, confidence, track_id)
-                            
-                            # Enhanced frame'i kaydet
-                            with self.frame_lock:
-                                self.current_frame = annotated_frame.copy()
-                        
-                        except Exception as ai_error:
-                            logging.error(f"AI işleme hatası: {ai_error}")
-                            # AI hatası durumunda ham frame
-                            with self.frame_lock:
-                                self.current_frame = frame.copy()
-                    else:
-                        # AI olmadan ham frame
-                        with self.frame_lock:
-                            self.current_frame = frame.copy()
-                    
-                    # DÜZELTME: FPS calculation - daha sık
-                    current_time = time.time()
-                    if current_time - last_stats_update >= 2.0:  # 2 saniyede bir
-                        elapsed = current_time - last_stats_update
-                        fps = frame_counter / elapsed if elapsed > 0 else 0
-                        self.tracking_stats['current_fps'] = int(fps)
-                        
-                        # Debug log
-                        logging.debug(f"📊 Ultra Processing Stats: FPS={fps:.1f}, Tracks={self.tracking_stats['active_tracks']}")
-                        
-                        frame_counter = 0
-                        last_stats_update = current_time
-                    
-                    # DÜZELTME: Daha hızlı processing
-                    time.sleep(0.025)  # 40 FPS processing (çok hızlı)
-                    
-                except Exception as e:
-                    logging.error(f"Ultra processing hatası: {e}")
-                    time.sleep(0.1)
-        
-        # Thread başlat
-        self.processing_thread = threading.Thread(target=ultra_sensitive_processing, daemon=True)
-        self.processing_thread.start()
-        logging.info("🧵 Ultra hassas processing thread başlatıldı")
-
     def _start_stable_display_updates(self):
         """DÜZELTME: Stabil display güncelleme başlat."""
         self._stable_display_update()
 
     def _stable_display_update(self):
-        """DÜZELTME: Çok stabil display update - tek timer."""
+        """FIXED: Ultra stabil display update - tüm sorunlar çözülmüş."""
         if self.is_destroyed:
             return
         
         try:
-            # Frame'i al
-            display_frame = None
+            # Sistem başlatılmadıysa placeholder göster
+            if not self.system_running:
+                # Sadece 1 saniyede bir kontrol et
+                self.update_id = self.after(1000, self._stable_display_update)
+                return
+            
+            # Kamera seçili değilse veya çalışmıyorsa
+            if (not self.cameras or 
+                self.selected_camera_index >= len(self.cameras) or
+                not self.cameras[self.selected_camera_index].is_running):
+                # Sadece 500ms'de bir kontrol et
+                self.update_id = self.after(500, self._stable_display_update)
+                return
+            
+            # DÜZELTME: current_frame varsa onu göster (AI processing sonucu)
             with self.frame_lock:
                 if self.current_frame is not None:
-                    display_frame = self.current_frame.copy()
+                    frame = self.current_frame.copy()
+                    # Debug: AI frame kullanıldığını logla
+                    if not hasattr(self, '_ai_frame_logged'):
+                        logging.info("🎨 Dashboard: AI processed frame kullanılıyor")
+                        self._ai_frame_logged = True
+                else:
+                    # Frame'i direkt kameradan al
+                    camera = self.cameras[self.selected_camera_index]
+                    frame = camera.get_frame()
+                    # Reset AI frame log flag
+                    if hasattr(self, '_ai_frame_logged'):
+                        delattr(self, '_ai_frame_logged')
             
-            if display_frame is not None:
-                # Sadece boyutlandır ve göster - enhancement yok
-                self._direct_stable_display(display_frame)
+            if frame is not None and frame.size > 0:
+                # Direkt display - AI processing sonucu dahil
+                self._direct_stable_display(frame)
             
-            # UI bilgilerini güncelle - 2 saniyede bir
-            if int(time.time()) % 2 == 0:
+            # UI bilgilerini güncelle - 3 saniyede bir
+            if int(time.time()) % 3 == 0:
                 self._update_ui_info()
         
         except Exception as e:
             logging.error(f"Display update hatası: {e}")
         
-        # Sabit 25 FPS için 40ms
+        # FIXED: Sabit 25 FPS için 40ms
         self.update_id = self.after(40, self._stable_display_update)
 
     def _direct_stable_display(self, frame):
-        """DÜZELTME: Direkt ve stabil display - minimum işlem."""
+        """FIXED: Direkt ve ultra stabil display - minimum işlem."""
         try:
-            # Label boyutunu al
+            # FIXED: Label boyutunu al
             label_width = self.main_camera_label.winfo_width() or 1200
             label_height = self.main_camera_label.winfo_height() or 800
             
             if label_width > 50 and label_height > 50:
                 h, w = frame.shape[:2]
                 
-                # Aspect ratio korunarak resize
+                # FIXED: Aspect ratio korunarak resize
                 scale = min(label_width / w, label_height / h)
                 new_width = int(w * scale)
                 new_height = int(h * scale)
                 
-                # Resize - INTER_LINEAR daha hızlı
+                # FIXED: Stabil resize - INTER_LINEAR daha hızlı
                 resized = cv2.resize(frame, (new_width, new_height), 
                                 interpolation=cv2.INTER_LINEAR)
                 
-                # Minimal overlay
+                # FIXED: Minimal overlay
                 self._add_minimal_overlay(resized)
                 
-                # BGR to RGB
+                # FIXED: BGR to RGB
                 frame_rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                 
-                # PIL ve PhotoImage
+                # FIXED: PIL ve PhotoImage
                 from PIL import Image, ImageTk
                 pil_image = Image.fromarray(frame_rgb)
                 tk_image = ImageTk.PhotoImage(pil_image)
                 
-                # GUI update
+                # FIXED: GUI update
                 self.main_camera_label.configure(image=tk_image)
                 self.main_camera_label.image = tk_image
         
@@ -631,27 +614,27 @@ class DashboardFrame(tk.Frame):
             logging.error(f"Direct display hatası: {e}")
 
     def _add_minimal_overlay(self, frame):
-        """DÜZELTME: Ultra sensitive mode göstergesi ile overlay."""
+        """FIXED: Ultra stabil mode göstergesi ile overlay."""
         try:
             h, w = frame.shape[:2]
             
-            # Timestamp
+            # FIXED: Timestamp
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
             
-            # Şeffaf alan - daha büyük
+            # FIXED: Şeffaf alan - daha büyük
             overlay = frame.copy()
             cv2.rectangle(overlay, (5, 5), (200, 45), (0, 0, 0), -1)
             cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
             
-            # Timestamp
+            # FIXED: Timestamp
             cv2.putText(frame, timestamp, (8, 20), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (0, 255, 0), 1, cv2.LINE_AA)
             
-            # DÜZELTME: Ultra sensitive mode indicator
-            cv2.putText(frame, "ULTRA HASSAS", (8, 35), cv2.FONT_HERSHEY_SIMPLEX,
+            # FIXED: Ultra stabil mode indicator
+            cv2.putText(frame, "ULTRA STABIL", (8, 35), cv2.FONT_HERSHEY_SIMPLEX,
                     0.4, (0, 255, 255), 1, cv2.LINE_AA)
             
-            # Kamera ID
+            # FIXED: Kamera ID
             if self.selected_camera_index < len(self.cameras):
                 camera = self.cameras[self.selected_camera_index]
                 cam_text = f"CAM{camera.camera_index}"
@@ -660,7 +643,6 @@ class DashboardFrame(tk.Frame):
         
         except Exception as e:
             logging.debug(f"Ultra overlay hatası: {e}")
-
 
     def _natural_display_update(self, frame):
         """
@@ -724,10 +706,6 @@ class DashboardFrame(tk.Frame):
         
         except Exception as e:
             logging.debug(f"Natural overlay hatası: {e}")
-
-
-
-
 
     def _direct_natural_display(self, frame):
         """
@@ -834,7 +812,6 @@ class DashboardFrame(tk.Frame):
         except Exception as e:
             logging.error(f"Enhanced fall detection handler hatası: {e}")
 
-
     def _show_enhanced_fall_alert(self, confidence, track_id, timestamp):
         """DÜZELTME: Gelişmiş düşme uyarısı popup'ı."""
         try:
@@ -885,9 +862,6 @@ class DashboardFrame(tk.Frame):
             
         except Exception as e:
             logging.error(f"Enhanced fall alert gösterme hatası: {e}")
-
-
-
 
     def _show_fall_alert(self, confidence):
         """Düşme uyarısı popup'ı gösterir."""
@@ -979,6 +953,21 @@ class DashboardFrame(tk.Frame):
         
         self.after(0, lambda: self._handle_fall_detection(camera_id, confidence, track_id))
 
+    def update_ai_frame(self, frame):
+        """AI processing sonucu frame'i günceller."""
+        try:
+            with self.frame_lock:
+                self.current_frame = frame
+                # Debug log
+                if hasattr(self, '_last_ai_update'):
+                    if time.time() - self._last_ai_update > 1.0:
+                        logging.debug(f"AI frame güncellendi - shape: {frame.shape if frame is not None else 'None'}")
+                        self._last_ai_update = time.time()
+                else:
+                    self._last_ai_update = time.time()
+        except Exception as e:
+            logging.error(f"AI frame güncelleme hatası: {e}")
+
     def _on_widget_destroy(self, event):
         """Widget yok edildiğinde."""
         if event.widget == self:
@@ -989,6 +978,15 @@ class DashboardFrame(tk.Frame):
         """DÜZELTME: Stabil kaynak temizleme."""
         try:
             self.is_destroyed = True
+            
+            # Configure binding'i temizle
+            if hasattr(self, '_configure_binding_id') and self._configure_binding_id:
+                try:
+                    root = self.winfo_toplevel()
+                    if root.winfo_exists():
+                        root.unbind("<Configure>", self._configure_binding_id)
+                except:
+                    pass
             
             if hasattr(self, 'update_id') and self.update_id:
                 self.after_cancel(self.update_id)
@@ -1014,3 +1012,44 @@ class DashboardFrame(tk.Frame):
             super().destroy()
         except Exception as e:
             logging.error(f"Dashboard destroy hatası: {e}")
+
+    def _update_fonts(self):
+        """Tüm önemli widget'larda fontları güncelle."""
+        try:
+            if self.is_destroyed or not self.winfo_exists():
+                return
+            for widget in self.winfo_children():
+                self._update_widget_font(widget)
+        except:
+            pass
+
+    def _update_widget_font(self, widget):
+        try:
+            if not widget.winfo_exists():
+                return
+            if hasattr(widget, 'config') and 'font' in widget.keys():
+                font = widget.cget('font')
+                if isinstance(font, tuple):
+                    base = font[1] if len(font) > 1 else 12
+                    widget.config(font=(font[0], self._responsive_font(base)))
+            for child in widget.winfo_children():
+                self._update_widget_font(child)
+        except:
+            pass
+
+    def _toggle_panel(self):
+        """Sol paneli genişletir/daraltır."""
+        if self.panel_collapsed:
+            # Paneli genişlet
+            self.control_panel.grid()
+            self.main_container.grid_columnconfigure(0, weight=1, minsize=350)
+            self.toggle_panel_btn.config(text="◀")
+            self.toggle_panel_btn.place(x=360, y=10, anchor="nw")
+            self.panel_collapsed = False
+        else:
+            # Paneli daralt
+            self.control_panel.grid_remove()
+            self.main_container.grid_columnconfigure(0, weight=0, minsize=0)
+            self.toggle_panel_btn.config(text="▶")
+            self.toggle_panel_btn.place(x=10, y=10, anchor="nw")
+            self.panel_collapsed = True
