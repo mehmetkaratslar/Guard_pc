@@ -49,9 +49,10 @@ class DashboardFrame(tk.Frame):
         self.frame_lock = threading.Lock()
         self.is_destroyed = False
         
-        # DÜZELTME: Display optimizasyonu
+        # ✅ DÜZELTME: Memory-safe display optimizasyonu
         self.last_display_update = 0
         self.display_update_interval = 1.0 / 25  # 25 FPS display (stabil)
+        self.frame_buffer = deque(maxlen=3)  # Buffer limit - memory leak önleme
         
         # UI elementleri
         self.main_camera_label = None
@@ -671,8 +672,8 @@ class DashboardFrame(tk.Frame):
         except Exception as e:
             logging.error(f"Display update hatası: {e}")
         
-        # FIXED: Sabit 25 FPS için 40ms
-        self.update_id = self.after(40, self._stable_display_update)
+        # ✅ DÜZELTİLDİ: Akıcı video için daha hızlı update
+        self.update_id = self.after(20, self._stable_display_update)  # 50 FPS UI
 
     def _direct_stable_display(self, frame):
         """FIXED: Direkt ve ultra stabil display - minimum işlem."""
@@ -689,9 +690,9 @@ class DashboardFrame(tk.Frame):
                 new_width = int(w * scale)
                 new_height = int(h * scale)
                 
-                # FIXED: Stabil resize - INTER_LINEAR daha hızlı
+                # ✅ DÜZELTİLDİ: Hızlı resize - akıcılık için
                 resized = cv2.resize(frame, (new_width, new_height), 
-                                interpolation=cv2.INTER_LINEAR)
+                                interpolation=cv2.INTER_NEAREST)  # En hızlı
                 
                 # FIXED: Minimal overlay
                 self._add_minimal_overlay(resized)
@@ -1138,14 +1139,17 @@ class DashboardFrame(tk.Frame):
             logging.error(f"❌ Delayed popup error: {e}")
 
     def update_ai_frame(self, frame):
-        """AI processing sonucu frame'i günceller."""
+        """AI processing sonucu frame'i günceller - memory safe."""
         try:
             with self.frame_lock:
-                self.current_frame = frame
+                # ✅ DÜZELTME: Frame buffer ile memory leak önleme
+                if frame is not None:
+                    self.frame_buffer.append(frame.copy())
+                    self.current_frame = frame
                 # Debug log
                 if hasattr(self, '_last_ai_update'):
                     if time.time() - self._last_ai_update > 1.0:
-                        logging.debug(f"AI frame güncellendi - shape: {frame.shape if frame is not None else 'None'}")
+                        logging.debug(f"AI frame güncellendi - buffer size: {len(self.frame_buffer)}")
                         self._last_ai_update = time.time()
                 else:
                     self._last_ai_update = time.time()

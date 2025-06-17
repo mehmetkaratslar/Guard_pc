@@ -218,15 +218,20 @@ class UltraStableCamera:
         FIXED: KAPSAMLI KAMERA AYARLARI - Kalite ve performans optimizasyonu
         """
         try:
-            # FIXED: Temel performans ayarları - ULTRA HIZLI CAPTURE
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimum buffer - gecikme önleme
+            # ✅ DÜZELTME: Stabil buffer ayarı - takılma önleme
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Yeterli buffer - takılma önleme
             
-            # FIXED: FPS ayarı - yüksek performans için
-            self.cap.set(cv2.CAP_PROP_FPS, 60)  # 60 FPS - maksimum hız
+            # ✅ DÜZELTME: Gerçekçi FPS ayarı - stabil performans
+            self.cap.set(cv2.CAP_PROP_FPS, 30)  # 30 FPS - gerçekçi hedef
             
-            # FIXED: Çözünürlük ayarı - YOLOv11 640x640 format
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)  # YOLOv11 kare format
+            # ✅ DÜZELTİLDİ: Kamera-spesifik çözünürlük ayarı
+            if self.camera_index == 0:  # Bilgisayar kamerası için
+                # Native çözünürlüğü koruyarak en iyi kaliteyi al
+                pass  # Çözünürlük ayarı yapma
+            else:
+                # Diğer kameralar için optimize edilmiş ayar
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
             
             # FIXED: Codec ayarı - kalite için
             try:
@@ -237,13 +242,14 @@ class UltraStableCamera:
                 except:
                     pass  # Varsayılan codec kullan
             
-            # ULTRA OPTIMIZE: Renk ve kalite ayarları - YOLOv11 optimize
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manuel exposure
-            self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)  # Orta parlaklık
-            self.cap.set(cv2.CAP_PROP_CONTRAST, 0.6)  # Yüksek kontrast - AI için
-            self.cap.set(cv2.CAP_PROP_SATURATION, 0.7)  # Canlı renkler
-            self.cap.set(cv2.CAP_PROP_HUE, 0.5)  # Doğal renk tonu
-            self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Otomatik beyaz dengesi
+            # ✅ DÜZELTİLDİ: Kamera-spesifik renk ayarları
+            if self.camera_index == 0:  # Bilgisayar kamerası için özel ayar
+                # Kamera 0 için tam otomatik
+                pass  # Hiçbir manuel ayar yapma
+            else:
+                # Diğer kameralar için hafif optimizasyon
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Otomatik exposure
+                self.cap.set(cv2.CAP_PROP_AUTO_WB, 1)  # Otomatik beyaz dengesi
             
             # Ayarları kontrol et
             actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -292,10 +298,10 @@ class UltraStableCamera:
         consecutive_failures = 0
         max_failures = 10
         
-        # ULTRA OPTIMIZE: Dinamik FPS hedefi - sistem performance'a göre
-        base_fps = 45  # Gerçekçi başlangıç hedefi
-        max_fps = 60   # Maksimum FPS
-        min_fps = 25   # Minimum FPS
+        # ✅ DÜZELTİLDİ: Akıcı video için optimize edilmiş FPS
+        base_fps = 25  # Daha akıcı başlangıç
+        max_fps = 25   # Sabit 25 FPS - akıcılık için
+        min_fps = 20   # Minimum FPS
         current_fps_target = base_fps
         
         frame_interval = 1.0 / current_fps_target
@@ -364,22 +370,22 @@ class UltraStableCamera:
                     elapsed = time.perf_counter() - loop_start
                     sleep_time = frame_interval - elapsed
                     
-                    if sleep_time > 0.002:  # Sadece 2ms'den fazlaysa sleep
+                    if sleep_time > 0.001:  # ✅ DÜZELTİLDİ: Çok kısa sleep - akıcılık için
                         time.sleep(sleep_time)
-                    elif sleep_time < -0.010:  # 10ms geçikme varsa frame skip
+                    elif sleep_time < -0.040:  # 40ms geçikme varsa frame skip (25 FPS için)
                         self.performance_stats['dropped_frames'] += 1
                 
                 else:
                     consecutive_failures += 1
                     if consecutive_failures % 10 == 0:
                         logging.debug(f"❌ Kamera {self.camera_index} capture hatası: {consecutive_failures}")
-                    time.sleep(0.01)  # Minimal bekleme
+                    time.sleep(0.033)  # ✅ DÜZELTME: 30 FPS için uygun bekleme
                 
             except Exception as e:
                 consecutive_failures += 1
                 if consecutive_failures % 25 == 0:
                     logging.debug(f"❌ Kamera {self.camera_index} exception: {e}")
-                time.sleep(0.005)  # Çok kısa bekleme
+                time.sleep(0.001)  # ✅ DÜZELTİLDİ: Çok minimal bekleme
             
             # FPS reporting - optimize edilmiş
             current_time = time.perf_counter()

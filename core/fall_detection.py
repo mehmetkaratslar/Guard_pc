@@ -404,8 +404,8 @@ class FallDetector:
                                 # DEBUG: Her detection'ı logla
                                 logging.debug(f"📊 Detection {i}: conf={conf:.3f}")
                                 
-                                # DÜZELTME: ÇOK DÜŞÜK filtreleme - neredeyse her şeyi geçir
-                                if conf < 0.15:  # 0.4 -> 0.15 (çok daha düşük)
+                                # ✅ DÜZELTME: Güvenilir confidence threshold - daha iyi tespit
+                                if conf < 0.30:  # 0.15 -> 0.30 (daha güvenilir)
                                     logging.debug(f"❌ Düşük confidence reddedildi: {conf:.3f}")
                                     continue
                                 
@@ -416,8 +416,8 @@ class FallDetector:
                                 bbox_height = y2 - y1
                                 logging.debug(f"📐 Bbox boyutu: {bbox_width}x{bbox_height}")
                                 
-                                # DÜZELTME: ÇOK ESNEK boyut kontrolü
-                                if bbox_width < 20 or bbox_height < 50:  # 30,80 -> 20,50 (çok daha küçük)
+                                # ✅ DÜZELTME: Gerçekçi boyut kontrolü - insan boyutları
+                                if bbox_width < 40 or bbox_height < 100:  # 20,50 -> 40,100 (gerçekçi insan boyutları)
                                     logging.debug(f"❌ Çok küçük obje reddedildi: {bbox_width}x{bbox_height}")
                                     continue
                                 
@@ -511,6 +511,10 @@ class FallDetector:
                             'validated_human': True  # Doğrulanmış insan
                         })
                 
+                # ✅ DÜZELTİLDİ: Enhanced visualization ekle - keypoint çizimi
+                if track_list:  # Sadece track varsa visualize et
+                    annotated_frame = self._draw_enhanced_visualizations(annotated_frame, detections)
+                
                 # İşlem süresini kaydet
                 processing_time = time.time() - start_time
                 self.detection_stats['processing_times'].append(processing_time)
@@ -595,8 +599,8 @@ class FallDetector:
             if keypoints is None or keypoint_confs is None:
                 return
             
-            # DÜZELTME: Düşük confidence threshold - daha çok keypoint göster
-            conf_threshold = 0.1  # 0.3 -> 0.1
+            # ✅ DÜZELTİLDİ: Keypoint görünürlük threshold - daha çok keypoint
+            conf_threshold = 0.05  # 0.1 -> 0.05 (çok daha düşük)
             
             # DÜZELTME: Enhanced keypoint colors - çok renkli
             keypoint_colors = [
@@ -860,8 +864,8 @@ class FallDetector:
             conf_mask = keypoint_confs > conf_threshold
             valid_keypoints = np.sum(conf_mask)
             
-            # DÜZELTME: Esnek minimum keypoint sayısı - güvenilir analiz
-            if valid_keypoints < 7:  # 10 -> 7 (daha esnek)
+            # ✅ DÜZELTME: Optimum minimum keypoint sayısı - güvenilir analiz
+            if valid_keypoints < 5:  # 7 -> 5 (daha esnek ama yeterli)
                 logging.debug(f"❌ Yetersiz güvenilir keypoint düşme analizi için: {valid_keypoints}/17")
                 return False, 0.0
             
@@ -1015,8 +1019,8 @@ class FallDetector:
             
             fall_score += knee_bend_score
             
-            # DÜZELTME: ÇOK YÜKSEK DÜŞME EŞİĞİ - sadece gerçek düşmeler
-            fall_threshold = 2.0  # 0.7 -> 2.0 (çok daha yüksek eşik)
+            # ✅ DÜZELTME: Gerçekçi düşme eşiği - güvenilir tespit
+            fall_threshold = 1.0  # 2.0 -> 1.0 (gerçekçi eşik)
             is_fall = fall_score >= fall_threshold
             
             # DÜZELTME: Ek güvenlik kontrolü - en az 2 farklı indikatör gerekli
